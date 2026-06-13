@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "tsx src/bin.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval": "tsx src/eval/run.ts"
   },
   "engines": {
     "node": ">=22"
