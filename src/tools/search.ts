@@ -1,11 +1,11 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { glob } from 'node:fs/promises';
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { clamp } from './util.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const MAX_RESULTS = 200;
 
 export const globTool = tool({
@@ -39,9 +39,11 @@ export const grepTool = tool({
   }),
   execute: async ({ pattern, path }) => {
     try {
-      // ส่ง arg ผ่าน JSON.stringify เพื่อ quote ปลอดภัย; -e กัน pattern ขึ้นต้นด้วย -
-      const { stdout } = await execAsync(
-        `rg --line-number --no-heading --max-count 50 -e ${JSON.stringify(pattern)} -- ${JSON.stringify(path)}`,
+      // execFile (args array, ไม่ผ่าน shell) → $(...)/backtick/$VAR ใน pattern/path เป็น inert
+      // กัน command injection (JSON.stringify ไม่ใช่ shell quoting — เคยรั่ว); -e กัน pattern ขึ้นต้นด้วย -
+      const { stdout } = await execFileAsync(
+        'rg',
+        ['--line-number', '--no-heading', '--max-count', '50', '-e', pattern, '--', path],
         { maxBuffer: 10 * 1024 * 1024 },
       );
       const lines = stdout.trim().split('\n').slice(0, MAX_RESULTS);

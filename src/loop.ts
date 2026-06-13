@@ -5,6 +5,7 @@ import { tools } from './tools/index.js';
 import { loadMemory, loadAutoMemory } from './memory.js';
 import { loadSkills, renderAvailableSkills } from './skills.js';
 import { maybeWrapHooks } from './hooks.js';
+import { agentContext } from './agentContext.js';
 import { pruneToolResults } from './compaction.js';
 
 const SYSTEM = `You are Sanook, an autonomous coding agent running in a terminal.
@@ -35,6 +36,8 @@ export interface RunAgentOptions {
   tools?: ToolSet;
   /** plan mode — read-only tools + ให้ agent วางแผนก่อน ไม่แก้ state */
   planMode?: boolean;
+  /** ความลึก sub-agent (main = 0) — thread ผ่าน context กัน recursion ไม่จบ */
+  subagentDepth?: number;
 }
 
 export interface RunAgentResult {
@@ -76,8 +79,9 @@ async function runDelegate(opts: RunAgentOptions): Promise<RunAgentResult> {
 }
 
 export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
-  // ให้ sub-agent (task tool) inherit model เดียวกับ main
-  process.env.SANOOK_ACTIVE_MODEL = opts.model;
+  // context ผ่าน AsyncLocalStorage (ไม่ใช่ process.env global) → parallel sub-agent ไม่ชนกัน
+  // sub-agent (task tool) อ่าน model/budget/depth จาก context นี้
+  agentContext.enterWith({ model: opts.model, budgetUsd: opts.budgetUsd, depth: opts.subagentDepth ?? 0 });
   // codex (delegate) → ข้าม SDK loop, ส่ง task ให้ official codex CLI (ChatGPT quota)
   if (PROVIDERS[parseSpec(opts.model).provider]?.kind === 'delegate') {
     return runDelegate(opts);
