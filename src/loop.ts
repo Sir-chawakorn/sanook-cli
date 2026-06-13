@@ -1,6 +1,6 @@
 import { streamText, stepCountIs, type ModelMessage } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { tools } from './tools.js';
+import { tools } from './tools/index.js';
 
 const SYSTEM = `You are Sanook, an autonomous coding agent running in a terminal.
 - Use the read_file and run_bash tools to inspect the workspace before answering — find files yourself (ls/grep/find) instead of asking the user for paths.
