@@ -8,6 +8,7 @@ import { dynamicTool, jsonSchema, type ToolSet } from 'ai';
 // ทำให้ Sanook extensible เหมือน Claude Code/Codex. config: ~/.sanook/mcp.json + project .sanook/mcp.json
 // { "mcpServers": { "fs": { "command": "npx", "args": ["-y","@modelcontextprotocol/server-filesystem","/path"] } } }
 const PROTOCOL_VERSION = '2024-11-05';
+const MAX_BUF = 16 * 1024 * 1024; // กัน server ส่ง byte ยาวไม่มี newline → memory โต unbounded
 
 interface McpServerConfig {
   command: string;
@@ -52,6 +53,11 @@ class McpClient {
 
   private onData(s: string): void {
     this.buf += s;
+    if (this.buf.length > MAX_BUF) {
+      this.fail('response ใหญ่เกิน (ไม่มี newline)');
+      this.close();
+      return;
+    }
     let idx: number;
     while ((idx = this.buf.indexOf('\n')) !== -1) {
       const line = this.buf.slice(0, idx).trim();
@@ -145,26 +151,33 @@ async function loadMcpConfig(): Promise<Record<string, McpServerConfig>> {
   return merged;
 }
 
-let cache: { tools: ToolSet; clients: McpClient[] } | null = null;
+let cachePromise: Promise<ToolSet> | null = null;
+let activeClients: McpClient[] = []; // sync ref สำหรับ closeMcp ใน exit handler
 
-/** โหลด tools จาก MCP servers (spawn + handshake + list) — cache singleton, namespace ชื่อ server__tool */
-export async function getMcpTools(onLog?: (m: string) => void): Promise<ToolSet> {
-  if (cache) return cache.tools;
+/** โหลด tools จาก MCP servers — in-flight promise singleton (concurrent call ไม่ spawn ซ้ำ/leak child) */
+export function getMcpTools(onLog?: (m: string) => void): Promise<ToolSet> {
+  cachePromise ??= buildMcpTools(onLog);
+  return cachePromise;
+}
+
+async function buildMcpTools(onLog?: (m: string) => void): Promise<ToolSet> {
   const config = await loadMcpConfig();
-  if (!Object.keys(config).length) {
-    cache = { tools: {}, clients: [] };
-    return {};
-  }
+  if (!Object.keys(config).length) return {};
   const tools: Record<string, ReturnType<typeof dynamicTool>> = {};
   const clients: McpClient[] = [];
+  activeClients = clients; // ref เดียวกัน → closeMcp kill client ที่ spawn ระหว่าง build ได้ด้วย
   for (const [serverName, cfg] of Object.entries(config)) {
     try {
       const client = new McpClient(cfg);
+      clients.push(client); // push ทันที (constructor spawn แล้ว) ก่อน await → ไม่ leak ถ้า build ค้าง
       await client.initialize();
       const defs = await client.listTools();
-      clients.push(client);
       for (const def of defs) {
         const toolName = `${serverName}__${def.name}`.replace(/[^a-zA-Z0-9_]/g, '_');
+        if (toolName in tools) {
+          onLog?.(`MCP tool ชนชื่อ: ${toolName} (ข้าม)`); // กัน silent overwrite
+          continue;
+        }
         tools[toolName] = dynamicTool({
           description: def.description ?? `${serverName}: ${def.name}`,
           inputSchema: jsonSchema(
@@ -178,13 +191,11 @@ export async function getMcpTools(onLog?: (m: string) => void): Promise<ToolSet>
       onLog?.(`MCP "${serverName}" ต่อไม่ได้: ${(e as Error).message}`);
     }
   }
-  cache = { tools, clients };
   return tools;
 }
 
 export function closeMcp(): void {
-  if (cache) {
-    for (const c of cache.clients) c.close();
-    cache = null;
-  }
+  for (const c of activeClients) c.close();
+  activeClients = [];
+  cachePromise = null;
 }
