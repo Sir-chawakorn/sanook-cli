@@ -24,3 +24,7 @@ jobs:
       - run: npm test
         env:
           CI: "1"
+      - run: npm run build
+      - name: verify bin is executable (กัน 'permission denied')
+        if: runner.os != 'Windows'
+        run: test -x dist/bin.js
