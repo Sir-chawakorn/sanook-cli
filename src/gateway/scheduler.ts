@@ -33,6 +33,15 @@ export function startScheduler(opts: SchedulerOpts): () => void {
   let stopped = false;
   let running = false;
 
+  // update แบบ best-effort — ถ้า ledger lock timeout ก็ไม่ทำให้ loop ตาย (recover จับรอบ start ถัดไป)
+  const safeUpdate = async (id: string, patch: Parameters<typeof updateTask>[1]): Promise<void> => {
+    try {
+      await updateTask(id, patch);
+    } catch (e) {
+      opts.onLog?.(`⚠ update ${id} fail: ${redactKey((e as Error).message ?? String(e))} — recover รอบ start ถัดไป`);
+    }
+  };
+
   async function tick(): Promise<void> {
     if (stopped || running) return; // ไม่ทับรอบก่อนที่ยังรันไม่เสร็จ
     running = true;
@@ -44,7 +53,7 @@ export function startScheduler(opts: SchedulerOpts): () => void {
         try {
           const out = await runTask(task, opts);
           const next = task.schedule ? nextRun(task.schedule, Date.now()) : null;
-          await updateTask(task.id, {
+          await safeUpdate(task.id, {
             status: next != null ? 'queued' : 'done',
             runAt: next ?? task.runAt,
             lastRun: startedAt,
@@ -57,7 +66,7 @@ export function startScheduler(opts: SchedulerOpts): () => void {
           const msg = redactKey((err as Error).message ?? String(err)); // กัน key รั่วลงไฟล์/network
           const next = task.schedule ? nextRun(task.schedule, Date.now()) : null;
           // recurring ที่ fail → ยัง re-queue (ลองใหม่รอบหน้า) ไม่ปล่อยตายถาวร
-          await updateTask(task.id, {
+          await safeUpdate(task.id, {
             status: next != null ? 'queued' : 'failed',
             runAt: next ?? task.runAt,
             lastRun: startedAt,

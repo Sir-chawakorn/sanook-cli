@@ -53,6 +53,6 @@ export async function startGateway(opts: GatewayOpts): Promise<() => void> {
   return () => {
     stopServer();
     stopScheduler();
-    void release(); // ปล่อย single-instance lock
+    release(); // ปล่อย single-instance lock (sync — ทันก่อน process.exit ตัด event loop)
   };
 }
