@@ -2,7 +2,7 @@ import { streamText, stepCountIs, type ModelMessage } from 'ai';
 import { resolveModel, specKey, parseSpec, PROVIDERS } from './providers/registry.js';
 import { CostMeter, type Usage } from './cost.js';
 import { tools } from './tools/index.js';
-import { loadMemory } from './memory.js';
+import { loadMemory, loadAutoMemory } from './memory.js';
 import { pruneToolResults } from './compaction.js';
 
 const SYSTEM = `You are Sanook, an autonomous coding agent running in a terminal.
@@ -74,9 +74,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const model = resolveModel(opts.model); // throws ถ้าไม่มี key / provider ผิด
   const meter = new CostMeter(specKey(opts.model), opts.budgetUsd);
 
-  // โหลด project memory (SANOOK.md hierarchical) แปะเข้า system prompt
-  const memory = await loadMemory();
-  const system = memory ? `${SYSTEM}\n\n${memory}` : SYSTEM;
+  // โหลด memory: auto-memory (จำข้าม session) + project SANOOK.md → system prompt
+  const [memory, autoMemory] = await Promise.all([loadMemory(), loadAutoMemory()]);
+  const system = [SYSTEM, autoMemory, memory].filter(Boolean).join('\n\n');
 
   const messages: ModelMessage[] = [
     ...(opts.history ?? []),

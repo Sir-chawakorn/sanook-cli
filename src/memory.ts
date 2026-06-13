@@ -1,8 +1,11 @@
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 
 const MEMORY_FILE = 'SANOOK.md';
+// auto-memory: สิ่งที่ agent จำเองข้าม session (เลียน MEMORY.md ของ Claude Code)
+const AUTO_MEMORY_DIR = join(homedir(), '.sanook', 'memory');
+const AUTO_MEMORY_FILE = join(AUTO_MEMORY_DIR, 'MEMORY.md');
 // เดินขึ้นหยุดที่ project root — ไม่เลยขึ้นไปถึง filesystem root
 // (กัน prompt-injection จาก SANOOK.md ที่ใครก็วางใน parent dir ที่ share กันได้)
 const BOUNDARY_MARKERS = ['.git', 'package.json'];
@@ -54,4 +57,29 @@ export async function loadMemory(cwd: string = process.cwd()): Promise<string> {
     }
   }
   return blocks.join('\n\n');
+}
+
+/** โหลด auto-memory (สิ่งที่ agent จำเองข้าม session) จาก ~/.sanook/memory/MEMORY.md */
+export async function loadAutoMemory(): Promise<string> {
+  try {
+    const content = (await readFile(AUTO_MEMORY_FILE, 'utf8')).trim();
+    return content ? `<auto_memory note="สิ่งที่จำไว้จาก session ก่อน">\n${content}\n</auto_memory>` : '';
+  } catch {
+    return '';
+  }
+}
+
+/** บันทึก fact ลง auto-memory (remember tool เรียก) — dedup บรรทัดซ้ำ */
+export async function appendMemory(fact: string): Promise<void> {
+  const line = `- ${fact.trim().replace(/\s+/g, ' ')}`;
+  await mkdir(AUTO_MEMORY_DIR, { recursive: true });
+  let existing = '';
+  try {
+    existing = await readFile(AUTO_MEMORY_FILE, 'utf8');
+  } catch {
+    /* ยังไม่มีไฟล์ */
+  }
+  if (existing.includes(line)) return; // จำแล้ว ไม่ซ้ำ
+  const header = existing.trim() ? existing.trimEnd() : '# Sanook Auto-Memory';
+  await writeFile(AUTO_MEMORY_FILE, `${header}\n${line}\n`);
 }
