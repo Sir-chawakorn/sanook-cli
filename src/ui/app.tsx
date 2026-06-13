@@ -1,7 +1,8 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { Box, Text, Static, useApp, useInput } from 'ink';
 import { parseCommand } from '../commands.js';
 import { runAgent, type AgentEvent } from '../loop.js';
+import { Banner } from './banner.js';
 
 interface Turn {
   id: number;
@@ -88,14 +89,20 @@ export function App({ initialModel, budgetUsd }: AppProps) {
     }
   }
 
+  const banner = useMemo(() => <Banner model={initialModel} />, [initialModel]);
+
   return (
     <Box flexDirection="column">
+      {banner}
       <Static items={history}>{(turn) => <TurnView key={turn.id} turn={turn} />}</Static>
       {streaming ? <Text>{streaming}</Text> : null}
-      <Box>
+      <Box borderStyle="round" borderColor="gray" paddingX={1}>
         <Text color={busy ? 'gray' : 'cyan'}>{busy ? '… ' : '› '}</Text>
-        <Text>{input}</Text>
+        <Text>{input || (busy ? '' : 'พิมพ์คำสั่ง หรือ /help')}</Text>
       </Box>
+      <Text color="gray" dimColor>
+        {'  '}? for shortcuts · /help · model: {model}
+      </Text>
     </Box>
   );
 }

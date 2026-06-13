@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { runAgent, type AgentEvent } from './loop.js';
 import { redactKey } from './providers/keys.js';
-import { loadConfig } from './config.js';
+import { loadConfig, isFirstRun, loadKeysIntoEnv } from './config.js';
 
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
@@ -97,19 +97,26 @@ async function main(): Promise<void> {
     return;
   }
 
+  // โหลด API key จาก ~/.sanook/auth.json เข้า env (ไม่ override env ที่ตั้งไว้แล้ว)
+  await loadKeysIntoEnv();
+
   const { model, budget, json, prompt } = parseArgs(argv);
-  const config = await loadConfig({
-    model,
-    budgetUsd: Number.isFinite(budget) ? budget : undefined,
-  });
+  const budgetUsd = Number.isFinite(budget) ? budget : undefined;
 
   if (prompt) {
+    const config = await loadConfig({ model, budgetUsd });
     await runHeadless(config.model, prompt, config.budgetUsd, config.maxSteps, json);
-  } else {
-    // ไม่มี prompt → interactive REPL (Ink)
-    const { startRepl } = await import('./ui/render.js');
-    startRepl({ initialModel: config.model, budgetUsd: config.budgetUsd });
+    return;
   }
+
+  // interactive — ครั้งแรก (ยังไม่มี config) → setup wizard ก่อนเข้า REPL
+  if (await isFirstRun()) {
+    const { startSetup } = await import('./ui/render.js');
+    await startSetup();
+  }
+  const config = await loadConfig({ model, budgetUsd });
+  const { startRepl } = await import('./ui/render.js');
+  startRepl({ initialModel: config.model, budgetUsd: config.budgetUsd });
 }
 
 main().catch((err) => {

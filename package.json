@@ -48,8 +48,11 @@
     "@ai-sdk/openai": "^3.0.71",
     "@ai-sdk/openai-compatible": "^2.0.50",
     "@ai-sdk/xai": "^3.0.95",
+    "@inkjs/ui": "^2.0.0",
     "ai": "~6.0",
     "ink": "^7.0.6",
+    "ink-big-text": "^2.0.0",
+    "ink-gradient": "^4.0.1",
     "react": "^19.2.7",
     "zod": "~3.25"
   },
