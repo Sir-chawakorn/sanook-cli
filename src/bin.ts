@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { runAgent, type AgentEvent } from './loop.js';
 import { redactKey } from './providers/keys.js';
+import type { ModelMessage } from 'ai';
 import { loadConfig, isFirstRun, loadKeysIntoEnv } from './config.js';
+import { saveSession, latestSession, newSessionId } from './session.js';
 
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
@@ -23,8 +25,8 @@ function parseArgs(argv: string[]): Args {
     if (a === '--model' || a === '-m') model = argv[++i];
     else if (a === '--budget' || a === '-b') budget = Number.parseFloat(argv[++i] ?? '');
     else if (a === '--json') json = true;
-    else if (a === '-p' || a === '--print') {
-      /* explicit headless flag — prompt ตามมาเป็น positional */
+    else if (a === '-p' || a === '--print' || a === '-c' || a === '--continue') {
+      /* -p headless flag · -c/--continue resume (handled in main) */
     } else rest.push(a);
   }
   return { model, budget, json, prompt: rest.join(' ').trim() };
@@ -36,6 +38,7 @@ async function runHeadless(
   budgetUsd: number | undefined,
   maxSteps: number,
   json: boolean,
+  history?: ModelMessage[],
 ): Promise<void> {
   const controller = new AbortController();
   process.on('SIGINT', () => {
@@ -43,9 +46,10 @@ async function runHeadless(
     process.exit(130);
   });
   try {
-    const { cost } = await runAgent({
+    const { cost, messages } = await runAgent({
       model,
       prompt,
+      history,
       budgetUsd,
       maxSteps,
       signal: controller.signal,
@@ -59,6 +63,9 @@ async function runHeadless(
       },
     });
     if (!json) process.stdout.write(`\n${DIM}${cost.summary()}${RESET}\n`);
+    // จำ session ไว้ทำงานต่อได้ (sanook --continue "...") — แก้ concern AI ลืมว่าทำถึงไหน
+    const now = new Date().toISOString();
+    await saveSession({ id: newSessionId(), created: now, updated: now, model, cwd: process.cwd(), messages });
   } catch (err) {
     const msg = redactKey((err as Error).message);
     if (json) process.stdout.write(`${JSON.stringify({ type: 'error', message: msg })}\n`);
@@ -79,6 +86,7 @@ flags:
   -m, --model <spec>   sonnet/opus/haiku/fable · gpt/codex · gemini · grok · deepseek · mistral · groq · ollama/lmstudio
                        or "provider:model-id" (e.g. openai:gpt-5-codex, groq:fast, google:gemini-2.5-flash)
   -b, --budget <usd>   stop when estimated cost exceeds this
+  -c, --continue       resume the latest session (จำว่าทำถึงไหน → ทำต่อ)
       --json           machine-readable JSONL output
   -v, --version
   -h, --help
@@ -105,7 +113,10 @@ async function main(): Promise<void> {
 
   if (prompt) {
     const config = await loadConfig({ model, budgetUsd });
-    await runHeadless(config.model, prompt, config.budgetUsd, config.maxSteps, json);
+    // --continue / -c → โหลด session ล่าสุดมาต่อ (จำว่าทำถึงไหน)
+    const history =
+      argv.includes('--continue') || argv.includes('-c') ? (await latestSession())?.messages : undefined;
+    await runHeadless(config.model, prompt, config.budgetUsd, config.maxSteps, json, history);
     return;
   }
 
