@@ -2,7 +2,7 @@ import type { LanguageModel } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { resolveKey, envVarFor } from './keys.js';
+import { resolveKey, envVarFor, assertDirectApiKey } from './keys.js';
 
 export interface ParsedSpec {
   provider: string;
@@ -65,4 +65,6 @@ function requireKey(provider: string, apiKey: string | undefined): asserts apiKe
   if (!apiKey) {
     throw new Error(`ต้องตั้ง ${envVarFor(provider)} ก่อนใช้ provider "${provider}" (BYOK)`);
   }
+  // policy: API key ตรงเท่านั้น — reject OAuth/subscription token (ToS compliance)
+  assertDirectApiKey(provider, apiKey);
 }

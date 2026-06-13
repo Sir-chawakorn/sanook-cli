@@ -2,6 +2,8 @@ import { streamText, stepCountIs, type ModelMessage } from 'ai';
 import { resolveModel, specKey } from './providers/registry.js';
 import { CostMeter, type Usage } from './cost.js';
 import { tools } from './tools/index.js';
+import { loadMemory } from './memory.js';
+import { pruneToolResults } from './compaction.js';
 
 const SYSTEM = `You are Sanook, an autonomous coding agent running in a terminal.
 - Use the tools (read_file, write_file, edit_file, list_dir, glob, grep, run_bash) to inspect and modify the workspace — find files yourself instead of asking for paths.
@@ -40,6 +42,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const model = resolveModel(opts.model); // throws ถ้าไม่มี key / provider ผิด
   const meter = new CostMeter(specKey(opts.model), opts.budgetUsd);
 
+  // โหลด project memory (SANOOK.md hierarchical) แปะเข้า system prompt
+  const memory = await loadMemory();
+  const system = memory ? `${SYSTEM}\n\n${memory}` : SYSTEM;
+
   const messages: ModelMessage[] = [
     ...(opts.history ?? []),
     { role: 'user', content: opts.prompt },
@@ -47,12 +53,14 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   const result = streamText({
     model,
-    system: SYSTEM,
+    system,
     messages,
     tools,
     // หยุดเมื่อชน max steps หรือ ชน budget cap (เช็คหลังแต่ละ step)
     stopWhen: [stepCountIs(opts.maxSteps ?? 20), () => meter.overBudget],
     abortSignal: opts.signal,
+    // งานยาว (tool calls เยอะ) → prune tool output เก่า กัน context บวม
+    prepareStep: ({ messages }) => (messages.length > 40 ? { messages: pruneToolResults(messages) } : {}),
     onStepFinish: ({ usage, providerMetadata }) => {
       // cacheWrite (cache creation) อยู่ใน providerMetadata แยกจาก usage.inputTokens
       const meta = providerMetadata?.anthropic as Record<string, unknown> | undefined;
