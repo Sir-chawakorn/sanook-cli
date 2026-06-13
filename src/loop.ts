@@ -101,7 +101,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const planSuffix = opts.planMode
     ? '\n\nPLAN MODE: สำรวจและวางแผนเท่านั้น — ห้ามแก้ไฟล์หรือรันคำสั่งที่เปลี่ยน state. จบด้วยแผนเป็นขั้นตอนให้ user อนุมัติก่อนลงมือ.'
     : '';
-  const system = [SYSTEM + planSuffix, autoMemory, renderAvailableSkills(skills), git, memory]
+  // git อยู่ท้ายสุด (volatile — เปลี่ยนทุก commit) → static prefix (SYSTEM/skills/memory) cache ได้ ไม่ถูก invalidate
+  const system = [SYSTEM + planSuffix, autoMemory, renderAvailableSkills(skills), memory, git]
     .filter(Boolean)
     .join('\n\n');
 
