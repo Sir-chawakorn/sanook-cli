@@ -32,13 +32,22 @@ prompt → LLM → tool call (read_file / run_bash) → result → loop → answ
 | `src/tools.ts` | file + bash tools — zod-typed, output-capped, with a destructive-command guard |
 | `src/bin.ts` | CLI entry — argv → loop → live streamed output |
 
+## Commands (REPL)
+
+```
+/model [spec]   show or switch model        /cost     tokens + cost this session
+/clear          reset conversation          /compact  shrink context
+/help           list commands               /quit     exit
+```
+
 ## Status
 
-Phase 0 spike: agent loop + two tools, with `typecheck` and `test` green. Next on the roadmap: full file tools (write/edit/grep) → multi-provider routing → context compaction → an Ink TUI.
+**v0.1.0** — agent loop, full file tools (read/write/edit/list/glob/grep/bash + permission gate), multi-provider BYOK, cost meter with budget cap, hierarchical `SANOOK.md` memory + compaction, and an Ink TUI with slash commands. Headless `--json` mode for CI. `typecheck` + `test` green on mac/linux/windows × Node 22/24.
 
 ```bash
-npm run typecheck   # tsc --noEmit
+npm run build       # → dist/
 npm test            # vitest
+npm run typecheck   # tsc --noEmit
 ```
 
 ## License

@@ -1,21 +1,44 @@
 {
   "name": "sanook-cli",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A terminal AI coding agent, built from scratch in TypeScript. BYOK, works with any model.",
   "type": "module",
   "bin": {
-    "sanook": "./src/bin.ts"
+    "sanook": "./dist/bin.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    ".env.example"
+  ],
   "scripts": {
     "dev": "tsx src/bin.ts",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "eval": "tsx src/eval/run.ts"
+    "eval": "tsx src/eval/run.ts",
+    "prepublishOnly": "npm run build"
   },
   "engines": {
     "node": ">=22"
   },
+  "keywords": [
+    "ai",
+    "cli",
+    "coding-agent",
+    "llm",
+    "terminal",
+    "byok",
+    "claude",
+    "gemini"
+  ],
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sanook-ai/sanook-cli.git"
+  },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.84",
     "@ai-sdk/google": "^3.0.82",

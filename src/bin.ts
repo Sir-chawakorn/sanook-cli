@@ -67,8 +67,36 @@ async function runHeadless(
   }
 }
 
+const VERSION = '0.1.0';
+const HELP = `Sanook — a terminal AI coding agent (BYOK)
+
+usage:
+  sanook "<task>"            run one task (headless)
+  sanook                     interactive REPL
+  sanook --json "<task>"     headless, JSONL output (for CI/scripts)
+
+flags:
+  -m, --model <spec>   sonnet | opus | haiku | openai:gpt-5 | google:gemini-2.5-pro | ollama:llama3
+  -b, --budget <usd>   stop when estimated cost exceeds this
+      --json           machine-readable JSONL output
+  -v, --version
+  -h, --help
+
+env (BYOK — direct API key only):
+  ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENAI_API_KEY`;
+
 async function main(): Promise<void> {
-  const { model, budget, json, prompt } = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv.includes('-v') || argv.includes('--version')) {
+    console.log(VERSION);
+    return;
+  }
+  if (argv.includes('-h') || argv.includes('--help')) {
+    console.log(HELP);
+    return;
+  }
+
+  const { model, budget, json, prompt } = parseArgs(argv);
   const config = await loadConfig({
     model,
     budgetUsd: Number.isFinite(budget) ? budget : undefined,
