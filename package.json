@@ -20,10 +20,14 @@
     "@ai-sdk/google": "^3.0.82",
     "@ai-sdk/openai": "^3.0.71",
     "ai": "~6.0",
+    "ink": "^7.0.6",
+    "react": "^19.2.7",
     "zod": "~3.25"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
+    "@types/react": "^19.2.17",
+    "ink-testing-library": "^4.0.0",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
