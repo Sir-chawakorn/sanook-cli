@@ -208,7 +208,8 @@ const GLOBAL_ALIAS: Record<string, { provider: string; alias: string }> = {
   fast: { provider: 'anthropic', alias: 'fast' },
   fable: { provider: 'anthropic', alias: 'fable' },
   gpt: { provider: 'openai', alias: 'gpt' },
-  codex: { provider: 'openai', alias: 'codex' },
+  codex: { provider: 'codex', alias: 'default' }, // bare "codex" = ChatGPT quota (delegate); "openai:codex" = API key
+
   gemini: { provider: 'google', alias: 'gemini' },
   flash: { provider: 'google', alias: 'flash' },
   grok: { provider: 'xai', alias: 'grok' },
