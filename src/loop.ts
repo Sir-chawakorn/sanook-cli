@@ -6,6 +6,7 @@ import { loadMemory, loadAutoMemory } from './memory.js';
 import { loadSkills, renderAvailableSkills } from './skills.js';
 import { maybeWrapHooks } from './hooks.js';
 import { agentContext } from './agentContext.js';
+import { getMcpTools } from './mcp.js';
 import { pruneToolResults } from './compaction.js';
 
 const SYSTEM = `You are Sanook, an autonomous coding agent running in a terminal.
@@ -103,7 +104,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   // plan mode → เหลือเฉพาะ tool ที่ไม่เปลี่ยน state (read/search)
   const PLAN_TOOLS = ['read_file', 'list_dir', 'glob', 'grep', 'recall', 'skill', 'list_scheduled'];
-  let baseTools = opts.tools ?? tools;
+  // MCP tools (เฉพาะ main agent — sub-agent ใช้ tool subset ที่ส่งมาเอง)
+  const mcpTools = opts.tools ? {} : await getMcpTools();
+  let baseTools = opts.tools ?? { ...tools, ...mcpTools };
   if (opts.planMode) {
     baseTools = Object.fromEntries(Object.entries(baseTools).filter(([k]) => PLAN_TOOLS.includes(k))) as ToolSet;
   }

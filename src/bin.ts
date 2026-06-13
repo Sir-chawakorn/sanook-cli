@@ -4,6 +4,7 @@ import { redactKey } from './providers/keys.js';
 import type { ModelMessage } from 'ai';
 import { loadConfig, isFirstRun, loadKeysIntoEnv } from './config.js';
 import { saveSession, latestSession, newSessionId } from './session.js';
+import { closeMcp } from './mcp.js';
 
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
@@ -207,6 +208,9 @@ async function main(): Promise<void> {
 
   // โหลด API key จาก ~/.sanook/auth.json เข้า env (ไม่ override env ที่ตั้งไว้แล้ว)
   await loadKeysIntoEnv();
+  process.on('exit', closeMcp); // ปิด MCP server (kill child) ตอนจบ
+
+
 
   // subcommands: serve · cron — match เฉพาะรูปแบบที่ถูกต้อง กัน prompt unquoted ("serve coffee") misfire
   if (argv[0] === 'serve' && (argv.length === 1 || argv[1].startsWith('--'))) return runServe(argv.slice(1));
