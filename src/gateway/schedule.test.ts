@@ -68,3 +68,25 @@ describe('parseSchedule hardening (จาก adversarial review)', () => {
     expect(p?.kind).toBe('once');
   });
 });
+
+describe('parseSchedule NL ภาษาไทย', () => {
+  it('"ทุก 30 นาที" → every 30m', () => {
+    const p = parseSchedule('ทุก 30 นาที', T0);
+    expect(p?.recurring).toBe(true);
+    expect(p?.normalized).toBe('every 30m');
+  });
+  it('"ทุกๆ 2 ชั่วโมง" → every 2h', () => {
+    expect(parseSchedule('ทุกๆ 2 ชั่วโมง', T0)?.normalized).toBe('every 2h');
+  });
+  it('"ทุก 1 ชม" → every 1h', () => {
+    expect(parseSchedule('ทุก 1 ชม', T0)?.normalized).toBe('every 1h');
+  });
+  it('"ทุกชั่วโมง" → every 1h', () => {
+    expect(parseSchedule('ทุกชั่วโมง', T0)?.normalized).toBe('every 1h');
+  });
+  it('"ทุกวัน 9:00" → daily 09:00', () => {
+    const p = parseSchedule('ทุกวัน 9:00', T0);
+    expect(p?.recurring).toBe(true);
+    expect(p?.normalized).toBe('09:00');
+  });
+});

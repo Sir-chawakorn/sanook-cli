@@ -49,6 +49,20 @@ export function parseSchedule(input: string, now: number): ParsedSchedule | null
     return { runAt: nextDaily(mins, now), recurring: true, kind: 'cron', normalized: `${pad(hh)}:${pad(mm)}` };
   }
 
+  // ── NL ภาษาไทย / aliases → map เป็น canonical แล้ว parse ซ้ำ ──
+  if (/^(ทุก\s*ๆ?\s*)?(ชั่วโมง|ชม\.?|hourly)$/.test(s)) return parseSchedule('every 1h', now);
+  if (/^(ทุก\s*ๆ?\s*)?(นาที|minutely)$/.test(s)) return parseSchedule('every 1m', now);
+  // "ทุก 30 นาที" / "ทุกๆ 2 ชั่วโมง" / "ทุก 1 ชม"
+  const thIv = s.match(/^ทุก\s*ๆ?\s*(\d+)\s*(นาที|ชม\.?|ชั่วโมง|วัน)$/);
+  if (thIv) {
+    const u = thIv[2];
+    const unit = u.startsWith('นาที') ? 'm' : u.startsWith('วัน') ? 'd' : 'h'; // ชม/ชั่วโมง → h
+    return parseSchedule(`every ${thIv[1]}${unit}`, now);
+  }
+  // "ทุกวัน 9:00" / "ทุกวัน 21.30"
+  const thDaily = s.match(/^ทุกวัน\s*(\d{1,2})[:.](\d{2})$/);
+  if (thDaily) return parseSchedule(`${thDaily[1]}:${thDaily[2]}`, now);
+
   // ISO timestamp (one-shot) — รับเฉพาะรูปแบบที่มี date จริง (กัน Date.parse รับ bare number/year-only กำกวม)
   const raw = input.trim();
   if (/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}|$)/.test(raw)) {
