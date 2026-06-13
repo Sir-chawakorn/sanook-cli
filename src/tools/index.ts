@@ -8,6 +8,7 @@ import { rememberTool } from './remember.js';
 import { skillTool, createSkillTool } from './skill.js';
 import { recallTool } from './recall.js';
 import { scheduleTaskTool, listScheduledTool, cancelScheduledTool } from './schedule.js';
+import { taskTool } from './task.js';
 
 /** tool registry ที่ส่งให้ agent loop */
 export const tools = {
@@ -25,6 +26,7 @@ export const tools = {
   schedule_task: scheduleTaskTool,
   list_scheduled: listScheduledTool,
   cancel_scheduled: cancelScheduledTool,
+  task: taskTool,
 };
 
 export { readFileTool, writeFileTool, editFileTool, listDirTool, globTool, grepTool, bashTool };

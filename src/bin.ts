@@ -13,23 +13,26 @@ interface Args {
   budget?: number;
   json: boolean;
   prompt: string;
+  planMode: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
   let model: string | undefined;
   let budget: number | undefined;
   let json = false;
+  let planMode = false;
   const rest: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--model' || a === '-m') model = argv[++i];
     else if (a === '--budget' || a === '-b') budget = Number.parseFloat(argv[++i] ?? '');
     else if (a === '--json') json = true;
+    else if (a === '--plan') planMode = true;
     else if (a === '-p' || a === '--print' || a === '-c' || a === '--continue') {
       /* -p headless flag · -c/--continue resume (handled in main) */
     } else rest.push(a);
   }
-  return { model, budget, json, prompt: rest.join(' ').trim() };
+  return { model, budget, json, prompt: rest.join(' ').trim(), planMode };
 }
 
 async function runHeadless(
@@ -39,6 +42,7 @@ async function runHeadless(
   maxSteps: number,
   json: boolean,
   history?: ModelMessage[],
+  planMode = false,
 ): Promise<void> {
   const controller = new AbortController();
   process.on('SIGINT', () => {
@@ -52,6 +56,7 @@ async function runHeadless(
       history,
       budgetUsd,
       maxSteps,
+      planMode,
       signal: controller.signal,
       onEvent: (e: AgentEvent) => {
         if (json) {
@@ -93,6 +98,7 @@ flags:
                        or "provider:model-id" (e.g. openai:gpt-5-codex, groq:fast, google:gemini-2.5-flash)
   -b, --budget <usd>   stop when estimated cost exceeds this
   -c, --continue       resume the latest session (จำว่าทำถึงไหน → ทำต่อ)
+      --plan           plan mode — สำรวจ+วางแผนเท่านั้น ไม่แก้ไฟล์ (read-only)
       --json           machine-readable JSONL output
   -v, --version
   -h, --help
@@ -208,7 +214,7 @@ async function main(): Promise<void> {
     return runCron(argv.slice(1));
   }
 
-  const { model, budget, json, prompt } = parseArgs(argv);
+  const { model, budget, json, prompt, planMode } = parseArgs(argv);
   const budgetUsd = Number.isFinite(budget) ? budget : undefined;
 
   if (prompt) {
@@ -216,7 +222,7 @@ async function main(): Promise<void> {
     // --continue / -c → โหลด session ล่าสุดมาต่อ (จำว่าทำถึงไหน)
     const history =
       argv.includes('--continue') || argv.includes('-c') ? (await latestSession())?.messages : undefined;
-    await runHeadless(config.model, prompt, config.budgetUsd, config.maxSteps, json, history);
+    await runHeadless(config.model, prompt, config.budgetUsd, config.maxSteps, json, history, planMode);
     return;
   }
 

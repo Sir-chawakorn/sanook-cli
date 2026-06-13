@@ -1,9 +1,10 @@
-import { streamText, stepCountIs, type ModelMessage } from 'ai';
+import { streamText, stepCountIs, type ModelMessage, type ToolSet } from 'ai';
 import { resolveModel, specKey, parseSpec, PROVIDERS } from './providers/registry.js';
 import { CostMeter, type Usage } from './cost.js';
 import { tools } from './tools/index.js';
 import { loadMemory, loadAutoMemory } from './memory.js';
 import { loadSkills, renderAvailableSkills } from './skills.js';
+import { maybeWrapHooks } from './hooks.js';
 import { pruneToolResults } from './compaction.js';
 
 const SYSTEM = `You are Sanook, an autonomous coding agent running in a terminal.
@@ -30,6 +31,10 @@ export interface RunAgentOptions {
   budgetUsd?: number;
   onEvent?: (e: AgentEvent) => void;
   signal?: AbortSignal;
+  /** override tool set (สำหรับ sub-agent ที่ใช้ tool subset) */
+  tools?: ToolSet;
+  /** plan mode — read-only tools + ให้ agent วางแผนก่อน ไม่แก้ state */
+  planMode?: boolean;
 }
 
 export interface RunAgentResult {
@@ -71,6 +76,8 @@ async function runDelegate(opts: RunAgentOptions): Promise<RunAgentResult> {
 }
 
 export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
+  // ให้ sub-agent (task tool) inherit model เดียวกับ main
+  process.env.SANOOK_ACTIVE_MODEL = opts.model;
   // codex (delegate) → ข้าม SDK loop, ส่ง task ให้ official codex CLI (ChatGPT quota)
   if (PROVIDERS[parseSpec(opts.model).provider]?.kind === 'delegate') {
     return runDelegate(opts);
@@ -80,18 +87,29 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   // โหลด context: auto-memory (จำข้าม session) + available skills + project SANOOK.md → system prompt
   const [memory, autoMemory, skills] = await Promise.all([loadMemory(), loadAutoMemory(), loadSkills()]);
-  const system = [SYSTEM, autoMemory, renderAvailableSkills(skills), memory].filter(Boolean).join('\n\n');
+  const planSuffix = opts.planMode
+    ? '\n\nPLAN MODE: สำรวจและวางแผนเท่านั้น — ห้ามแก้ไฟล์หรือรันคำสั่งที่เปลี่ยน state. จบด้วยแผนเป็นขั้นตอนให้ user อนุมัติก่อนลงมือ.'
+    : '';
+  const system = [SYSTEM + planSuffix, autoMemory, renderAvailableSkills(skills), memory].filter(Boolean).join('\n\n');
 
   const messages: ModelMessage[] = [
     ...(opts.history ?? []),
     { role: 'user', content: opts.prompt },
   ];
 
+  // plan mode → เหลือเฉพาะ tool ที่ไม่เปลี่ยน state (read/search)
+  const PLAN_TOOLS = ['read_file', 'list_dir', 'glob', 'grep', 'recall', 'skill', 'list_scheduled'];
+  let baseTools = opts.tools ?? tools;
+  if (opts.planMode) {
+    baseTools = Object.fromEntries(Object.entries(baseTools).filter(([k]) => PLAN_TOOLS.includes(k))) as ToolSet;
+  }
+  // ครอบ tool ด้วย user hooks (PreToolUse block / PostToolUse) ถ้ามี config — ไม่มี = zero overhead
+  const activeTools = await maybeWrapHooks(baseTools);
   const result = streamText({
     model,
     system,
     messages,
-    tools,
+    tools: activeTools, // sub-agent override + hooks wrap
     // หยุดเมื่อชน max steps หรือ ชน budget cap (เช็คหลังแต่ละ step)
     stopWhen: [stepCountIs(opts.maxSteps ?? 20), () => meter.overBudget],
     abortSignal: opts.signal,
