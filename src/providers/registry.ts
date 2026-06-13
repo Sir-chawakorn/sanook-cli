@@ -151,6 +151,33 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
       createOpenAICompatible({ name: 'lmstudio', apiKey: key, baseURL: baseURL ?? 'http://localhost:1234/v1' }),
     note: 'ต้อง Start Server ในแอปก่อน; โหลด model เดียว ใส่ id อะไรก็ serve ตัวนั้น',
   },
+
+  // ── Cloud BYOK (OpenAI-compatible, จีน — data residency, ไม่มี OAuth landmine) ──
+  minimax: {
+    id: 'minimax',
+    label: 'MiniMax',
+    envVar: 'MINIMAX_API_KEY',
+    baseURL: 'https://api.minimax.io/v1',
+    requiresKey: true,
+    keyFormat: null, // opaque
+    models: { default: 'MiniMax-M2.7', smart: 'MiniMax-M3', fast: 'MiniMax-M2.7' },
+    create: (key, baseURL) =>
+      createOpenAICompatible({ name: 'minimax', apiKey: key, baseURL: baseURL ?? 'https://api.minimax.io/v1' }),
+    note: 'OpenAI-compat /v1. data จีน. MINIMAX_BASE_URL override (intl ↔ api.minimaxi.com/v1)',
+  },
+  glm: {
+    id: 'glm',
+    label: 'GLM (Zhipu AI)',
+    envVar: 'ZHIPU_API_KEY',
+    envFallbacks: ['ZAI_API_KEY', 'GLM_API_KEY'],
+    baseURL: 'https://api.z.ai/api/paas/v4',
+    requiresKey: true,
+    keyFormat: null, // opaque
+    models: { default: 'glm-4.6', smart: 'glm-4.7', glm: 'glm-4.6' },
+    create: (key, baseURL) =>
+      createOpenAICompatible({ name: 'glm', apiKey: key, baseURL: baseURL ?? 'https://api.z.ai/api/paas/v4' }),
+    note: 'OpenAI-compat /api/paas/v4. data จีน. GLM_BASE_URL override (intl ↔ open.bigmodel.cn/api/paas/v4)',
+  },
 };
 
 export const SUPPORTED_PROVIDERS = Object.keys(PROVIDERS);
@@ -172,6 +199,8 @@ const GLOBAL_ALIAS: Record<string, { provider: string; alias: string }> = {
   groq: { provider: 'groq', alias: 'default' },
   ollama: { provider: 'ollama', alias: 'default' },
   lmstudio: { provider: 'lmstudio', alias: 'default' },
+  glm: { provider: 'glm', alias: 'default' },
+  minimax: { provider: 'minimax', alias: 'default' },
 };
 
 export interface ParsedSpec {
@@ -224,6 +253,9 @@ export function resolveModel(spec: string): LanguageModel {
     key = resolveKeyFromEnv(cfg.envVar) ?? cfg.localPlaceholderKey ?? 'local';
   }
 
-  const baseURL = cfg.requiresKey ? cfg.baseURL : (process.env[cfg.envVar] ?? cfg.baseURL);
+  // <PROVIDER>_BASE_URL env → override (สลับ region intl/จีน); ไม่งั้น local อ่าน env, cloud ใช้ default
+  const baseURL =
+    process.env[`${cfg.id.toUpperCase()}_BASE_URL`] ??
+    (cfg.requiresKey ? cfg.baseURL : process.env[cfg.envVar] ?? cfg.baseURL);
   return cfg.create(key, baseURL)(model);
 }
