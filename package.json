@@ -1,6 +1,6 @@
 {
   "name": "sanook-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A terminal AI coding agent, built from scratch in TypeScript. BYOK, works with any model.",
   "type": "module",
   "bin": {
@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "dev": "tsx src/bin.ts",
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && node -e \"require('node:fs').chmodSync('dist/bin.js',0o755)\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "eval": "tsx src/eval/run.ts",

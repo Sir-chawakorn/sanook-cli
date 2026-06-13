@@ -14,7 +14,7 @@ export interface BannerProps {
 }
 
 /** welcome banner — big ASCII + gradient + info line (responsive ตามความกว้าง terminal) */
-export function Banner({ model, version = '0.1.1', account = 'BYOK', cwd }: BannerProps) {
+export function Banner({ model, version = '0.2.0', account = 'BYOK', cwd }: BannerProps) {
   const { stdout } = useStdout();
   const columns = stdout?.columns ?? 80;
   const dir = (cwd ?? process.cwd()).replace(homedir(), '~');

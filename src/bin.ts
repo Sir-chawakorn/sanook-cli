@@ -67,7 +67,7 @@ async function runHeadless(
   }
 }
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const HELP = `Sanook — a terminal AI coding agent (BYOK)
 
 usage:
