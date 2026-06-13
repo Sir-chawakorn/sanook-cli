@@ -1,3 +1,5 @@
+import { PROVIDERS, parseSpec } from './providers/registry.js';
+
 export interface CommandResult {
   /** true = เป็น slash command (ไม่ส่งเข้า agent) */
   handled: boolean;
@@ -21,6 +23,26 @@ export interface CommandContext {
   costSummary?: string;
 }
 
+/** /model (ไม่มี arg) — โชว์ model ปัจจุบัน + ตัวเลือกของ provider นั้น (alias จาก registry) */
+function modelMenu(current: string): string {
+  const { provider } = parseSpec(current);
+  const cfg = PROVIDERS[provider];
+  const list = cfg
+    ? Object.entries(cfg.models)
+        .filter(([alias]) => alias !== 'default')
+        .map(([alias, id]) => `  ${provider}:${alias}  →  ${id}`)
+        .join('\n')
+    : '';
+  return [
+    `model ปัจจุบัน: ${current}`,
+    cfg ? `\nเลือกของ ${cfg.label}:\n${list}` : '',
+    `\nเปลี่ยน: /model <spec>  (เช่น /model sonnet, /model openai:gpt-5.5)`,
+    `provider อื่น: ${Object.keys(PROVIDERS).join(' · ')}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 /** parse input — ถ้าขึ้นต้น / = slash command, ไม่งั้น handled=false (ส่งเข้า agent) */
 export function parseCommand(input: string, ctx: CommandContext): CommandResult {
   const trimmed = input.trim();
@@ -39,7 +61,7 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
     case 'exit':
       return { handled: true, action: 'quit' };
     case 'model':
-      if (!args[0]) return { handled: true, message: `model ปัจจุบัน: ${ctx.model}` };
+      if (!args[0]) return { handled: true, message: modelMenu(ctx.model) };
       return { handled: true, modelChange: args[0], message: `เปลี่ยน model → ${args[0]}` };
     case 'cost':
       return { handled: true, message: ctx.costSummary ?? '(ยังไม่มี usage รอบนี้)' };
