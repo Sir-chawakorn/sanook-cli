@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo } from 'react';
+import type { ModelMessage } from 'ai';
 import { Box, Text, Static, useApp, useInput } from 'ink';
 import { parseCommand } from '../commands.js';
 import { runAgent, type AgentEvent } from '../loop.js';
@@ -24,6 +25,8 @@ export function App({ initialModel, budgetUsd }: AppProps) {
   const [model, setModel] = useState(initialModel);
   const idRef = useRef(0);
   const lastCost = useRef<string>('');
+  // conversation จริงสำหรับ LLM (สะสมข้ามรอบ) — แยกจาก history ที่ใช้ display
+  const msgsRef = useRef<ModelMessage[]>([]);
 
   const addTurn = (role: Turn['role'], text: string): void =>
     setHistory((h) => [...h, { id: idRef.current++, role, text }]);
@@ -50,7 +53,10 @@ export function App({ initialModel, budgetUsd }: AppProps) {
     if (cmd.handled) {
       addTurn('user', text);
       if (cmd.action === 'quit') return exit();
-      if (cmd.action === 'clear') return setHistory([]);
+      if (cmd.action === 'clear') {
+        msgsRef.current = []; // ล้าง conversation ที่ LLM เห็นด้วย ไม่ใช่แค่จอ
+        return setHistory([]);
+      }
       if (cmd.modelChange) setModel(cmd.modelChange);
       if (cmd.message) addTurn('system', cmd.message);
       return;
@@ -61,9 +67,10 @@ export function App({ initialModel, budgetUsd }: AppProps) {
     let buf = '';
     let lastFlush = 0;
     try {
-      const { cost } = await runAgent({
+      const { cost, messages } = await runAgent({
         model,
         prompt: text,
+        history: msgsRef.current, // ส่ง conversation เดิมไปด้วย → จำว่าคุยอะไรมา
         budgetUsd,
         onEvent: (e: AgentEvent) => {
           if (e.type === 'text') {
@@ -79,6 +86,7 @@ export function App({ initialModel, budgetUsd }: AppProps) {
           }
         },
       });
+      msgsRef.current = messages; // สะสม conversation เต็มไว้ใช้รอบถัดไป
       lastCost.current = cost.summary();
       addTurn('assistant', buf.trim());
     } catch (err) {
