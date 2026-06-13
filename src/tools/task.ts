@@ -6,7 +6,7 @@ import { agentContext } from '../agentContext.js';
 // depth/model/budget thread ผ่าน AsyncLocalStorage (parallel-safe, ไม่ใช่ process.env)
 const MAX_DEPTH = 2;
 // read-only = อ่าน/ค้นเท่านั้น — ตัด run_bash ออก (shell = เลี่ยง read-only contract ได้)
-const READ_TOOLS = ['read_file', 'list_dir', 'glob', 'grep'];
+const READ_TOOLS = ['read_file', 'list_dir', 'glob', 'grep', 'git_status', 'git_diff', 'git_log'];
 // sub-agent ห้ามมี: task (recursion), scheduling (side-effect ที่ควรเป็น main agent)
 const SUBAGENT_EXCLUDE = ['task', 'schedule_task', 'list_scheduled', 'cancel_scheduled'];
 

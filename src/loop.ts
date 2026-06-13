@@ -7,6 +7,7 @@ import { loadSkills, renderAvailableSkills } from './skills.js';
 import { maybeWrapHooks } from './hooks.js';
 import { agentContext } from './agentContext.js';
 import { getMcpTools } from './mcp.js';
+import { gitContext } from './git.js';
 import { pruneToolResults } from './compaction.js';
 
 const SYSTEM = `You are Sanook, an autonomous coding agent running in a terminal.
@@ -90,12 +91,19 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const model = resolveModel(opts.model); // throws ถ้าไม่มี key / provider ผิด
   const meter = new CostMeter(specKey(opts.model), opts.budgetUsd);
 
-  // โหลด context: auto-memory (จำข้าม session) + available skills + project SANOOK.md → system prompt
-  const [memory, autoMemory, skills] = await Promise.all([loadMemory(), loadAutoMemory(), loadSkills()]);
+  // โหลด context: auto-memory + skills + git state + project SANOOK.md → system prompt
+  const [memory, autoMemory, skills, git] = await Promise.all([
+    loadMemory(),
+    loadAutoMemory(),
+    loadSkills(),
+    gitContext(),
+  ]);
   const planSuffix = opts.planMode
     ? '\n\nPLAN MODE: สำรวจและวางแผนเท่านั้น — ห้ามแก้ไฟล์หรือรันคำสั่งที่เปลี่ยน state. จบด้วยแผนเป็นขั้นตอนให้ user อนุมัติก่อนลงมือ.'
     : '';
-  const system = [SYSTEM + planSuffix, autoMemory, renderAvailableSkills(skills), memory].filter(Boolean).join('\n\n');
+  const system = [SYSTEM + planSuffix, autoMemory, renderAvailableSkills(skills), git, memory]
+    .filter(Boolean)
+    .join('\n\n');
 
   const messages: ModelMessage[] = [
     ...(opts.history ?? []),
@@ -103,7 +111,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   ];
 
   // plan mode → เหลือเฉพาะ tool ที่ไม่เปลี่ยน state (read/search)
-  const PLAN_TOOLS = ['read_file', 'list_dir', 'glob', 'grep', 'recall', 'skill', 'list_scheduled'];
+  const PLAN_TOOLS = ['read_file', 'list_dir', 'glob', 'grep', 'recall', 'skill', 'list_scheduled', 'git_status', 'git_diff', 'git_log'];
   // MCP tools (เฉพาะ main agent — sub-agent ใช้ tool subset ที่ส่งมาเอง)
   const mcpTools = opts.tools ? {} : await getMcpTools();
   let baseTools = opts.tools ?? { ...tools, ...mcpTools };
