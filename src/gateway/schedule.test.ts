@@ -50,3 +50,21 @@ describe('nextRun', () => {
     expect(nextRun('2026-12-25T00:00:00.000Z', T0)).toBeNull();
   });
 });
+
+describe('parseSchedule hardening (จาก adversarial review)', () => {
+  it('interval overflow → null (ไม่ใช่ Invalid Date)', () => {
+    expect(parseSchedule('999999999999d', T0)).toBeNull();
+  });
+  it('year-only / bare number ไม่ใช่ ISO → null', () => {
+    expect(parseSchedule('2026', T0)).toBeNull();
+    expect(parseSchedule('12345', T0)).toBeNull();
+  });
+  it('one-shot ในอดีต → null (ไม่ยิงย้อนหลังเงียบๆ)', () => {
+    expect(parseSchedule('2020-01-01T00:00:00.000Z', T0)).toBeNull();
+  });
+  it('date-only อนาคต → once', () => {
+    const p = parseSchedule('2026-12-25', T0);
+    expect(p?.recurring).toBe(false);
+    expect(p?.kind).toBe('once');
+  });
+});

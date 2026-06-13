@@ -1,6 +1,7 @@
-import { TaskLedger, type Task } from './ledger.js';
+import { dueTasks, claimTask, updateTask, recoverStaleRunning, type Task } from './ledger.js';
 import { nextRun } from './schedule.js';
 import { runAgent } from '../loop.js';
+import { redactKey } from '../providers/keys.js';
 
 export interface SchedulerOpts {
   defaultModel: string;
@@ -23,9 +24,9 @@ async function runTask(task: Task, opts: SchedulerOpts): Promise<string> {
 }
 
 /**
- * tick loop — ทุก tickMs เปิด ledger ใหม่จากไฟล์ (เห็น task ที่ CLI/HTTP เพิ่ง enqueue),
- * รัน task ที่ถึงเวลา, recurring → re-queue (แม้ fail ก็ไม่หยุด cron ถาวร)
- * คืน stop() เพื่อหยุด
+ * tick loop — ทุก tickMs อ่าน task ที่ถึงเวลา → claim atomically (กัน double-run) → รัน → update
+ * mutation ทุกตัวผ่าน ledger ที่ lock + re-read สด → ไม่ทับ task ที่ HTTP/CLI เพิ่ง enqueue
+ * recurring → re-queue แม้ fail (ไม่หยุด cron ถาวร); error ผ่าน redactKey ก่อน persist
  */
 export function startScheduler(opts: SchedulerOpts): () => void {
   const tickMs = opts.tickMs ?? 60_000;
@@ -36,31 +37,30 @@ export function startScheduler(opts: SchedulerOpts): () => void {
     if (stopped || running) return; // ไม่ทับรอบก่อนที่ยังรันไม่เสร็จ
     running = true;
     try {
-      const ledger = await TaskLedger.open(); // source of truth = ไฟล์ → เห็นของใหม่เสมอ
-      for (const task of ledger.due()) {
-        await ledger.update(task.id, { status: 'running' });
+      for (const task of await dueTasks()) {
+        if (!(await claimTask(task.id))) continue; // โดน claim โดย writer อื่นแล้ว → ข้าม
         opts.onLog?.(`▶ ${task.id}: ${task.spec.slice(0, 60)}`);
-        const now0 = Date.now();
+        const startedAt = Date.now();
         try {
           const out = await runTask(task, opts);
           const next = task.schedule ? nextRun(task.schedule, Date.now()) : null;
-          await ledger.update(task.id, {
+          await updateTask(task.id, {
             status: next != null ? 'queued' : 'done',
             runAt: next ?? task.runAt,
-            lastRun: now0,
+            lastRun: startedAt,
             lastResult: out.slice(0, 2000),
             lastError: undefined,
           });
           if (opts.deliver) await opts.deliver(task, out);
           opts.onLog?.(`✓ ${task.id} ${next != null ? '(re-queued)' : 'done'}`);
         } catch (err) {
-          const msg = (err as Error).message ?? String(err);
+          const msg = redactKey((err as Error).message ?? String(err)); // กัน key รั่วลงไฟล์/network
           const next = task.schedule ? nextRun(task.schedule, Date.now()) : null;
           // recurring ที่ fail → ยัง re-queue (ลองใหม่รอบหน้า) ไม่ปล่อยตายถาวร
-          await ledger.update(task.id, {
+          await updateTask(task.id, {
             status: next != null ? 'queued' : 'failed',
             runAt: next ?? task.runAt,
-            lastRun: now0,
+            lastRun: startedAt,
             lastError: msg,
           });
           opts.onLog?.(`✗ ${task.id} failed: ${msg}`);
@@ -71,7 +71,13 @@ export function startScheduler(opts: SchedulerOpts): () => void {
     }
   }
 
-  void tick(); // รันรอบแรกทันที
+  // recover task ที่ค้าง running จาก crash/shutdown รอบก่อน → queued, แล้วเริ่ม tick แรก
+  void recoverStaleRunning()
+    .then((n) => {
+      if (n) opts.onLog?.(`recovered ${n} stale running task → queued`);
+    })
+    .then(() => tick());
+
   const timer = setInterval(() => void tick(), tickMs);
   return () => {
     stopped = true;

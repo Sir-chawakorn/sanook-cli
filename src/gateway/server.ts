@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { TaskLedger } from './ledger.js';
+import { listTasks, enqueueTask } from './ledger.js';
 import { parseSchedule } from './schedule.js';
 import { tokenMatches } from './auth.js';
 import { runAgent } from '../loop.js';
+import { redactKey } from '../providers/keys.js';
 
 export interface ServerOpts {
   port: number;
@@ -40,7 +41,8 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
  */
 export function startServer(opts: ServerOpts): () => void {
   const server = createServer((req, res) => {
-    void handle(req, res, opts).catch((err) => send(res, 500, { error: (err as Error).message }));
+    // redact กัน API key/secret รั่วใน error response (provider error อาจฝัง key)
+    void handle(req, res, opts).catch((err) => send(res, 500, { error: redactKey((err as Error).message ?? String(err)) }));
   });
   // '127.0.0.1' = loopback only — สำคัญ: ห้าม 0.0.0.0 (จะเปิดให้ทั้ง LAN)
   server.listen(opts.port, '127.0.0.1', () => opts.onLog?.(`http://127.0.0.1:${opts.port} (loopback)`));
@@ -78,8 +80,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
   }
 
   if (req.method === 'GET' && url.pathname === '/tasks') {
-    const ledger = await TaskLedger.open();
-    return send(res, 200, { tasks: ledger.list() });
+    return send(res, 200, { tasks: await listTasks() });
   }
 
   if (req.method === 'POST' && url.pathname === '/tasks') {
@@ -88,8 +89,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
     if (!spec) return send(res, 400, { error: 'ต้องมี spec' });
     const sched = body.schedule ? parseSchedule(String(body.schedule), Date.now()) : null;
     if (body.schedule && !sched) return send(res, 400, { error: `schedule ไม่ถูกต้อง: ${String(body.schedule)}` });
-    const ledger = await TaskLedger.open();
-    const task = await ledger.enqueue({
+    const task = await enqueueTask({
       kind: sched?.recurring ? 'cron' : 'once',
       spec,
       schedule: sched?.recurring ? sched.normalized : undefined,

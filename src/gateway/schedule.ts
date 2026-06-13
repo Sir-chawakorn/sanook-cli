@@ -34,7 +34,8 @@ export function parseSchedule(input: string, now: number): ParsedSchedule | null
     const n = parseInt(iv[1], 10);
     const unit = iv[2][0]; // s/m/h/d (ตัวแรกพอ)
     const ms = n * (UNIT_MS[unit] ?? 0);
-    if (ms <= 0) return null;
+    // กัน overflow → runAt เป็น Invalid Date ที่ due() ไม่มีวันยิง
+    if (!Number.isSafeInteger(ms) || ms <= 0 || !Number.isFinite(now + ms)) return null;
     return { runAt: now + ms, recurring: true, kind: 'cron', normalized: `every ${n}${unit}` };
   }
 
@@ -48,10 +49,14 @@ export function parseSchedule(input: string, now: number): ParsedSchedule | null
     return { runAt: nextDaily(mins, now), recurring: true, kind: 'cron', normalized: `${pad(hh)}:${pad(mm)}` };
   }
 
-  // ISO timestamp (one-shot) — ใช้ input เดิม (ไม่ lowercase) เผื่อ timezone designator
-  const t = Date.parse(input.trim());
-  if (!Number.isNaN(t)) {
-    return { runAt: t, recurring: false, kind: 'once', normalized: new Date(t).toISOString() };
+  // ISO timestamp (one-shot) — รับเฉพาะรูปแบบที่มี date จริง (กัน Date.parse รับ bare number/year-only กำกวม)
+  const raw = input.trim();
+  if (/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}|$)/.test(raw)) {
+    const t = Date.parse(raw);
+    if (!Number.isNaN(t)) {
+      if (t < now) return null; // one-shot ในอดีต → ปฏิเสธ (ไม่ยิงย้อนหลังเงียบๆ)
+      return { runAt: t, recurring: false, kind: 'once', normalized: new Date(t).toISOString() };
+    }
   }
 
   return null; // parse ไม่ได้

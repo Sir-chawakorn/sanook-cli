@@ -131,23 +131,26 @@ async function runServe(args: string[]): Promise<void> {
 /** sanook cron add "<when>" "<task>" | cron list | cron rm <id> */
 async function runCron(args: string[]): Promise<void> {
   const [action, ...rest] = args;
-  const { TaskLedger } = await import('./gateway/ledger.js');
-  const ledger = await TaskLedger.open();
+  const { listTasks, enqueueTask, removeTask } = await import('./gateway/ledger.js');
 
   if (action === 'add') {
     const schedule = rest[0];
     const spec = rest.slice(1).join(' ').trim();
     if (!schedule || !spec) {
       console.error('ใช้: sanook cron add "<when>" "<task>"   (when: "every 30m" | "09:00" | ISO | now)');
+      console.error('หมายเหตุ: when ที่มีช่องว่างต้องครอบ quote เช่น "every 30m"');
       process.exit(1);
     }
     const { parseSchedule } = await import('./gateway/schedule.js');
     const sched = parseSchedule(schedule, Date.now());
     if (!sched) {
       console.error(`schedule ไม่ถูกต้อง: "${schedule}" — ลอง "every 30m", "09:00", ISO, หรือ "now"`);
+      if (rest.length > 1 && /^(every|\d)/.test(schedule)) {
+        console.error('(ดูเหมือนลืมครอบ quote — when ที่มีช่องว่างต้องเป็น "every 30m" ทั้งก้อน)');
+      }
       process.exit(1);
     }
-    const task = await ledger.enqueue({
+    const task = await enqueueTask({
       kind: sched.recurring ? 'cron' : 'once',
       spec,
       schedule: sched.recurring ? sched.normalized : undefined,
@@ -163,13 +166,13 @@ async function runCron(args: string[]): Promise<void> {
       console.error('ใช้: sanook cron rm <id>');
       process.exit(1);
     }
-    const ok = await ledger.remove(rest[0]);
+    const ok = await removeTask(rest[0]);
     console.log(ok ? `ลบ task ${rest[0]} แล้ว` : `ไม่เจอ task ${rest[0]}`);
     return;
   }
 
   if (action === 'list' || action === undefined) {
-    const tasks = ledger.list();
+    const tasks = await listTasks();
     if (!tasks.length) {
       console.log('ยังไม่มี task — เพิ่มด้วย: sanook cron add "every 1h" "เช็คข่าว AI"');
       return;
@@ -199,9 +202,11 @@ async function main(): Promise<void> {
   // โหลด API key จาก ~/.sanook/auth.json เข้า env (ไม่ override env ที่ตั้งไว้แล้ว)
   await loadKeysIntoEnv();
 
-  // subcommands: serve (gateway daemon 24/7) · cron (task scheduler) — bareword แรกแบบ exact
-  if (argv[0] === 'serve') return runServe(argv.slice(1));
-  if (argv[0] === 'cron') return runCron(argv.slice(1));
+  // subcommands: serve · cron — match เฉพาะรูปแบบที่ถูกต้อง กัน prompt unquoted ("serve coffee") misfire
+  if (argv[0] === 'serve' && (argv.length === 1 || argv[1].startsWith('--'))) return runServe(argv.slice(1));
+  if (argv[0] === 'cron' && ['add', 'list', 'rm', 'remove', undefined].includes(argv[1])) {
+    return runCron(argv.slice(1));
+  }
 
   const { model, budget, json, prompt } = parseArgs(argv);
   const budgetUsd = Number.isFinite(budget) ? budget : undefined;
