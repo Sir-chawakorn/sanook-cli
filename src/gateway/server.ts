@@ -37,7 +37,7 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
 /**
  * gateway HTTP — bind 127.0.0.1 เท่านั้น (loopback, ไม่ expose ออกเน็ต), ทุก endpoint ยกเว้น /health ต้อง bearer token
  * endpoints: GET /health · POST /v1/chat/completions (OpenAI-compat) · GET|POST /tasks
- * NOTE: payload จาก HTTP = ของ caller ที่มี token (= ปิ๊กเอง) — แต่ content ที่ agent อ่านยังเป็น "data" ตาม shield ปกติ
+ * NOTE: payload จาก HTTP = ของ caller ที่ถือ token (= เจ้าของเครื่อง) — แต่ content ที่ agent อ่านยังเป็น "data" ตาม shield ปกติ
  */
 export function startServer(opts: ServerOpts): () => void {
   const server = createServer((req, res) => {

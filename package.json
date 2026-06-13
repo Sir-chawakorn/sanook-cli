@@ -1,7 +1,7 @@
 {
   "name": "sanook-cli",
-  "version": "0.2.0",
-  "description": "A terminal AI coding agent, built from scratch in TypeScript. BYOK, works with any model.",
+  "version": "0.3.0",
+  "description": "A terminal AI coding agent — BYOK, 12 providers, MCP, cron gateway, skills, and git awareness. Built from scratch in TypeScript.",
   "type": "module",
   "bin": {
     "sanook": "./dist/bin.js"
@@ -28,9 +28,13 @@
     "ai",
     "cli",
     "coding-agent",
+    "agent",
     "llm",
     "terminal",
     "byok",
+    "mcp",
+    "gateway",
+    "cron",
     "claude",
     "gemini"
   ],

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Codex delegate provider — spawn official `codex exec` (ChatGPT plan quota)
-// ToS-safe: ปิ๊ก `codex login` ผ่าน official binary เอง, Sanook แค่เรียก binary นั้น
+// ToS-safe: the user runs `codex login` via the official binary; Sanook only invokes that binary
 // (ไม่ reuse/impersonate OAuth token, ไม่ reverse-engineer — เป็น official client จริง)
 // ─────────────────────────────────────────────────────────────────────────────
 
