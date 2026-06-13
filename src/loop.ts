@@ -1,5 +1,5 @@
 import { streamText, stepCountIs, type ModelMessage } from 'ai';
-import { resolveModel, specKey } from './providers/registry.js';
+import { resolveModel, specKey, parseSpec, PROVIDERS } from './providers/registry.js';
 import { CostMeter, type Usage } from './cost.js';
 import { tools } from './tools/index.js';
 import { loadMemory } from './memory.js';
@@ -38,7 +38,39 @@ export interface RunAgentResult {
  * แกน harness — agent loop: LLM -> tool -> result -> loop จนเสร็จ
  * multi-provider (BYOK) ผ่าน registry + cost meter + budget cap
  */
+/** delegate path — spawn official codex CLI (ChatGPT plan quota) แทน SDK loop */
+async function runDelegate(opts: RunAgentOptions): Promise<RunAgentResult> {
+  const { runCodex } = await import('./providers/codex.js');
+  const meter = new CostMeter(specKey(opts.model), opts.budgetUsd);
+  const { model } = parseSpec(opts.model);
+  let text = '';
+  const out = await runCodex({
+    prompt: opts.prompt,
+    model: model === 'gpt-5-codex' ? undefined : model,
+    signal: opts.signal,
+    onEvent: (e) => {
+      if (e.type === 'text') {
+        text = e.text ?? text;
+        opts.onEvent?.({ type: 'text', text: e.text });
+      } else if (e.type === 'usage') {
+        opts.onEvent?.({ type: 'finish', detail: 'codex · ChatGPT quota' });
+      }
+    },
+  });
+  text = out.text;
+  const messages: ModelMessage[] = [
+    ...(opts.history ?? []),
+    { role: 'user', content: opts.prompt },
+    { role: 'assistant', content: text },
+  ];
+  return { messages, text, cost: meter };
+}
+
 export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
+  // codex (delegate) → ข้าม SDK loop, ส่ง task ให้ official codex CLI (ChatGPT quota)
+  if (PROVIDERS[parseSpec(opts.model).provider]?.kind === 'delegate') {
+    return runDelegate(opts);
+  }
   const model = resolveModel(opts.model); // throws ถ้าไม่มี key / provider ผิด
   const meter = new CostMeter(specKey(opts.model), opts.budgetUsd);
 

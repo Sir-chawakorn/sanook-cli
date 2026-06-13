@@ -12,6 +12,8 @@ import { resolveKeyFromEnv, assertDirectApiKey, type KeyPolicy } from './keys.js
 export interface ProviderConfig extends KeyPolicy {
   id: string;
   label: string;
+  /** 'sdk' (default) = ผ่าน Vercel AI SDK loop · 'delegate' = spawn subprocess agent (codex) */
+  kind?: 'sdk' | 'delegate';
   envVar: string;
   envFallbacks?: readonly string[];
   baseURL?: string;
@@ -177,6 +179,22 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     create: (key, baseURL) =>
       createOpenAICompatible({ name: 'glm', apiKey: key, baseURL: baseURL ?? 'https://api.z.ai/api/paas/v4' }),
     note: 'OpenAI-compat /api/paas/v4. data จีน. GLM_BASE_URL override (intl ↔ open.bigmodel.cn/api/paas/v4)',
+  },
+
+  // ── Delegate: OpenAI Codex ผ่าน ChatGPT plan quota (wrap official codex CLI, ToS-safe) ──
+  codex: {
+    id: 'codex',
+    label: 'OpenAI Codex (ChatGPT plan)',
+    kind: 'delegate',
+    envVar: 'CODEX_HOME', // ไม่ใช้ API key — codex login จัดการ auth เอง
+    requiresKey: false,
+    localPlaceholderKey: 'codex',
+    keyFormat: null,
+    models: { default: 'gpt-5-codex', codex: 'gpt-5-codex' },
+    create: () => {
+      throw new Error('codex เป็น delegate provider — ใช้ผ่าน codex subprocess ไม่ใช่ Vercel AI SDK');
+    },
+    note: 'ใช้ ChatGPT plan quota ผ่าน official codex CLI (ToS-safe, ไม่เก็บ credential). ต้อง codex login ก่อน',
   },
 };
 
