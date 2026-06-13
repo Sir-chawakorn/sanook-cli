@@ -76,7 +76,8 @@ usage:
   sanook --json "<task>"     headless, JSONL output (for CI/scripts)
 
 flags:
-  -m, --model <spec>   sonnet | opus | haiku | openai:gpt-5 | google:gemini-2.5-pro | ollama:llama3
+  -m, --model <spec>   sonnet/opus/haiku/fable · gpt/codex · gemini · grok · deepseek · mistral · groq · ollama/lmstudio
+                       or "provider:model-id" (e.g. openai:gpt-5-codex, groq:fast, google:gemini-2.5-flash)
   -b, --budget <usd>   stop when estimated cost exceeds this
       --json           machine-readable JSONL output
   -v, --version
