@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { readFile, writeFile } from 'node:fs/promises';
 import { checkWritePath } from './permission.js';
+import { renderEditDiff } from '../diff.js';
 
 export interface Match {
   start: number;
@@ -110,6 +111,6 @@ export const editFileTool = tool({
     } catch (err) {
       return `ERROR: เขียนไฟล์ "${path}" ไม่ได้ — ${(err as Error).message}`;
     }
-    return `OK: แก้ "${path}" สำเร็จ (แทนที่ 1 ที่)`;
+    return `OK: แก้ "${path}" (1 ที่)\n${renderEditDiff(oldNorm, newNorm)}`;
   },
 });

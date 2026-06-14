@@ -219,7 +219,7 @@ describe('gateway HTTP (spawn server จริง)', () => {
     const stop = await startGateway({ port: 8911, model: 'sonnet', onLog: () => {} });
     try {
       await new Promise((r) => setTimeout(r, 250));
-      const health = await fetch('http://127.0.0.1:8911/health').then((r) => r.json());
+      const health = (await fetch('http://127.0.0.1:8911/health').then((r) => r.json())) as { ok: boolean };
       expect(health.ok).toBe(true);
       const noToken = await fetch('http://127.0.0.1:8911/tasks');
       expect(noToken.status).toBe(401);
