@@ -19,6 +19,10 @@ describe('parseCommand', () => {
   it('/clear → action clear', () => {
     expect(parseCommand('/clear', ctx).action).toBe('clear');
   });
+  it('/diff + /undo → action diff/undo (git-backed)', () => {
+    expect(parseCommand('/diff', ctx).action).toBe('diff');
+    expect(parseCommand('/undo', ctx).action).toBe('undo');
+  });
   it('/model ไม่มี arg → แสดง model ปัจจุบัน', () => {
     expect(parseCommand('/model', ctx).message).toContain('sonnet');
   });

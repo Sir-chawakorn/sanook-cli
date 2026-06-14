@@ -1,6 +1,10 @@
 import { useState, useRef, useMemo } from 'react';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import type { ModelMessage } from 'ai';
 import { Box, Text, Static, useApp, useInput } from 'ink';
+
+const execFileP = promisify(execFile);
 import { parseCommand } from '../commands.js';
 import { runAgent, type AgentEvent } from '../loop.js';
 import { saveSession, newSessionId } from '../session.js';
@@ -14,13 +18,14 @@ interface Turn {
 
 export interface AppProps {
   initialModel: string;
+  fallbackModel?: string;
   budgetUsd?: number;
   permissionMode?: 'auto' | 'ask';
   /** ต่อจาก session ก่อน (sanook -c) — โหลด conversation เดิมเข้า REPL */
   initialHistory?: ModelMessage[];
 }
 
-export function App({ initialModel, budgetUsd, permissionMode = 'auto', initialHistory }: AppProps) {
+export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = 'auto', initialHistory }: AppProps) {
   const { exit } = useApp();
   const [history, setHistory] = useState<Turn[]>(
     initialHistory?.length
@@ -41,6 +46,16 @@ export function App({ initialModel, budgetUsd, permissionMode = 'auto', initialH
 
   const addTurn = (role: Turn['role'], text: string): void =>
     setHistory((h) => [...h, { id: idRef.current++, role, text }]);
+
+  // /diff /undo — git-backed (execFile ไม่ผ่าน shell)
+  async function runGit(args: string[], label: string): Promise<void> {
+    try {
+      const { stdout, stderr } = await execFileP('git', args, { cwd: process.cwd(), maxBuffer: 1_000_000 });
+      addTurn('system', (stdout || stderr).trim() || `(${label}: ไม่มีการเปลี่ยนแปลง)`);
+    } catch (e) {
+      addTurn('system', `git ${label}: ${(e as Error).message.split('\n')[0]}`);
+    }
+  }
 
   // ask-mode: tool ขออนุมัติ → คืน Promise ที่ resolve เมื่อ user กด y/n
   const requestApproval = (tool: string, summary: string): Promise<boolean> =>
@@ -86,6 +101,16 @@ export function App({ initialModel, budgetUsd, permissionMode = 'auto', initialH
         msgsRef.current = [];
         return setHistory([]);
       }
+      if (cmd.action === 'diff') {
+        void runGit(['diff', '--stat'], 'diff');
+        return;
+      }
+      if (cmd.action === 'undo') {
+        void runGit(['stash', 'push', '-u', '-m', 'sanook /undo'], 'undo').then(() =>
+          addTurn('system', 'กู้คืน: git stash pop'),
+        );
+        return;
+      }
       if (cmd.modelChange) setModel(cmd.modelChange);
       if (cmd.message) addTurn('system', cmd.message);
       return;
@@ -98,6 +123,7 @@ export function App({ initialModel, budgetUsd, permissionMode = 'auto', initialH
     try {
       const { cost, messages } = await runAgent({
         model,
+        fallbackModel,
         prompt: text,
         history: msgsRef.current,
         budgetUsd,

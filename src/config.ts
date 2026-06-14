@@ -9,6 +9,8 @@ const AUTH_PATH = join(CONFIG_DIR, 'auth.json'); // API keys (chmod 0600)
 
 export const ConfigSchema = z.object({
   model: z.string().default('sonnet'),
+  /** model สำรองเมื่อ model หลักล้ม (rate-limit/billing) — ตั้งด้วย sanook config set fallbackModel <spec> */
+  fallbackModel: z.string().optional(),
   budgetUsd: z.number().positive().optional(),
   maxSteps: z.number().int().positive().default(20),
   // auto = รัน tool เลย (act-first) · ask = ขออนุมัติก่อน write/bash/commit

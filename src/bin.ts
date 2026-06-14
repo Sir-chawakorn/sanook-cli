@@ -17,6 +17,7 @@ interface Args {
   model?: string;
   budget?: number;
   json: boolean;
+  quiet: boolean; // --output-format final / -q : print แค่คำตอบสุดท้าย (ไม่มี tool/cost chatter)
   prompt: string;
   planMode: boolean;
   yes: boolean;
@@ -26,6 +27,7 @@ function parseArgs(argv: string[]): Args {
   let model: string | undefined;
   let budget: number | undefined;
   let json = false;
+  let quiet = false;
   let planMode = false;
   let yes = false;
   const rest: string[] = [];
@@ -34,13 +36,19 @@ function parseArgs(argv: string[]): Args {
     if (a === '--model' || a === '-m') model = argv[++i];
     else if (a === '--budget' || a === '-b') budget = Number.parseFloat(argv[++i] ?? '');
     else if (a === '--json') json = true;
-    else if (a === '--plan') planMode = true;
+    else if (a === '-q' || a === '--quiet') quiet = true;
+    else if (a === '--output-format') {
+      const v = argv[++i];
+      if (v === 'json') json = true;
+      else if (v === 'final' || v === 'quiet') quiet = true;
+      /* 'text' = default */
+    } else if (a === '--plan') planMode = true;
     else if (a === '--yes' || a === '-y') yes = true;
     else if (a === '-p' || a === '--print' || a === '-c' || a === '--continue') {
       /* -p headless flag · -c/--continue resume (handled in main) */
     } else rest.push(a);
   }
-  return { model, budget, json, prompt: rest.join(' ').trim(), planMode, yes };
+  return { model, budget, json, quiet, prompt: rest.join(' ').trim(), planMode, yes };
 }
 
 async function runHeadless(
@@ -52,6 +60,8 @@ async function runHeadless(
   history?: ModelMessage[],
   planMode = false,
   permissionMode: 'auto' | 'ask' = 'auto',
+  quiet = false,
+  fallbackModel?: string,
 ): Promise<void> {
   const controller = new AbortController();
   process.on('SIGINT', () => {
@@ -61,6 +71,7 @@ async function runHeadless(
   try {
     const { cost, messages } = await runAgent({
       model,
+      fallbackModel,
       prompt,
       history,
       budgetUsd,
@@ -74,10 +85,11 @@ async function runHeadless(
           return;
         }
         if (e.type === 'text') process.stdout.write(e.text ?? '');
-        else if (e.type === 'tool-call') process.stdout.write(`\n${DIM}→ ${e.tool}${RESET}\n`);
+        else if (e.type === 'tool-call' && !quiet) process.stdout.write(`\n${DIM}→ ${e.tool}${RESET}\n`);
       },
     });
-    if (!json) process.stdout.write(`\n${DIM}${cost.summary()}${RESET}\n`);
+    if (!json && !quiet) process.stdout.write(`\n${DIM}${cost.summary()}${RESET}\n`);
+    else if (quiet) process.stdout.write('\n');
     // จำ session ไว้ทำงานต่อได้ (sanook --continue "...") — แก้ concern AI ลืมว่าทำถึงไหน
     const now = new Date().toISOString();
     await saveSession({ id: newSessionId(), created: now, updated: now, model, cwd: process.cwd(), messages });
@@ -359,7 +371,7 @@ async function readStdin(): Promise<string> {
 async function runConfig(args: string[]): Promise<void> {
   const { readGlobalConfigRaw, patchGlobalConfig } = await import('./config.js');
   const [action, key, ...rest] = args;
-  const ALLOWED = ['model', 'budgetUsd', 'permissionMode', 'brainPath'];
+  const ALLOWED = ['model', 'fallbackModel', 'budgetUsd', 'permissionMode', 'brainPath'];
   if (action === 'set') {
     if (!key || rest.length === 0) {
       console.error(`ใช้: sanook config set <key> <value>   (key: ${ALLOWED.join(' | ')})`);
@@ -456,7 +468,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'config' && ['get', 'set', 'list', undefined].includes(argv[1])) return runConfig(argv.slice(1));
   if (argv[0] === 'mcp' && ['add', 'list', 'remove', 'rm', undefined].includes(argv[1])) return runMcp(argv.slice(1));
 
-  const { model, budget, json, prompt: argPrompt, planMode, yes } = parseArgs(argv);
+  const { model, budget, json, quiet, prompt: argPrompt, planMode, yes } = parseArgs(argv);
   const budgetUsd = Number.isFinite(budget) ? budget : undefined;
   // stdin piping: `git diff | sanook "review this"` → ผนวก stdin เข้า prompt (headless/CI)
   const piped = process.stdin.isTTY ? '' : (await readStdin()).trim();
@@ -476,6 +488,8 @@ async function main(): Promise<void> {
       history,
       planMode,
       yes ? 'auto' : config.permissionMode,
+      quiet,
+      config.fallbackModel,
     );
     return;
   }
@@ -492,6 +506,7 @@ async function main(): Promise<void> {
   const { startRepl } = await import('./ui/render.js');
   startRepl({
     initialModel: config.model,
+    fallbackModel: config.fallbackModel,
     budgetUsd: config.budgetUsd,
     permissionMode: yes ? 'auto' : config.permissionMode,
     initialHistory,

@@ -3,7 +3,7 @@ import { PROVIDERS, parseSpec } from './providers/registry.js';
 export interface CommandResult {
   /** true = เป็น slash command (ไม่ส่งเข้า agent) */
   handled: boolean;
-  action?: 'clear' | 'compact' | 'quit' | 'help';
+  action?: 'clear' | 'compact' | 'quit' | 'help' | 'diff' | 'undo';
   /** ข้อความแสดงกลับ (help / cost / model / unknown) */
   message?: string;
   /** /model <spec> — เปลี่ยน model */
@@ -15,6 +15,8 @@ const HELP_TEXT = `คำสั่ง:
   /model [spec]    ดู/เปลี่ยน model (เช่น /model opus, /model openai:gpt-5)
   /tools           ดู tools ที่ agent ใช้ได้
   /skills          ดูจำนวน skills (จัดการ: sanook skill list)
+  /diff            ดู git diff (สิ่งที่ agent แก้ในรอบนี้)
+  /undo            stash การแก้ไฟล์ล่าสุด (กู้คืนด้วย git stash pop)
   /cost            ดู token + cost รอบล่าสุด
   /clear           ล้าง conversation (เริ่มใหม่)
   /compact         บีบ context
@@ -76,6 +78,10 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
       return { handled: true, message: `tools ที่ agent ใช้ได้ (+ MCP ที่ตั้งไว้):\n  ${TOOLS_LIST}` };
     case 'skills':
       return { handled: true, message: 'skills โหลดจาก built-in + ~/.sanook/skills — จัดการด้วย "sanook skill list/add/remove"' };
+    case 'diff':
+      return { handled: true, action: 'diff' };
+    case 'undo':
+      return { handled: true, action: 'undo' };
     case 'cost':
       return { handled: true, message: ctx.costSummary ?? '(ยังไม่มี usage รอบนี้)' };
     default:

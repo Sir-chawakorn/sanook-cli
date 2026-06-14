@@ -52,6 +52,8 @@ export function cleanProviderError(err: unknown): string {
 export interface RunAgentOptions {
   /** model spec: alias ("sonnet"), "provider:model", หรือ "model" (default anthropic) */
   model: string;
+  /** model สำรอง — ถ้า model หลักล้มกลางสตรีม (rate-limit/billing) จะลอง fallback ครั้งเดียว */
+  fallbackModel?: string;
   prompt: string;
   history?: ModelMessage[];
   maxSteps?: number;
@@ -151,55 +153,66 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   }
   // ครอบ tool: hooks (PreToolUse block) แล้ว approval (ask ก่อน mutate ใน ask-mode)
   const activeTools = wrapToolsWithApproval(await maybeWrapHooks(baseTools));
-  // capture stream error (billing/rate-limit/auth กลางสตรีม) — กัน unhandled rejection + ข้อความกำกวม
-  let streamError: unknown;
-  const result = streamText({
-    model,
-    system,
-    messages,
-    tools: activeTools, // sub-agent override + hooks wrap
-    onError: ({ error }) => {
-      streamError = error;
-    },
-    // หยุดเมื่อชน max steps หรือ ชน budget cap (เช็คหลังแต่ละ step)
-    stopWhen: [stepCountIs(opts.maxSteps ?? 20), () => meter.overBudget],
-    abortSignal: opts.signal,
-    // งานยาว (tool calls เยอะ) → prune tool output เก่า กัน context บวม
-    prepareStep: ({ messages }) => {
-      const compacted = autoCompact(messages, AUTO_COMPACT_TOKENS);
-      return compacted !== messages ? { messages: compacted } : {};
-    },
-    onStepFinish: ({ usage, providerMetadata }) => {
-      // cacheWrite (cache creation) อยู่ใน providerMetadata แยกจาก usage.inputTokens
-      const meta = providerMetadata?.anthropic as Record<string, unknown> | undefined;
-      const cacheWrite = Number(meta?.cacheCreationInputTokens ?? 0);
-      meter.add(usage as Usage, cacheWrite);
-    },
-  });
-
-  let text = '';
-  for await (const part of result.fullStream) {
-    switch (part.type) {
-      case 'text-delta':
-        text += part.text;
-        opts.onEvent?.({ type: 'text', text: part.text });
-        break;
-      case 'reasoning-delta':
-        opts.onEvent?.({ type: 'reasoning', text: part.text });
-        break;
-      case 'tool-call':
-        opts.onEvent?.({ type: 'tool-call', tool: part.toolName, detail: part.input });
-        break;
-      case 'tool-result':
-        opts.onEvent?.({ type: 'tool-result', tool: part.toolName, detail: part.output });
-        break;
-      case 'error':
-        opts.onEvent?.({ type: 'error', detail: part.error });
-        break;
-      case 'finish':
-        opts.onEvent?.({ type: 'finish', detail: meter.summary() });
-        break;
+  // stream attempt — แยกออกมาเพื่อ retry ด้วย fallback model ได้ (capture stream error กัน unhandled rejection)
+  const runStream = async (
+    m: typeof model,
+  ): Promise<{ text: string; result: ReturnType<typeof streamText>; err: unknown }> => {
+    let err: unknown;
+    const r = streamText({
+      model: m,
+      system,
+      messages,
+      tools: activeTools, // sub-agent override + hooks wrap
+      onError: ({ error }) => {
+        err = error;
+      },
+      // หยุดเมื่อชน max steps หรือ ชน budget cap (เช็คหลังแต่ละ step)
+      stopWhen: [stepCountIs(opts.maxSteps ?? 20), () => meter.overBudget],
+      abortSignal: opts.signal,
+      // งานยาว (tool calls เยอะ) → prune tool output เก่า กัน context บวม
+      prepareStep: ({ messages }) => {
+        const compacted = autoCompact(messages, AUTO_COMPACT_TOKENS);
+        return compacted !== messages ? { messages: compacted } : {};
+      },
+      onStepFinish: ({ usage, providerMetadata }) => {
+        // cacheWrite (cache creation) อยู่ใน providerMetadata แยกจาก usage.inputTokens
+        const meta = providerMetadata?.anthropic as Record<string, unknown> | undefined;
+        const cacheWrite = Number(meta?.cacheCreationInputTokens ?? 0);
+        meter.add(usage as Usage, cacheWrite);
+      },
+    });
+    let t = '';
+    for await (const part of r.fullStream) {
+      switch (part.type) {
+        case 'text-delta':
+          t += part.text;
+          opts.onEvent?.({ type: 'text', text: part.text });
+          break;
+        case 'reasoning-delta':
+          opts.onEvent?.({ type: 'reasoning', text: part.text });
+          break;
+        case 'tool-call':
+          opts.onEvent?.({ type: 'tool-call', tool: part.toolName, detail: part.input });
+          break;
+        case 'tool-result':
+          opts.onEvent?.({ type: 'tool-result', tool: part.toolName, detail: part.output });
+          break;
+        case 'error':
+          opts.onEvent?.({ type: 'error', detail: part.error });
+          break;
+        case 'finish':
+          opts.onEvent?.({ type: 'finish', detail: meter.summary() });
+          break;
+      }
     }
+    return { text: t, result: r, err };
+  };
+
+  let { text, result, err: streamError } = await runStream(model);
+  // model หลักล้มกลางทาง → ลอง fallback model ครั้งเดียว (reliability)
+  if (streamError && opts.fallbackModel && opts.fallbackModel !== opts.model) {
+    opts.onEvent?.({ type: 'text', text: `\n[model หลักล้ม → fallback: ${opts.fallbackModel}]\n` });
+    ({ text, result, err: streamError } = await runStream(resolveModel(opts.fallbackModel)));
   }
 
   // stream ล้มกลางทาง (provider error) → โยน error ที่อ่านรู้เรื่อง แทน "No output generated" + stack dump
