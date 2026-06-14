@@ -99,7 +99,9 @@ export function startTelegram(opts: TelegramOpts): () => void {
                 prompt: text,
                 maxSteps: 20,
                 budgetUsd: opts.budgetUsd,
-                permissionMode: 'auto', // chat ผ่าน allowlist + private = trusted (เหมือน user สั่งเอง)
+                // remote surface: default ask-mode + ไม่มี approve fn → mutate tools (bash/write/edit/MCP-write)
+                // ถูกปฏิเสธอัตโนมัติ (single-factor chat-id ไม่พอจะให้ RCE). opt-in: TELEGRAM_ALLOW_WRITE=1
+                permissionMode: process.env.TELEGRAM_ALLOW_WRITE === '1' ? 'auto' : 'ask',
               });
               await sendMessage(opts.token, chat.id, out || '(ไม่มีผลลัพธ์)');
             } catch (e) {

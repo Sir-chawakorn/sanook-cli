@@ -25,6 +25,22 @@ export const MUTATE_TOOLS = new Set([
   'create_skill', // เขียน skill ถาวร
 ]);
 
+// capability-based gate: tool ที่ "อ่านอย่างเดียว" เท่านั้นที่ผ่านโดยไม่ขออนุมัติ
+// อย่างอื่น (รวม MCP tools ที่ไม่รู้จัก เช่น fs write / postgres DELETE) = treat as mutating → gate ใน ask-mode
+const READ_ONLY_TOOLS = new Set([
+  'read_file',
+  'list_dir',
+  'glob',
+  'grep',
+  'recall',
+  'find_skills',
+  'skill',
+  'git_status',
+  'git_diff',
+  'git_log',
+  'list_scheduled',
+]);
+
 /** สรุป tool input เป็นบรรทัดเดียวให้ user ตัดสินใจ */
 export function summarizeToolCall(tool: string, input: unknown): string {
   const i = (input ?? {}) as Record<string, unknown>;
@@ -54,7 +70,8 @@ export function summarizeToolCall(tool: string, input: unknown): string {
 export function wrapToolsWithApproval(tools: ToolSet): ToolSet {
   const out: Record<string, unknown> = {};
   for (const [name, t] of Object.entries(tools as Record<string, { execute?: unknown }>)) {
-    if (!MUTATE_TOOLS.has(name) || typeof t.execute !== 'function') {
+    // read-only → ผ่าน · ที่เหลือ (mutate + MCP/unknown) → gate ใน ask-mode (deny-by-default)
+    if (READ_ONLY_TOOLS.has(name) || typeof t.execute !== 'function') {
       out[name] = t;
       continue;
     }

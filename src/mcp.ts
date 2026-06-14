@@ -16,6 +16,17 @@ const VERSION = (
 const PROTOCOL_VERSION = '2024-11-05';
 const MAX_BUF = 16 * 1024 * 1024; // กัน server ส่ง byte ยาวไม่มี newline → memory โต unbounded
 
+// env ปลอดภัยที่ส่งให้ MCP child (ไม่มี secret) — server ที่ต้อง token ให้ตั้งใน cfg.env เอง
+const SAFE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR', 'APPDATA'];
+function safeEnv(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of SAFE_ENV_KEYS) {
+    const v = process.env[k];
+    if (v != null) out[k] = v;
+  }
+  return out;
+}
+
 interface McpServerConfig {
   command: string;
   args?: string[];
@@ -42,7 +53,9 @@ class McpClient {
 
   constructor(cfg: McpServerConfig) {
     this.proc = spawn(cfg.command, cfg.args ?? [], {
-      env: { ...process.env, ...cfg.env },
+      // minimal env เท่านั้น (PATH/HOME/locale) + cfg.env ที่ user ตั้งเอง — ไม่ส่ง secret
+      // (ANTHROPIC_API_KEY/TELEGRAM_BOT_TOKEN/ฯลฯ) ให้ทุก MCP server (supply chain = npx -y <pkg>)
+      env: { ...safeEnv(), ...cfg.env },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.proc.stdout?.on('data', (d: Buffer) => this.onData(d.toString()));
