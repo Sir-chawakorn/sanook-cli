@@ -75,17 +75,48 @@ export async function loadAutoMemory(): Promise<string> {
  * brainPath มาจาก ~/.sanook/config.json · ไม่มี/ไฟล์หาย → คืน '' (เงียบ)
  */
 export async function loadBrainContext(): Promise<string> {
+  const brainPath = await getBrainPath();
+  return brainPath ? buildBrainContext(brainPath) : '';
+}
+
+/** ประกอบ brain context จาก vault path (pure → testable) — entry + current-state + remembered facts */
+export async function buildBrainContext(brainPath: string): Promise<string> {
+  const parts: string[] = [];
+  // 1. entry/pointers (Vault Structure Map ฯลฯ)
+  const idx = await readTrimmed(join(brainPath, 'Shared', 'AI-Context-Index.md'), 3000);
+  if (idx) parts.push(idx);
+  // 2. current-state — เนื้อจริง (live focus) ไม่ใช่แค่ pointer
+  const cs = await readTrimmed(join(brainPath, 'Shared', 'Operating-State', 'current-state.md'), 1500);
+  if (cs) parts.push(`## current-state\n${cs}`);
+  // 3. ปิด loop: fact ที่ remember ไว้ (Memory-Inbox) กลับเข้า context — ไม่งั้น vault = write-only
+  const inbox = await inboxCandidates(join(brainPath, 'Shared', 'Memory-Inbox', 'memory-inbox.md'), 1200);
+  if (inbox) parts.push(`## remembered (Memory-Inbox)\n${inbox}`);
+  if (!parts.length) return '';
+  return `<brain_vault path="${brainPath}" note="second-brain ของ user — สิ่งที่จำไว้/state ปัจจุบันอยู่ใน block นี้; route โน้ตตาม Vault Structure Map; อ่าน/เขียนไฟล์ใน vault ด้วย absolute path ได้">\n${parts.join('\n\n')}\n</brain_vault>`;
+}
+
+/** อ่านไฟล์ + trim หัว N ตัว ('' ถ้าไม่มี/ว่าง) */
+async function readTrimmed(p: string, max: number): Promise<string> {
   try {
-    const cfg = JSON.parse(await readFile(join(homedir(), '.sanook', 'config.json'), 'utf8')) as {
-      brainPath?: string;
-    };
-    if (!cfg.brainPath) return '';
-    const idxPath = join(cfg.brainPath, 'Shared', 'AI-Context-Index.md');
-    const content = (await readFile(idxPath, 'utf8')).trim();
-    if (!content) return '';
-    // budget (context-assembly): signal สูงอยู่หัวไฟล์ → เอาหัว ~4000 ตัว, ที่เหลอ agent อ่านเองได้
-    const body = content.length > 4000 ? `${content.slice(0, 4000)}\n…(ตัด — อ่านเต็มที่ ${idxPath})` : content;
-    return `<brain_vault path="${cfg.brainPath}" note="second-brain ของ user — อ่าน context นี้ก่อน; route/เก็บโน้ตตาม Vault Structure Map; อ่านไฟล์อื่นใน vault ด้วย absolute path ได้">\n${body}\n</brain_vault>`;
+    const c = (await readFile(p, 'utf8')).trim();
+    if (!c) return '';
+    return c.length > max ? `${c.slice(0, max)}\n…` : c;
+  } catch {
+    return '';
+  }
+}
+
+/** ดึงรายการ "- ..." ใต้ "## New Candidates" จาก memory-inbox (fact ที่ remember ไว้) */
+async function inboxCandidates(p: string, max: number): Promise<string> {
+  try {
+    const after = (await readFile(p, 'utf8')).split('## New Candidates')[1];
+    if (!after) return '';
+    const lines = after
+      .split('\n')
+      .filter((l) => l.trim().startsWith('- ') && !l.includes('_('))
+      .map((l) => l.trim());
+    const text = lines.join('\n').trim();
+    return text.length > max ? `${text.slice(0, max)}\n…` : text;
   } catch {
     return '';
   }

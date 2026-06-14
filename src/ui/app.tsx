@@ -8,6 +8,7 @@ const execFileP = promisify(execFile);
 import { parseCommand } from '../commands.js';
 import { runAgent, type AgentEvent } from '../loop.js';
 import { saveSession, newSessionId } from '../session.js';
+import { getBrainPath, appendBrainWorklog } from '../memory.js';
 import { Banner } from './banner.js';
 
 interface Turn {
@@ -155,6 +156,18 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         cwd: process.cwd(),
         messages,
       });
+      // worklog เข้า second-brain (REPL ก็เขียน ไม่ใช่แค่ headless) — vault จำว่าทำอะไรใน session นี้
+      void (async () => {
+        const brain = await getBrainPath();
+        if (brain) {
+          await appendBrainWorklog(brain, {
+            prompt: text,
+            summary: cost.summary(),
+            model,
+            today: new Date().toISOString().slice(0, 10),
+          }).catch(() => {});
+        }
+      })();
     } catch (err) {
       addTurn('system', `ERROR: ${(err as Error).message}`);
     } finally {

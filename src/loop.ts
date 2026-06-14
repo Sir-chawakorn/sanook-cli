@@ -137,7 +137,11 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     ? '\n\nPLAN MODE: สำรวจและวางแผนเท่านั้น — ห้ามแก้ไฟล์หรือรันคำสั่งที่เปลี่ยน state. จบด้วยแผนเป็นขั้นตอนให้ user อนุมัติก่อนลงมือ.'
     : '';
   // git อยู่ท้ายสุด (volatile — เปลี่ยนทุก commit) → static prefix (SYSTEM/skills/memory) cache ได้ ไม่ถูก invalidate
-  const system = [SYSTEM + planSuffix, autoMemory, renderAvailableSkills(skills), brain, memory, git]
+  // ถ้ามี second-brain vault → nudge ให้ agent ใช้จริง (ไม่งั้น SYSTEM แบบ coding-agent จะ ignore constitution)
+  const brainNudge = brain
+    ? '\n- second-brain vault โหลดอยู่ (ดู <brain_vault>) — อ่าน current-state + โน้ตที่เกี่ยวก่อนงานไม่ trivial · เจอ preference/decision สำคัญ → remember (เข้า vault) · งานเสร็จควร route/บันทึกตาม Vault Structure Map ของ vault'
+    : '';
+  const system = [SYSTEM + planSuffix + brainNudge, autoMemory, renderAvailableSkills(skills), brain, memory, git]
     .filter(Boolean)
     .join('\n\n');
 

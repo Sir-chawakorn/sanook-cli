@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendToVaultInbox, appendBrainWorklog } from './memory.js';
+import { appendToVaultInbox, appendBrainWorklog, buildBrainContext } from './memory.js';
 
 describe('appendToVaultInbox (remember → second brain)', () => {
   let vault: string;
@@ -31,6 +31,35 @@ describe('appendToVaultInbox (remember → second brain)', () => {
     const notVault = await mkdtemp(join(tmpdir(), 'x-'));
     expect(await appendToVaultInbox(notVault, 'x')).toBe(false);
     await rm(notVault, { recursive: true, force: true });
+  });
+});
+
+describe('buildBrainContext (closed loop — remembered fact กลับเข้า context)', () => {
+  let vault: string;
+  beforeEach(async () => {
+    vault = await mkdtemp(join(tmpdir(), 'vault-'));
+    await mkdir(join(vault, 'Shared', 'Memory-Inbox'), { recursive: true });
+    await mkdir(join(vault, 'Shared', 'Operating-State'), { recursive: true });
+    await writeFile(join(vault, 'Shared', 'AI-Context-Index.md'), '# Index\npointers');
+    await writeFile(join(vault, 'Shared', 'Operating-State', 'current-state.md'), '# state\nกำลังทำ launch sanook-cli');
+    await writeFile(join(vault, 'Shared', 'Memory-Inbox', 'memory-inbox.md'), '# Inbox\n\n## New Candidates\n');
+  });
+  afterEach(async () => {
+    await rm(vault, { recursive: true, force: true });
+  });
+
+  it('fact ที่ remember (inbox) กลับเข้า brain context + มี current-state', async () => {
+    await appendToVaultInbox(vault, 'ปิ๊กชอบ dark mode');
+    const ctx = await buildBrainContext(vault);
+    expect(ctx).toContain('brain_vault');
+    expect(ctx).toContain('ปิ๊กชอบ dark mode'); // ← loop ปิด: remembered fact กลับมา
+    expect(ctx).toContain('launch sanook-cli'); // ← current-state เนื้อจริง
+  });
+
+  it('vault ว่าง (ไม่มีไฟล์) → คืน ""', async () => {
+    const empty = await mkdtemp(join(tmpdir(), 'e-'));
+    expect(await buildBrainContext(empty)).toBe('');
+    await rm(empty, { recursive: true, force: true });
   });
 });
 
