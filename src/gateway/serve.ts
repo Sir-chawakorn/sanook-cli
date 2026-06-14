@@ -48,11 +48,27 @@ export async function startGateway(opts: GatewayOpts): Promise<() => void> {
     tickMs: opts.tickMs,
     onLog: log,
   });
+
+  // Telegram channel (ถ้าตั้ง TELEGRAM_BOT_TOKEN) — long-polling, ไม่ต้อง public URL
+  let stopTelegram: (() => void) | undefined;
+  if (process.env.TELEGRAM_BOT_TOKEN) {
+    const { startTelegram, parseAllowedChats } = await import('./telegram.js');
+    stopTelegram = startTelegram({
+      token: process.env.TELEGRAM_BOT_TOKEN,
+      model: opts.model,
+      budgetUsd: opts.budgetUsd,
+      allowedChatIds: parseAllowedChats(process.env.TELEGRAM_ALLOWED_CHATS),
+      onLog: log,
+    });
+    log('Telegram: long-polling เริ่มแล้ว');
+  }
+
   log(`scheduler tick ทุก ${(opts.tickMs ?? 60_000) / 1000}s · token: ~/.sanook/gateway/token (chmod 600)`);
 
   return () => {
     stopServer();
     stopScheduler();
+    stopTelegram?.();
     release(); // ปล่อย single-instance lock (sync — ทันก่อน process.exit ตัด event loop)
   };
 }
