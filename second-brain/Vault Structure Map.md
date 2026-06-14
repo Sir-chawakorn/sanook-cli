@@ -28,7 +28,9 @@ ai_surface: hot
 | กลยุทธ์ที่ปรับดีขึ้น | `Playbooks/` | |
 | page ของคน/องค์กร/concept | `Entities/` | |
 | bug | `Bugs/` | `YYYY-MM-DD-<bug>.md` |
+| bug ระบบ/OS/toolchain | `Bugs/System-OS/` | `YYYY-MM-DD-<bug>.md` |
 | ส่งมอบงานค้าง | `Handoffs/` | |
+| multi-agent task card | `Shared/Coordination/task-board/` | `<id>.md` |
 
 ## §2 Full Reference (ครบทุกโฟลเดอร์ — ใส่อะไร / ห้ามใส่)
 
@@ -44,6 +46,7 @@ ai_surface: hot
 | `Runbooks/` | prose how-to | ขั้นตอน setup/deploy/maintain | runnable unit (→Skills) |
 | `Templates/` | แม่แบบโน้ต | template ไว้ instantiate | โน้ตจริง |
 | `Bugs/` | bug reproducible (global flat) | bug report + link กลับ project | bug ของ project ที่ไม่ reproduce |
+| `Bugs/System-OS/` | bug ระบบ/OS/toolchain | OS, shell, package manager, permission, filesystem, app-runtime bugs | bug ของ project เฉพาะ |
 | `Handoffs/` | ส่งมอบงานค้าง (snapshot) | state + next steps ส่งต่อ | live coordination (→Coordination) |
 
 ### Direction
@@ -84,6 +87,7 @@ ai_surface: hot
 | `Shared/Tech-Standards/` | มาตรฐานเทคนิค | MCP/stack/DoD/verification | |
 | `Shared/Core-Facts/` | ground truth คนเขียน (read-only) | invariant ที่ AI ห้ามแก้ | decision ที่ AI ตัด (→Decision-Memory) |
 | `Shared/Coordination/` | live multi-agent baton | NOW.md + task-board + registry | เอกสารส่งมอบ (→Handoffs) |
+| `Shared/Coordination/task-board/` | file-Kanban task cards | task ต่อชิ้นงาน มี `claimed_by`/`status` | session narrative หรือ handoff snapshot |
 | `Shared/Working-Memory/` | scratchpad 1 task (ลบได้) | ของชั่วคราวระหว่างทำงาน | อะไรที่จะเก็บ (→Memory-Inbox) |
 | `Shared/User-Persona/` | identity static (read-only) | บทบาท/ค่านิยม/ภาษา/timezone | สิ่งที่ AI เรียนรู้ (→User-Memory) |
 | `Shared/Provenance/` | source ledger | บรรทัด ingest ต่อแหล่ง | โน้ต derived (ใส่ `source::` แทน) |
@@ -105,6 +109,13 @@ ai_surface: hot
 | `.agents/workflows/` | workflow guides | multi-step orchestration ที่ทำซ้ำ | one-off task |
 | `copilot/` | vendor export (review/promote) | export จาก Copilot | durable (promote เข้า durable layer) |
 
+### Optional / Machine-local
+| Folder | Role | ใส่ที่นี่ | ห้ามใส่ |
+|---|---|---|---|
+| `Tools/` | utility เฉพาะเครื่อง/vault | local helper, wrapper, utility ที่ยังใช้ | durable knowledge หรือ verified skill |
+| `Excalidraw/` | drawing canvas | diagram source, sketch | image export ทั่วไป (→Shared/Assets) |
+| `Fonts/` | font assets | font files/license note | text note หรือ design spec |
+
 ## §3 Decision Rules (เคสกำกวม)
 
 - **durable vs throwaway:** ลบได้→`Working-Memory` · ยังไม่ชัด→`Memory-Inbox` · ชัด+ถาวร→`Shared/*` ปลายทาง
@@ -114,6 +125,8 @@ ai_surface: hot
 - **sourced vs self-derived:** มี external source→`Research` · กลั่นเอง→`Learning`
 - **finite vs ongoing:** มีวันจบ→`Goals` · ไม่จบ→`Areas`
 - **event vs cadence vs metric:** หลังงาน→`Retrospectives` · ตามรอบ→`Reviews` · วัดคุณภาพ→`Evals`
+- **system bug vs project bug:** OS/toolchain/runtime กว้างๆ→`Bugs/System-OS` · bug ของงานหนึ่ง→`Bugs`/`Projects/<proj>`
+- **coordination task vs narrative:** claimable task card→`Shared/Coordination/task-board` · เล่า session→`Sessions` · ส่งต่อ state→`Handoffs`
 
 ## §4 Footer
 

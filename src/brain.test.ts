@@ -71,7 +71,24 @@ describe('scaffoldBrain', () => {
     const target = join(dir, 'vault');
     await scaffoldBrain(target, CFG);
     // โฟลเดอร์ที่เพิ่มให้ตรง GEMINI.md §B
-    for (const d of ['Shared/Scripts', 'Shared/Scripts-Archive', 'Shared/mcp-servers', 'Shared/Context-Packs', 'Shared/AI-Threads', 'Shared/Prompting', 'Shared/Glossary', 'Shared/Assets', '.agents/skills', '.agents/workflows', 'copilot']) {
+    for (const d of [
+      'Bugs/System-OS',
+      'Shared/Scripts',
+      'Shared/Scripts-Archive',
+      'Shared/mcp-servers',
+      'Shared/Context-Packs',
+      'Shared/AI-Threads',
+      'Shared/Prompting',
+      'Shared/Glossary',
+      'Shared/Assets',
+      'Shared/Coordination/task-board',
+      '.agents/skills',
+      '.agents/workflows',
+      'copilot',
+      'Tools',
+      'Excalidraw',
+      'Fonts',
+    ]) {
       expect((await stat(join(target, d))).isDirectory(), `ขาดโฟลเดอร์ ${d}`).toBe(true);
     }
     // seed files ที่ทำให้ frontier loops ทำงาน
@@ -124,6 +141,7 @@ describe('scaffoldBrain', () => {
       'Shared/Rules/contextual-note-rule.md',
       'Shared/Tech-Standards/verification-standard.md',
       'Shared/Coordination/task-board.md',
+      'Shared/Coordination/task-board/task-template.md',
       'Shared/Coordination/agent-registry.md',
       'Shared/User-Persona/owner-profile.md',
       'Acceptance/golden-case-template.md',

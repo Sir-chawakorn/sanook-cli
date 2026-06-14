@@ -48,7 +48,7 @@ ai_surface: hot
 - สร้าง durable note ใหม่ → [[Shared/Rules/contextual-note-rule]] + [[Shared/Rules/rules-formatting]]
 - ทำ runbook/procedure → [[Shared/Rules/procedural-runbook-header]]
 - งาน technical/release → [[Shared/Tech-Standards/verification-standard]]
-- งานหลาย session/หลาย agent → [[Shared/Coordination/task-board]] + [[Shared/Coordination/agent-registry]]
+- งานหลาย session/หลาย agent → overview [[Shared/Coordination/task-board]] · task cards [[Shared/Coordination/task-board/_Index]] · registry [[Shared/Coordination/agent-registry]]
 - acceptance/checklist/entity ใหม่ → [[Acceptance/golden-case-template]] · [[Checklists/preflight-postflight-template]] · [[Entities/entity-template]]
 
 ## Current Snapshot

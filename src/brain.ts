@@ -59,6 +59,7 @@ export const FOLDERS: Folder[] = [
   { dir: 'Runbooks', role: 'prose how-to ที่อ่านแล้วทำตามเอง', put: 'ขั้นตอน setup/deploy/maintain + loop driver', avoid: 'runnable unit (→Skills)' },
   { dir: 'Templates', role: 'แม่แบบโน้ต — instantiate จากที่นี่', put: 'template ไว้ instantiate (session/bug/handoff/project)', avoid: 'โน้ตจริง' },
   { dir: 'Bugs', role: 'bug report reproducible ลงวันที่ ไม่ลบ', put: 'bug report (global flat) + link กลับ project · system/OS → Bugs/System-OS/', avoid: 'bug ที่ reproduce ไม่ได้' },
+  { dir: 'Bugs/System-OS', role: 'bug report ระดับระบบ/OS/toolchain ที่ไม่ผูกกับ project เดียว', put: 'OS, shell, package manager, permission, filesystem, or app-runtime bugs', avoid: 'bug ของ project เฉพาะ (→Bugs หรือ Projects/<proj>/Bugs)' },
   { dir: 'Handoffs', role: 'เอกสารส่งมอบงานค้าง 1 ชิ้น (snapshot)', put: 'state + next steps ส่งต่อ agent/session', avoid: 'live coordination (→Shared/Coordination)' },
   // ── Direction ──
   { dir: 'Goals', role: 'north-star + objective รายไตรมาส/ปี (finite, มีวันจบ)', put: 'objective + track progress', avoid: 'live status (→Operating-State) · โดเมนต่อเนื่อง (→Areas)' },
@@ -87,6 +88,7 @@ export const FOLDERS: Folder[] = [
   { dir: 'Shared/Tech-Standards', role: 'มาตรฐานเทคนิคกลาง', put: 'MCP/stack/DoD/verification rulebook', avoid: 'กฎ memory/format (→Rules)' },
   { dir: 'Shared/Core-Facts', role: 'ground truth ที่เจ้าของเขียนเอง (read-only, invariant)', put: 'protected-facts ที่ AI ห้ามแก้/supersede', avoid: 'decision ที่ AI ตัด (→Decision-Memory)' },
   { dir: 'Shared/Coordination', role: 'live coordination ของหลาย agent พร้อมกัน', put: 'NOW.md baton + task-board + agent-registry', avoid: 'เอกสารส่งมอบครั้งเดียว (→Handoffs)' },
+  { dir: 'Shared/Coordination/task-board', role: 'file-Kanban task cards สำหรับ multi-agent coordination', put: 'task file ต่อชิ้นงาน มี claimed_by/status/frontmatter', avoid: 'session narrative (→Sessions) · handoff snapshot (→Handoffs)' },
   { dir: 'Shared/Working-Memory', role: 'scratchpad ระหว่าง 1 task (ลบทิ้งได้)', put: 'ของชั่วคราวระหว่างทำงาน', avoid: 'อะไรที่จะเก็บ (→Memory-Inbox)' },
   { dir: 'Shared/User-Persona', role: 'identity profile ที่เปลี่ยนน้อยมาก (human-owned)', put: 'บทบาท/ค่านิยม/ภาษา/timezone (read-only)', avoid: 'สิ่งที่ AI เรียนรู้ (→User-Memory)' },
   { dir: 'Shared/Provenance', role: 'lineage ledger — ทุก claim ชี้ source:: ได้', put: 'บรรทัด ingest ต่อแหล่ง (ingest-log)', avoid: 'โน้ต derived (ใส่ source:: แทน)' },
@@ -105,6 +107,10 @@ export const FOLDERS: Folder[] = [
   { dir: '.agents/skills', role: 'skill folders (SKILL.md) ที่ agent โหลด on-demand', put: 'SKILL.md ต่อ skill', avoid: 'prose how-to (→Runbooks)' },
   { dir: '.agents/workflows', role: 'workflow guide (multi-step orchestration)', put: 'workflow ที่ทำซ้ำได้', avoid: 'one-off task' },
   { dir: 'copilot', role: 'vendor export (conversation/custom-prompt/memory snapshot) — review/promote, ไม่ใช่ source of truth', put: 'export จาก Copilot ที่เก็บใน-vault', avoid: 'durable (promote เข้า durable layer)' },
+  // ── Optional / machine-local (จาก GEMINI.md §B.0; ยังมี _Index เพื่อ AI route ได้ถูก) ──
+  { dir: 'Tools', role: 'utility/tooling เฉพาะเครื่องหรือเฉพาะ vault', put: 'local helper, binary wrapper, one-off utility ที่ยังใช้อยู่', avoid: 'durable knowledge (→Learning/Runbooks) · verified executable skill (→Skills)' },
+  { dir: 'Excalidraw', role: 'ภาพวาด/diagram canvas ของ Obsidian Excalidraw', put: 'diagram source และ sketch ที่ owner/AI ใช้ประกอบงาน', avoid: 'รูป export ทั่วไป (→Shared/Assets)' },
+  { dir: 'Fonts', role: 'font assets เฉพาะ vault หรือ visual work', put: 'font files/license note ที่ใช้กับ vault/design output', avoid: 'text notes หรือ design spec (→Projects/Research)' },
 ];
 
 /** แทน {{KEY}} ด้วยค่าจริงจาก config */
