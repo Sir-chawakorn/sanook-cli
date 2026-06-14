@@ -78,7 +78,9 @@ export function autoCompact(messages: ModelMessage[], tokenLimit: number, keepRe
 
   if (pruned.length <= keepRecent + 1) return pruned;
   const firstUser = pruned.find((m) => m.role === 'user');
-  const recent = pruned.slice(-keepRecent);
+  let recent = pruned.slice(-keepRecent);
+  // ตัด tool message ที่ค้างหัว — tool-result ที่ tool-call ถูกตัดไปแล้ว = orphan → API reject
+  while (recent.length && recent[0].role === 'tool') recent = recent.slice(1);
   const marker: ModelMessage = {
     role: 'user',
     content: '[บทสนทนาเก่าถูกตัดออกเพื่อประหยัด context — รายละเอียดดูได้จาก memory/session]',
