@@ -69,6 +69,28 @@ export async function loadAutoMemory(): Promise<string> {
   }
 }
 
+/**
+ * โหลด context ของ second-brain vault ที่ user scaffold ไว้ (sanook brain) — ทำให้ agent
+ * "รู้จัก" vault: inject Shared/AI-Context-Index.md (ไฟล์ที่ vault บอกให้อ่านก่อน) เข้า system prompt
+ * brainPath มาจาก ~/.sanook/config.json · ไม่มี/ไฟล์หาย → คืน '' (เงียบ)
+ */
+export async function loadBrainContext(): Promise<string> {
+  try {
+    const cfg = JSON.parse(await readFile(join(homedir(), '.sanook', 'config.json'), 'utf8')) as {
+      brainPath?: string;
+    };
+    if (!cfg.brainPath) return '';
+    const idxPath = join(cfg.brainPath, 'Shared', 'AI-Context-Index.md');
+    const content = (await readFile(idxPath, 'utf8')).trim();
+    if (!content) return '';
+    // budget (context-assembly): signal สูงอยู่หัวไฟล์ → เอาหัว ~4000 ตัว, ที่เหลอ agent อ่านเองได้
+    const body = content.length > 4000 ? `${content.slice(0, 4000)}\n…(ตัด — อ่านเต็มที่ ${idxPath})` : content;
+    return `<brain_vault path="${cfg.brainPath}" note="second-brain ของ user — อ่าน context นี้ก่อน; route/เก็บโน้ตตาม Vault Structure Map; อ่านไฟล์อื่นใน vault ด้วย absolute path ได้">\n${body}\n</brain_vault>`;
+  } catch {
+    return '';
+  }
+}
+
 /** บันทึก fact ลง auto-memory (remember tool เรียก) — dedup บรรทัดซ้ำ */
 export async function appendMemory(fact: string): Promise<void> {
   const line = `- ${fact.trim().replace(/\s+/g, ' ')}`;

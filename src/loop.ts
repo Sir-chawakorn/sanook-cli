@@ -2,7 +2,7 @@ import { streamText, stepCountIs, type ModelMessage, type ToolSet } from 'ai';
 import { resolveModel, specKey, parseSpec, PROVIDERS } from './providers/registry.js';
 import { CostMeter, type Usage } from './cost.js';
 import { tools } from './tools/index.js';
-import { loadMemory, loadAutoMemory } from './memory.js';
+import { loadMemory, loadAutoMemory, loadBrainContext } from './memory.js';
 import { loadSkills, renderAvailableSkills } from './skills.js';
 import { maybeWrapHooks } from './hooks.js';
 import { agentContext } from './agentContext.js';
@@ -121,17 +121,18 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const meter = new CostMeter(specKey(opts.model), opts.budgetUsd);
 
   // โหลด context: auto-memory + skills + git state + project SANOOK.md → system prompt
-  const [memory, autoMemory, skills, git] = await Promise.all([
+  const [memory, autoMemory, skills, git, brain] = await Promise.all([
     loadMemory(),
     loadAutoMemory(),
     loadSkills(),
     gitContext(),
+    loadBrainContext(),
   ]);
   const planSuffix = opts.planMode
     ? '\n\nPLAN MODE: สำรวจและวางแผนเท่านั้น — ห้ามแก้ไฟล์หรือรันคำสั่งที่เปลี่ยน state. จบด้วยแผนเป็นขั้นตอนให้ user อนุมัติก่อนลงมือ.'
     : '';
   // git อยู่ท้ายสุด (volatile — เปลี่ยนทุก commit) → static prefix (SYSTEM/skills/memory) cache ได้ ไม่ถูก invalidate
-  const system = [SYSTEM + planSuffix, autoMemory, renderAvailableSkills(skills), memory, git]
+  const system = [SYSTEM + planSuffix, autoMemory, renderAvailableSkills(skills), brain, memory, git]
     .filter(Boolean)
     .join('\n\n');
 

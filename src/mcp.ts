@@ -2,7 +2,13 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { dynamicTool, jsonSchema, type ToolSet } from 'ai';
+
+// version จาก package.json (single source of truth) — กัน drift เหมือน bin.ts/banner
+const VERSION = (
+  JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
+).version;
 
 // MCP client (stdio JSON-RPC) เขียนเอง zero-dep — ต่อ MCP server (filesystem/github/postgres/ฯลฯ)
 // ทำให้ Sanook extensible เหมือน Claude Code/Codex. config: ~/.sanook/mcp.json + project .sanook/mcp.json
@@ -107,7 +113,7 @@ class McpClient {
     await this.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
-      clientInfo: { name: 'sanook', version: '0.2.0' },
+      clientInfo: { name: 'sanook', version: VERSION },
     });
     this.notify('notifications/initialized');
   }

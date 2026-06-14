@@ -1,0 +1,25 @@
+import { describe, it, expect } from 'vitest';
+import { CostMeter, PRICING } from './cost.js';
+import { PROVIDERS } from './providers/registry.js';
+
+describe('CostMeter budget cap', () => {
+  it('haiku (default fast alias) มี pricing → budget cap ทำงานจริง', () => {
+    const m = new CostMeter('anthropic:claude-haiku-4-5', 0.001);
+    expect(m.hasPricing).toBe(true);
+    expect(m.overBudget).toBe(false);
+    m.add({ inputTokens: 1_000_000, outputTokens: 0 }); // $1 input > $0.001 budget
+    expect(m.overBudget).toBe(true);
+  });
+
+  it('ทุก anthropic curated model id มี PRICING key (กัน drift)', () => {
+    for (const id of new Set(Object.values(PROVIDERS.anthropic.models))) {
+      expect(PRICING, `ขาด pricing: anthropic:${id}`).toHaveProperty(`anthropic:${id}`);
+    }
+  });
+
+  it('cacheRead ไม่ถูก double-count (cache hit ต้องถูกกว่า no-cache)', () => {
+    const m = new CostMeter('anthropic:claude-sonnet-4-6');
+    m.add({ inputTokens: 1000, cachedInputTokens: 1000, outputTokens: 0 });
+    expect(m.totalUsd).toBeCloseTo((1000 / 1e6) * 0.3, 8); // cacheRead rate เท่านั้น
+  });
+});

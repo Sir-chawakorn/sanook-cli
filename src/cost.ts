@@ -7,10 +7,12 @@ export interface Pricing {
   cacheRead: number;
 }
 
-const PRICING: Record<string, Pricing> = {
+// key = specKey() = "anthropic:<curated model id>" — ต้องตรงกับ id ใน registry (มี test กัน drift)
+export const PRICING: Record<string, Pricing> = {
   'anthropic:claude-opus-4-8': { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   'anthropic:claude-sonnet-4-6': { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
-  'anthropic:claude-haiku-4-5-20251001': { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
+  'anthropic:claude-haiku-4-5': { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
+  'anthropic:claude-fable-5': { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 },
 };
 
 // usage ที่ AI SDK 6 คืน — inputTokens = TOTAL (รวม cacheRead + cacheWrite แล้ว),
