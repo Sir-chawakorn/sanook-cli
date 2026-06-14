@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ToolSet } from 'ai';
 
 // interactive approval — ขออนุมัติก่อนรัน tool ที่เปลี่ยน state (เลียน Claude Code ask-mode)
-// mode 'auto' (default — act-first) รันเลย · 'ask' ขอ y/n ก่อน
+// mode 'auto' รันเลย · 'ask' ขอ y/n ก่อน (default ปลอดภัยอยู่ที่ config/loop)
 export type ApprovalFn = (tool: string, summary: string) => Promise<boolean>;
 
 export interface ApprovalCtx {
@@ -40,6 +40,14 @@ const READ_ONLY_TOOLS = new Set([
   'git_log',
   'list_scheduled',
 ]);
+
+export function isReadOnlyTool(tool: string): boolean {
+  return READ_ONLY_TOOLS.has(tool);
+}
+
+export function isMutatingTool(tool: string): boolean {
+  return !isReadOnlyTool(tool);
+}
 
 /** สรุป tool input เป็นบรรทัดเดียวให้ user ตัดสินใจ */
 export function summarizeToolCall(tool: string, input: unknown): string {

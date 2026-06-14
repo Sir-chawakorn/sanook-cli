@@ -3,6 +3,7 @@ import Gradient from 'ink-gradient';
 import BigText from 'ink-big-text';
 import { homedir } from 'node:os';
 import { readFileSync } from 'node:fs';
+import { BRAND } from '../brand.js';
 
 // gradient ของ Sanook: เขียว → ส้ม → ฟ้า (สนุก = สดใส)
 const SANOOK_GRADIENT = ['#22C55E', '#F97316', '#38BDF8'];
@@ -25,8 +26,7 @@ export function Banner({ model, version = VERSION, account = 'BYOK', cwd }: Bann
   const columns = stdout?.columns ?? 80;
   const dir = (cwd ?? process.cwd()).replace(homedir(), '~');
 
-  // จอกว้าง = "Sanook AI" ใหญ่, แคบ = "Sanook" / เล็กลง
-  const bigText = columns >= 92 ? 'Sanook AI' : 'Sanook';
+  const bigText = columns >= 92 ? BRAND.bannerWide : BRAND.bannerNarrow;
   const font: 'block' | 'tiny' = columns >= 48 ? 'block' : 'tiny';
 
   return (
@@ -36,7 +36,7 @@ export function Banner({ model, version = VERSION, account = 'BYOK', cwd }: Bann
       </Gradient>
       <Box marginTop={-1} marginLeft={1} flexDirection="column">
         <Text>
-          <Text bold color="cyan">Sanook AI CLI</Text>
+          <Text bold color="cyan">{BRAND.bannerTitle}</Text>
           <Text color="gray"> v{version} · terminal coding agent · BYOK</Text>
         </Text>
         <Text color="gray">

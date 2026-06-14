@@ -1,12 +1,12 @@
 import { readFile, readdir } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { loadSkills } from './skills.js';
+import { appHomePath } from './brand.js';
 
 // recall = ค้น knowledge ที่สะสม (auto-memory + skills + session เก่า) แบบ keyword scoring
 // "second brain ค้นได้" — ให้ agent reuse ของเดิม ไม่เริ่มจากศูนย์/ไม่ลืมว่าเคยทำอะไร
-const AUTO_MEM = join(homedir(), '.sanook', 'memory', 'MEMORY.md');
-const SESSIONS = join(homedir(), '.sanook', 'sessions');
+const AUTO_MEM = appHomePath('memory', 'MEMORY.md');
+const SESSIONS = appHomePath('sessions');
 
 interface Hit {
   src: string;

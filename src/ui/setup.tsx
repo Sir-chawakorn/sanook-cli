@@ -3,6 +3,7 @@ import { Box, Text } from 'ink';
 import { Select, PasswordInput } from '@inkjs/ui';
 import { PROVIDERS } from '../providers/registry.js';
 import { listRemoteModels, mergeModelOptions } from '../providers/models.js';
+import { BRAND } from '../brand.js';
 
 export interface SetupResult {
   provider: string;
@@ -44,7 +45,7 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
 
   return (
     <Box flexDirection="column" gap={1} marginY={1}>
-      <Text bold color="cyan">⚙  ตั้งค่า Sanook AI CLI (ครั้งแรก)</Text>
+      <Text bold color="cyan">⚙  ตั้งค่า {BRAND.bannerTitle} (ครั้งแรก)</Text>
 
       {step === 'provider' && (
         <Box flexDirection="column">
@@ -99,7 +100,7 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
           <Select
             options={[
               { label: 'สร้างเลย — ตอบไม่กี่ข้อ (ชื่อ + ที่เก็บ)', value: 'yes' },
-              { label: 'ข้ามไปก่อน (สั่ง sanook brain init ทีหลังได้)', value: 'no' },
+              { label: `ข้ามไปก่อน (สั่ง ${BRAND.cliName} brain init ทีหลังได้)`, value: 'no' },
             ]}
             onChange={(v) => finish(v === 'yes')}
           />

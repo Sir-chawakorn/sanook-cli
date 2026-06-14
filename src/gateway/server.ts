@@ -5,12 +5,14 @@ import { parseSchedule } from './schedule.js';
 import { tokenMatches } from './auth.js';
 import { runAgent } from '../loop.js';
 import { redactKey } from '../providers/keys.js';
+import { BRAND } from '../brand.js';
 
 export interface ServerOpts {
   port: number;
   token: string;
   defaultModel: string;
   budgetUsd?: number;
+  permissionMode?: 'auto' | 'ask';
   onLog?: (msg: string) => void;
 }
 
@@ -55,7 +57,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
 
   // /health = public (เช็คว่า process alive โดยไม่ต้องมี token)
   if (req.method === 'GET' && url.pathname === '/health') {
-    return send(res, 200, { ok: true, service: 'sanook-gateway' });
+    return send(res, 200, { ok: true, service: BRAND.gatewayServiceName });
   }
 
   // ทุก endpoint อื่น → bearer token
@@ -79,7 +81,14 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
       .slice(0, lastUserIdx)
       .map((m) => ({ role: m.role, content: m.content as string })) as ModelMessage[];
     const model = typeof body.model === 'string' && body.model ? body.model : opts.defaultModel;
-    const { text } = await runAgent({ model, prompt, history, maxSteps: 20, budgetUsd: opts.budgetUsd });
+    const { text } = await runAgent({
+      model,
+      prompt,
+      history,
+      maxSteps: 20,
+      budgetUsd: opts.budgetUsd,
+      permissionMode: opts.permissionMode ?? 'ask',
+    });
     return send(res, 200, {
       object: 'chat.completion',
       model,

@@ -1,0 +1,37 @@
+---
+tags: [template, acceptance, golden-case]
+note_type: template
+created: {{DATE}}
+updated: {{DATE}}
+parent: "[[Acceptance/_Index]]"
+---
+
+# Golden Case Template
+
+## Task Family
+
+_(What behavior this case evaluates.)_
+
+## Input
+
+```text
+<input>
+```
+
+## Expected Output
+
+```text
+<expected>
+```
+
+## Pass Criteria
+
+- [ ] Correct result
+- [ ] No forbidden side effects
+- [ ] Matches owner-facing tone/format
+
+## Notes
+
+_(Known edge cases, source links, or fixture paths.)_
+
+up:: [[Acceptance/_Index]]

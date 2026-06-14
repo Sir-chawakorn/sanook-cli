@@ -39,7 +39,7 @@ export const taskTool = tool({
       model: ctx?.model ?? 'sonnet', // inherit จาก main
       budgetUsd: ctx?.budgetUsd, // cap เดียวกับ main (กัน sub-agent วิ่ง uncapped)
       subagentDepth: depth + 1, // thread depth ผ่าน param — ไม่ mutate global
-      permissionMode: appr?.mode ?? 'auto', // inherit ask-mode (กัน sub-agent เลี่ยง approval)
+      permissionMode: appr?.mode ?? 'ask', // inherit ask-mode (กัน sub-agent เลี่ยง approval)
       approve: appr?.approve,
       prompt,
       maxSteps: 15,

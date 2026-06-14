@@ -18,33 +18,36 @@
 
 ## มันคืออะไร
 
-เครื่องมือ **AI coding agent** ที่รันใน terminal — สั่งงานเป็นภาษาคน แล้วมันอ่านไฟล์ / แก้โค้ด / รันคำสั่ง / commit ให้ หัวใจคือ loop เดียว:
+Sanook คือ **AI coding agent** ที่รันใน terminal — สั่งงานเป็นภาษาคน แล้วมันอ่านไฟล์ / แก้โค้ด / รันคำสั่ง / commit ให้ หัวใจคือ loop เดียว:
 
-```
+```text
 prompt → LLM → เรียก tool → ผลลัพธ์ → loop → ตอบ
 ```
 
-จุดต่างจากเจ้าใหญ่: มี **second brain** (โครงสร้างโน้ต Obsidian) ที่ agent อ่านก่อนทำงานทุกครั้ง → **จำได้ว่าเคยทำอะไร ชอบอะไร ตัดสินใจอะไรไปแล้ว** ข้าม session
+จุดต่างจากเจ้าใหญ่คือ **second brain** (โครงสร้างโน้ต Obsidian) ที่ agent อ่านก่อนทำงานทุกครั้ง จึงจำได้ว่าเคยทำอะไร ชอบอะไร และตัดสินใจอะไรไปแล้วข้าม session
 
 ## เริ่มใช้
 
 ```bash
 npm install -g sanook-cli
 
-# ครั้งแรกรัน sanook เฉยๆ จะมี setup wizard ให้เลือก provider + วาง key
+# ครั้งแรกรัน sanook เฉย ๆ จะมี setup wizard ให้เลือก provider + วาง key
 sanook
 ```
 
-หรือสั่งงานตรงๆ:
+หรือสั่งงานตรง ๆ:
+
 ```bash
 sanook "อ่าน package.json แล้วบอกว่ามี dependencies อะไรบ้าง"
+sanook -c "ทำต่อจาก session ล่าสุดของ project นี้"
+sanook --continue-any "ทำต่อจาก session ล่าสุดข้าม project"
 ```
 
 ## ทำอะไรได้บ้าง
 
-- **BYOK + 12 providers** — Anthropic, Google, OpenAI, DeepSeek, xAI, Mistral, Groq, MiniMax, GLM, Ollama, LM Studio, Codex (ใส่ key ของค่ายไหนก็ได้)
+- **BYOK + 12 providers** — Anthropic, Google, OpenAI, DeepSeek, xAI, Mistral, Groq, MiniMax, GLM, Ollama, LM Studio, Codex
 - **Second brain** — `sanook brain init` สร้าง workspace Obsidian ให้ AI จำงานข้ามวัน
-- **Tools** — อ่าน/เขียน/แก้ไฟล์ · รัน bash · git · grep/glob (มี permission gate กันคำสั่งอันตราย)
+- **Tools** — อ่าน/เขียน/แก้ไฟล์ · รัน bash · git · grep/glob พร้อม permission gate
 - **Gateway + cron** — `sanook serve` รันเป็น service 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram
 - **MCP + Skills** — ต่อ MCP server ได้ + skill สำเร็จรูป 69 ตัว
 
@@ -55,6 +58,42 @@ sanook -m sonnet "..."         # Claude
 sanook -m gemini "..."         # Gemini
 sanook -m glm:smart "..."      # GLM (z.ai Coding Plan)
 sanook -m ollama "..."         # local ไม่ต้องมี key
+```
+
+ตั้งค่า default model ได้ด้วย:
+
+```bash
+sanook config set model sonnet
+# หรือใช้ env
+SANOOK_MODEL=sonnet sanook "..."
+```
+
+## ความปลอดภัย
+
+Sanook ตั้งค่าเริ่มต้นให้ระวังไว้ก่อน:
+
+- `ask` mode เป็นค่าเริ่มต้น ก่อนเขียนไฟล์หรือรัน shell จะขออนุมัติ ถ้าเป็น headless แล้วไม่มี UI จะปฏิเสธ mutation
+- file tools แตะได้เฉพาะ workspace ปัจจุบันและ second brain ที่ตั้งไว้ ถ้าจะออกนอก scope ต้อง opt-in ด้วย `SANOOK_ALLOW_OUTSIDE_WORKSPACE=1`
+- path เสี่ยงอย่าง `.env`, `.git`, `node_modules`, credential folders และ `~/.sanook` ถูกบล็อก
+- project `.sanook/config.json` ที่ยังไม่ trusted ตั้งค่าทั่วไปได้ แต่ลด `permissionMode` เป็น `auto` ไม่ได้
+- project `.sanook/mcp.json` และ `.sanook/hooks.json` ถูก ignore จนกว่าจะ trust project:
+
+```bash
+sanook trust status
+sanook trust add
+sanook trust remove
+```
+
+- gateway bind ที่ `127.0.0.1` และต้องใช้ bearer token ยกเว้น `/health`; mutating tools ใน `sanook serve` เป็น `ask` โดย default และ opt-in unattended write ได้ด้วย `sanook config set permissionMode auto` หรือ `SANOOK_GATEWAY_ALLOW_WRITE=1`
+- session/memory/worklog redact API keys ก่อนบันทึก และปิด persistence ได้ด้วย `SANOOK_DISABLE_PERSISTENCE=1`
+
+## พัฒนา
+
+```bash
+npm install
+npm run build
+npm test            # vitest — 164 tests
+npm run typecheck
 ```
 
 ---

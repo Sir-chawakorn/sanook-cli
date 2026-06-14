@@ -1,18 +1,19 @@
 import { mkdir } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { acquireSingleton } from './lock.js';
 import { loadOrCreateToken } from './auth.js';
 import { startServer } from './server.js';
 import { startScheduler } from './scheduler.js';
+import { appHomePath, BRAND, BRAND_ENV, envFlag } from '../brand.js';
 
-const GATEWAY_DIR = join(homedir(), '.sanook', 'gateway');
+const GATEWAY_DIR = appHomePath('gateway');
 const SERVE_LOCK = join(GATEWAY_DIR, 'serve.lock');
 
 export interface GatewayOpts {
   port: number;
   model: string;
   budgetUsd?: number;
+  permissionMode?: 'auto' | 'ask';
   tickMs?: number;
   onLog?: (msg: string) => void;
 }
@@ -30,7 +31,7 @@ export async function startGateway(opts: GatewayOpts): Promise<() => void> {
   const release = await acquireSingleton(SERVE_LOCK);
   if (!release) {
     throw new Error(
-      'มี sanook gateway รันอยู่แล้ว (เจอ serve.lock) — ปิดตัวเดิมก่อน หรือถ้าค้างให้ลบ ~/.sanook/gateway/serve.lock',
+      `มี ${BRAND.cliName} gateway รันอยู่แล้ว (เจอ serve.lock) — ปิดตัวเดิมก่อน หรือถ้าค้างให้ลบ ${appHomePath('gateway', 'serve.lock')}`,
     );
   }
 
@@ -40,11 +41,13 @@ export async function startGateway(opts: GatewayOpts): Promise<() => void> {
     token,
     defaultModel: opts.model,
     budgetUsd: opts.budgetUsd,
+    permissionMode: opts.permissionMode ?? (envFlag(BRAND_ENV.gatewayAllowWrite) ? 'auto' : 'ask'),
     onLog: log,
   });
   const stopScheduler = startScheduler({
     defaultModel: opts.model,
     budgetUsd: opts.budgetUsd,
+    permissionMode: opts.permissionMode ?? (envFlag(BRAND_ENV.gatewayAllowWrite) ? 'auto' : 'ask'),
     tickMs: opts.tickMs,
     onLog: log,
   });
@@ -63,7 +66,7 @@ export async function startGateway(opts: GatewayOpts): Promise<() => void> {
     // หมายเหตุ: log "เริ่มแล้ว" อยู่ใน startTelegram (success path) — ถ้า fail-closed จะ log "ไม่เริ่ม" แทน
   }
 
-  log(`scheduler tick ทุก ${(opts.tickMs ?? 60_000) / 1000}s · token: ~/.sanook/gateway/token (chmod 600)`);
+  log(`scheduler tick ทุก ${(opts.tickMs ?? 60_000) / 1000}s · token: ${appHomePath('gateway', 'token')} (chmod 600)`);
 
   return () => {
     stopServer();

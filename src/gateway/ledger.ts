@@ -1,13 +1,13 @@
 import { readFile, writeFile, rename, mkdir, chmod } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { withFileLock } from './lock.js';
+import { appHomePath } from '../brand.js';
 
 // task-ledger = งานที่ gateway ต้องทำ (cron / message / one-shot) — Hermes "Kanban" / OpenClaw "Task Brain"
 // เก็บเป็น JSON (zero native dep) แทน SQLite; ทุก mutation = locked read-modify-write (atomic ต่อ op)
 // → กัน lost-write จากหลาย writer (server enqueue / scheduler update / cron CLI) ที่ยิงไฟล์เดียวกัน
-const GATEWAY_DIR = join(homedir(), '.sanook', 'gateway');
+const GATEWAY_DIR = appHomePath('gateway');
 const TASKS_FILE = join(GATEWAY_DIR, 'tasks.json');
 const LOCK_FILE = join(GATEWAY_DIR, 'tasks.lock');
 

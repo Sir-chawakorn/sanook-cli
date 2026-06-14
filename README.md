@@ -13,7 +13,7 @@ Bring your own key · 12 providers · MCP · a built-in **"second brain"** that 
 [![License](https://img.shields.io/badge/license-Apache--2.0-22c55e.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-143%20passing-22c55e.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-164%20passing-22c55e.svg)](#development)
 [![CI](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml)
 
 [Quickstart](#quickstart) · [Providers](#providers) · [Usage](#usage) · [Gateway](#gateway--scheduling) · [Skills](#skills) · [MCP](#mcp) · [Security](#security)
@@ -74,9 +74,9 @@ sanook --json "..."             # JSONL output for CI / scripts
 | Area | What you get |
 |---|---|
 | **Agent loop** | Built on the Vercel AI SDK 6 (`streamText` + `stopWhen` + `fullStream`), with streamed output, a cost meter, and a budget cap. |
-| **Tools** | `read_file` · `write_file` · `edit_file` (multi-tier matcher) · `list_dir` · `glob` · `grep` · `run_bash`, plus git tools — gated by a permission layer that denies destructive commands and protected paths. |
-| **Approval** | Interactive `ask` mode prompts `y/n` before any file write or shell command. `--yes` for auto-approve; headless defaults to safe-deny. |
-| **Memory** | The agent writes its own notes (`remember`), recalls them across past sessions (`recall`), and `--continue` resumes the last run where it left off. |
+| **Tools** | `read_file` · `write_file` · `edit_file` (multi-tier matcher) · `list_dir` · `glob` · `grep` · `run_bash`, plus git tools — gated by a permission layer that denies destructive commands, protected paths, and paths outside the workspace/brain by default. |
+| **Approval** | `ask` mode is the default and prompts `y/n` before any file write or shell command. `--yes` for auto-approve; headless ask-mode safely denies mutations when no approval UI exists. |
+| **Memory** | The agent writes its own notes (`remember`), recalls them across past sessions (`recall`), and `--continue` resumes the latest run for the current project. |
 | **Skills** | 69 built-in skills + install your own from a GitHub repo, URL, or local path. The agent can also author new skills after a repeatable task. |
 | **Subagents** | A `task` tool spawns a fresh-context sub-agent for scoped exploration without bloating the main context — read-only by default, depth-guarded. |
 | **Gateway + cron** | `sanook serve` runs a long-lived daemon: a loopback OpenAI-compatible HTTP endpoint plus a cron scheduler. Ask it in plain language and it schedules itself. |
@@ -119,7 +119,8 @@ sanook models anthropic       # curated ids (+ live verification if a key is set
 ```
 sanook "<task>"          run one task (headless)
 sanook                   interactive REPL
-sanook -c "<task>"       resume the latest session
+sanook -c "<task>"       resume the latest session for this project
+sanook --continue-any    resume the newest session across all projects
 sanook --plan "<task>"   plan mode (read-only)
 sanook --json "<task>"   JSONL output for scripts / CI
 
@@ -143,7 +144,7 @@ sanook cron list
 sanook cron rm <id>
 ```
 
-The HTTP server binds to **loopback only** and authenticates every endpoint (except `/health`) with a bearer token stored at `~/.sanook/gateway/token` (chmod 600). It speaks the OpenAI chat-completions shape, so existing clients work unchanged:
+The HTTP server binds to **loopback only** and authenticates every endpoint (except `/health`) with a bearer token stored at `~/.sanook/gateway/token` (chmod 600). It runs mutating tools in `ask` mode by default; opt into unattended writes with `sanook config set permissionMode auto` or `SANOOK_GATEWAY_ALLOW_WRITE=1`. It speaks the OpenAI chat-completions shape, so existing clients work unchanged:
 
 ```bash
 curl http://127.0.0.1:8787/v1/chat/completions \
@@ -212,6 +213,14 @@ Connect Model Context Protocol servers (stdio) with the same config shape you al
 
 Their tools are merged into the agent's toolset automatically. `/tools` in the REPL lists everything currently available.
 
+Project-local `.sanook/mcp.json` is ignored until the project is trusted:
+
+```bash
+sanook trust status
+sanook trust add       # allow this project's .sanook/mcp.json and hooks.json
+sanook trust remove
+```
+
 ## Configuration
 
 Everything lives under `~/.sanook/` (with per-project `.sanook/` overrides where relevant):
@@ -224,7 +233,22 @@ Everything lives under `~/.sanook/` (with per-project `.sanook/` overrides where
 ~/.sanook/mcp.json           MCP servers  { "mcpServers": { … } }
 ~/.sanook/hooks.json         PreToolUse / PostToolUse hooks
 ~/.sanook/gateway/           gateway token + task ledger
+~/.sanook/trusted-projects.json project roots allowed to run project MCP/hooks
 SANOOK.md                    project memory (hierarchical, like a system prompt)
+```
+
+Untrusted project config can set ordinary project defaults, but it cannot lower `permissionMode` to `auto`; trust the project first if you want project-local config to control mutation approval.
+
+Useful environment flags:
+
+```bash
+SANOOK_MODEL=sonnet                 # default model alias or provider:model
+SANOOK_ALLOW_OUTSIDE_WORKSPACE=1    # allow file tools outside cwd/brain
+SANOOK_GATEWAY_ALLOW_WRITE=1        # let sanook serve run mutating tools unattended
+SANOOK_HOOKS_INHERIT_ENV=1          # pass full env to hooks instead of a minimal safe env
+SANOOK_DISABLE_PERSISTENCE=1        # do not save sessions or memory
+SANOOK_DISABLE_WORKLOG=1            # do not append second-brain worklogs
+SANOOK_TRUST_PROJECT=1              # temporary trust override for project MCP/hooks
 ```
 
 ## Security
@@ -232,8 +256,10 @@ SANOOK.md                    project memory (hierarchical, like a system prompt)
 Sanook runs shell commands and edits files, so safety is built into the core rather than bolted on:
 
 - **BYOK, direct keys only** — OAuth and subscription tokens are rejected by an explicit guard (`ya29.`, `Bearer`, `sk-ant-oat…`). This keeps you within every provider's terms of service.
-- **Permission gate** — destructive commands (`rm -rf`, `git reset --hard`, `push --force`, fork bombs, …) and writes to protected paths are denied; interactive `ask` mode confirms mutations.
-- **Secret redaction** — API keys are stripped from error messages and logs.
+- **Permission gate** — destructive commands (`rm -rf`, `git reset --hard`, `push --force`, fork bombs, …), protected paths (`.env`, `.git`, `node_modules`, credential folders), and paths outside the workspace/brain are denied unless explicitly opted in.
+- **Project trust gate** — project `.sanook/mcp.json` and `.sanook/hooks.json` can execute code, so they are ignored until `sanook trust add`.
+- **Secret redaction** — API keys are stripped from error messages, saved sessions, memory, and worklogs.
+- **Safe fallback** — provider fallback does not retry after a mutating tool call has already happened, avoiding duplicate side effects.
 - **Gateway** — HTTP binds to `127.0.0.1` only and requires a bearer token on every non-health endpoint.
 - **Telegram** — fail-closed: a required allowlist, private-chat-only, per-chat rate-limiting, and generic error replies that never reveal internal paths.
 
@@ -244,7 +270,7 @@ Hardened across several adversarial security reviews covering command injection,
 ```bash
 npm install
 npm run build       # → dist/
-npm test            # vitest — 143 tests
+npm test            # vitest — 164 tests
 npm run typecheck   # tsc --noEmit (strict)
 npm run dev -- "…"  # run from source without building
 ```

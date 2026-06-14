@@ -1,5 +1,5 @@
 import { readFile, writeFile, mkdir, readdir, rm, stat, lstat, copyFile } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join, basename, resolve, sep, dirname } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -7,9 +7,10 @@ import { randomUUID } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { parseFrontmatter, isValidSkillName } from './skills.js';
+import { appHomePath, BRAND } from './brand.js';
 
 const execFileAsync = promisify(execFile);
-const USER_SKILLS = join(homedir(), '.sanook', 'skills');
+const USER_SKILLS = appHomePath('skills');
 const MAX_FILES = 300;
 const MAX_BYTES = 20 * 1024 * 1024; // 20MB ต่อ skill
 const MAX_MD = 2 * 1024 * 1024; // 2MB ต่อ SKILL.md จาก URL
@@ -112,7 +113,7 @@ async function installFromLocal(path: string, onLog?: (m: string) => void): Prom
 
 /** clone GitHub repo (shallow) → ติดตั้ง skill — subPath ต้องอยู่ใต้ clone dir (กัน traversal escape) */
 async function installFromGitHub(repoUrl: string, subPath: string, onLog?: (m: string) => void): Promise<InstallResult[]> {
-  const tmp = join(tmpdir(), `sanook-skill-${randomUUID().slice(0, 8)}`);
+  const tmp = join(tmpdir(), `${BRAND.skillTempPrefix}${randomUUID().slice(0, 8)}`);
   try {
     onLog?.(`clone ${repoUrl} …`);
     // execFile (no shell) + '--' กัน url ขึ้นต้น '-' ถูกตีเป็น git option + timeout

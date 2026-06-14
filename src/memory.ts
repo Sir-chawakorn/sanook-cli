@@ -1,10 +1,11 @@
-import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { chmod, readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { join, dirname, resolve } from 'node:path';
+import { appHomePath, BRAND, persistenceEnabled, worklogEnabled } from './brand.js';
+import { redactKey } from './providers/keys.js';
 
-const MEMORY_FILE = 'SANOOK.md';
+const MEMORY_FILE = BRAND.memoryFileName;
 // auto-memory: สิ่งที่ agent จำเองข้าม session (เลียน MEMORY.md ของ Claude Code)
-const AUTO_MEMORY_DIR = join(homedir(), '.sanook', 'memory');
+const AUTO_MEMORY_DIR = appHomePath('memory');
 const AUTO_MEMORY_FILE = join(AUTO_MEMORY_DIR, 'MEMORY.md');
 // เดินขึ้นหยุดที่ project root — ไม่เลยขึ้นไปถึง filesystem root
 // (กัน prompt-injection จาก SANOOK.md ที่ใครก็วางใน parent dir ที่ share กันได้)
@@ -42,7 +43,7 @@ export async function loadMemory(cwd: string = process.cwd()): Promise<string> {
   }
   chain.reverse(); // project root ก่อน → cwd ท้าย (local override general)
 
-  const paths = [join(homedir(), '.sanook', MEMORY_FILE), ...chain.map((d) => join(d, MEMORY_FILE))];
+  const paths = [appHomePath(MEMORY_FILE), ...chain.map((d) => join(d, MEMORY_FILE))];
 
   const blocks: string[] = [];
   const seen = new Set<string>();
@@ -125,7 +126,7 @@ async function inboxCandidates(p: string, max: number): Promise<string> {
 /** path ของ second-brain vault จาก config (undefined = ไม่ได้ตั้ง) */
 export async function getBrainPath(): Promise<string | undefined> {
   try {
-    const cfg = JSON.parse(await readFile(join(homedir(), '.sanook', 'config.json'), 'utf8')) as {
+    const cfg = JSON.parse(await readFile(appHomePath('config.json'), 'utf8')) as {
       brainPath?: string;
     };
     return cfg.brainPath;
@@ -146,7 +147,8 @@ export async function appendToVaultInbox(brainPath: string, fact: string): Promi
   } catch {
     return false; // ไม่ใช่ vault ที่มีไฟล์นี้ → ไม่ route
   }
-  const line = `- ${fact.trim().replace(/\s+/g, ' ')}`;
+  const safeFact = redactKey(fact);
+  const line = `- ${safeFact.trim().replace(/\s+/g, ' ')}`;
   if (content.includes(line)) return false; // dedup
   const marker = '## New Candidates';
   const next = content.includes(marker)
@@ -161,6 +163,7 @@ export async function appendBrainWorklog(
   brainPath: string,
   entry: { prompt: string; summary: string; model: string; today: string },
 ): Promise<boolean> {
+  if (!worklogEnabled()) return false;
   const dir = join(brainPath, 'Sessions');
   if (!(await exists(dir))) return false; // ไม่ใช่ vault → ข้าม
   const topic = entry.prompt.trim().split(/\s+/).slice(0, 6).join(' ').slice(0, 50) || 'work';
@@ -169,9 +172,9 @@ export async function appendBrainWorklog(
   try {
     content = await readFile(file, 'utf8');
   } catch {
-    content = `---\ntags: [session, session-log, worklog]\nnote_type: session-log\ncreated: ${entry.today}\nupdated: ${entry.today}\nparent: "[[Sessions/_Index]]"\nai_surface: history\n---\n\n# ${entry.today} — Worklog (auto by sanook)\n\nup:: [[Sessions/_Index]]\n`;
+    content = `---\ntags: [session, session-log, worklog]\nnote_type: session-log\ncreated: ${entry.today}\nupdated: ${entry.today}\nparent: "[[Sessions/_Index]]"\nai_surface: history\n---\n\n# ${entry.today} — Worklog (auto by ${BRAND.cliName})\n\nup:: [[Sessions/_Index]]\n`;
   }
-  const block = `\n## ${topic}\n- prompt: ${entry.prompt.trim().slice(0, 200)}\n- model: ${entry.model}\n- ${entry.summary.trim().slice(0, 300)}\n`;
+  const block = `\n## ${topic}\n- prompt: ${redactKey(entry.prompt).trim().slice(0, 200)}\n- model: ${entry.model}\n- ${redactKey(entry.summary).trim().slice(0, 300)}\n`;
   // แทรกก่อน up:: ท้ายไฟล์ (กัน up:: หลุดไปกลาง)
   const out = content.includes('\nup:: ')
     ? content.replace(/\nup:: .*$/s, `\n${block}\nup:: [[Sessions/_Index]]\n`)
@@ -182,7 +185,9 @@ export async function appendBrainWorklog(
 
 /** บันทึก fact ลง auto-memory (remember tool เรียก) — dedup + route เข้า vault ถ้ามี brainPath */
 export async function appendMemory(fact: string): Promise<void> {
-  const line = `- ${fact.trim().replace(/\s+/g, ' ')}`;
+  if (!persistenceEnabled()) return;
+  const safeFact = redactKey(fact);
+  const line = `- ${safeFact.trim().replace(/\s+/g, ' ')}`;
   await mkdir(AUTO_MEMORY_DIR, { recursive: true });
   let existing = '';
   try {
@@ -191,10 +196,11 @@ export async function appendMemory(fact: string): Promise<void> {
     /* ยังไม่มีไฟล์ */
   }
   if (!existing.includes(line)) {
-    const header = existing.trim() ? existing.trimEnd() : '# Sanook Auto-Memory';
-    await writeFile(AUTO_MEMORY_FILE, `${header}\n${line}\n`);
+    const header = existing.trim() ? existing.trimEnd() : `# ${BRAND.autoMemoryTitle}`;
+    await writeFile(AUTO_MEMORY_FILE, `${header}\n${line}\n`, { mode: 0o600 });
+    await chmod(AUTO_MEMORY_FILE, 0o600).catch(() => {});
   }
   // route เข้า vault second-brain ด้วย (best-effort)
   const brain = await getBrainPath();
-  if (brain) await appendToVaultInbox(brain, fact).catch(() => false);
+  if (brain) await appendToVaultInbox(brain, safeFact).catch(() => false);
 }

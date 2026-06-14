@@ -108,6 +108,32 @@ describe('scaffoldBrain', () => {
     expect((await stat(join(target, 'Intake', 'Raw Sources', '_Index.md'))).isFile()).toBe(true);
   });
 
+  it('bundled second-brain template source มีทุกโฟลเดอร์ + _Index ตาม FOLDERS', async () => {
+    const templateRoot = join(process.cwd(), 'second-brain');
+    for (const { dir: d } of FOLDERS) {
+      expect((await stat(join(templateRoot, d))).isDirectory(), `template ขาดโฟลเดอร์ ${d}`).toBe(true);
+      expect((await stat(join(templateRoot, d, '_Index.md'))).isFile(), `template ขาด _Index ${d}`).toBe(true);
+    }
+  });
+
+  it('bundled second-brain template source มี consumer rules/seeds สำหรับโฟลเดอร์สำคัญ', async () => {
+    const templateRoot = join(process.cwd(), 'second-brain');
+    for (const f of [
+      'Shared/Rules/rules-formatting.md',
+      'Shared/Rules/procedural-runbook-header.md',
+      'Shared/Rules/contextual-note-rule.md',
+      'Shared/Tech-Standards/verification-standard.md',
+      'Shared/Coordination/task-board.md',
+      'Shared/Coordination/agent-registry.md',
+      'Shared/User-Persona/owner-profile.md',
+      'Acceptance/golden-case-template.md',
+      'Checklists/preflight-postflight-template.md',
+      'Entities/entity-template.md',
+    ]) {
+      expect((await stat(join(templateRoot, f))).isFile(), `template ขาด seed file ${f}`).toBe(true);
+    }
+  });
+
   it('แทน placeholder หมด (ไม่เหลือ {{KEY}} ของเรา) + owner ถูกแทน', async () => {
     const target = join(dir, 'vault');
     await scaffoldBrain(target, CFG);

@@ -45,6 +45,11 @@ ai_surface: hot
 - ingest ของนอก → [[Runbooks/ingest-quarantine]] · fact → [[Shared/Rules/frontmatter-standard]] (bi-temporal + `source::`)
 - script ทำซ้ำ → [[Shared/Rules/skills-admission]] (Skills/) · consolidate → [[Runbooks/sleep-time-consolidation]]
 - หลาย agent ทำพร้อมกัน → อ่าน [[Shared/Coordination/NOW]] ก่อนแตะ vault · เขียน/แก้ fact → [[Shared/Rules/memory-write-protocol]] (ADD/UPDATE/DELETE/NOOP)
+- สร้าง durable note ใหม่ → [[Shared/Rules/contextual-note-rule]] + [[Shared/Rules/rules-formatting]]
+- ทำ runbook/procedure → [[Shared/Rules/procedural-runbook-header]]
+- งาน technical/release → [[Shared/Tech-Standards/verification-standard]]
+- งานหลาย session/หลาย agent → [[Shared/Coordination/task-board]] + [[Shared/Coordination/agent-registry]]
+- acceptance/checklist/entity ใหม่ → [[Acceptance/golden-case-template]] · [[Checklists/preflight-postflight-template]] · [[Entities/entity-template]]
 
 ## Current Snapshot
 

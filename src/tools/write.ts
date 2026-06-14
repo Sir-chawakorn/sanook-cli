@@ -12,7 +12,7 @@ export const writeFileTool = tool({
     content: z.string().describe('เนื้อหาทั้งหมดของไฟล์'),
   }),
   execute: async ({ path, content }) => {
-    const guard = checkWritePath(path);
+    const guard = await checkWritePath(path);
     if (!guard.ok) return `BLOCKED: ${guard.reason}`;
     const previous = await readFile(path, 'utf8').catch(() => undefined); // มีอยู่เดิมไหม (โชว์ before→after)
     try {

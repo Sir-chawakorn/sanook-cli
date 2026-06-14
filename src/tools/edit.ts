@@ -75,7 +75,7 @@ export const editFileTool = tool({
     new_string: z.string().describe('ข้อความใหม่'),
   }),
   execute: async ({ path, old_string, new_string }) => {
-    const guard = checkWritePath(path);
+    const guard = await checkWritePath(path);
     if (!guard.ok) return `BLOCKED: ${guard.reason}`;
     if (old_string === '') return `ERROR: old_string ต้องไม่ว่าง`;
     if (old_string === new_string) {

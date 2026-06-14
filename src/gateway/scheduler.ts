@@ -6,6 +6,7 @@ import { redactKey } from '../providers/keys.js';
 export interface SchedulerOpts {
   defaultModel: string;
   budgetUsd?: number;
+  permissionMode?: 'auto' | 'ask';
   tickMs?: number;
   onLog?: (msg: string) => void;
   /** deliver ผลลัพธ์ (channel adapter เสียบทีหลัง); default = เก็บใน ledger.lastResult */
@@ -19,6 +20,7 @@ async function runTask(task: Task, opts: SchedulerOpts): Promise<string> {
     prompt: task.spec,
     maxSteps: 20,
     budgetUsd: opts.budgetUsd,
+    permissionMode: opts.permissionMode ?? 'ask',
   });
   return text;
 }

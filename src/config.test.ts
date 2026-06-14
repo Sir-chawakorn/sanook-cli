@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +12,7 @@ describe('loadConfig layering', () => {
     await mkdir(join(dir, '.sanook'), { recursive: true });
   });
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await rm(dir, { recursive: true, force: true });
   });
 
@@ -40,5 +41,23 @@ describe('loadConfig layering', () => {
 
   it('budgetUsd ผ่าน CLI override', async () => {
     expect((await loadConfig({ budgetUsd: 0.5 }, dir)).budgetUsd).toBe(0.5);
+  });
+
+  it('SANOOK_MODEL override ชนะ project config แต่แพ้ CLI override', async () => {
+    vi.stubEnv('SANOOK_MODEL', 'env-model');
+    await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ model: 'proj-model' }));
+    expect((await loadConfig({}, dir)).model).toBe('env-model');
+    expect((await loadConfig({ model: 'cli-model' }, dir)).model).toBe('cli-model');
+  });
+
+  it('untrusted project config ลด permissionMode เป็น auto ไม่ได้', async () => {
+    await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ permissionMode: 'auto' }));
+    expect((await loadConfig({}, dir)).permissionMode).toBe('ask');
+  });
+
+  it('trusted project config override permissionMode ได้', async () => {
+    vi.stubEnv('SANOOK_TRUST_PROJECT', '1');
+    await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ permissionMode: 'auto' }));
+    expect((await loadConfig({}, dir)).permissionMode).toBe('auto');
   });
 });

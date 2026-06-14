@@ -1,10 +1,15 @@
 import { homedir } from 'node:os';
-import { resolve, join, sep } from 'node:path';
+import { realpath, stat } from 'node:fs/promises';
+import { basename, dirname, resolve, join, sep } from 'node:path';
+import { getBrainPath } from '../memory.js';
+import { BRAND_ENV, envFlag } from '../brand.js';
 
 // Permission gate (M1): ก่อนมี interactive ask (M4) — hard-deny อันตราย, allow ที่เหลือ
 // คำสั่ง shell ที่ทำลายล้าง irreversible
 const DESTRUCTIVE_CMD =
   /(\brm\s+-rf\b|\bgit\s+reset\s+--hard\b|\bgit\s+push\b.*--force|\bmkfs\b|\bdd\s+if=|:\(\)\s*\{|\bchmod\s+-R\s+777\b|>\s*\/dev\/sd|\bsudo\b|\bcrontab\b)/i;
+const PROTECTED_CMD_PATH =
+  /(\$HOME|~)?\/?(\.ssh|\.aws|\.gnupg|\.sanook)(\/|\b)|(^|\s)(cat|less|more|sed|awk|tail|head)\s+[^|;&]*\.env(\.|\b)/i;
 
 const HOME = homedir();
 // ไฟล์ที่ห้ามเขียน (persistence backdoor): shell rc, git/npm config, ~/.sanook (token/mcp/hooks)
@@ -13,8 +18,7 @@ const PROTECTED_EXACT = new Set(
 );
 // โฟลเดอร์ที่ห้ามเขียนเข้าไป (credentials + sanook internal)
 const PROTECTED_DIRS = ['.ssh', '.aws', '.gnupg', '.sanook'].map((d) => join(HOME, d));
-// segment ที่ห้ามไม่ว่าอยู่ที่ไหน (.git internals / .env / deps / credentials dir)
-const PROTECTED_SEGMENT = /(^|\/)(\.git|node_modules|\.ssh|\.aws|\.gnupg)(\/|$)|(^|\/)\.env($|\.)/i;
+const PROTECTED_SEGMENTS = new Set(['.git', 'node_modules', '.ssh', '.aws', '.gnupg', '.sanook']);
 
 export type GateResult = { ok: true } | { ok: false; reason: string };
 
@@ -22,18 +26,83 @@ export function checkBash(cmd: string): GateResult {
   if (DESTRUCTIVE_CMD.test(cmd)) {
     return { ok: false, reason: `คำสั่งทำลายล้าง/irreversible ถูกปฏิเสธ: "${cmd}"` };
   }
+  if (PROTECTED_CMD_PATH.test(cmd)) {
+    return { ok: false, reason: `คำสั่งที่อ่าน/แตะ path ลับถูกปฏิเสธ: "${cmd}"` };
+  }
   return { ok: true };
 }
 
-/** กันเขียนทับ secrets/shell-rc/.sanook — resolve เป็น absolute ก่อน (กัน ../ และ symlink-ish bypass) */
-export function checkWritePath(path: string): GateResult {
+async function canonicalExisting(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+async function existingAncestor(path: string): Promise<string> {
+  let dir = resolve(path);
+  for (;;) {
+    try {
+      await stat(dir);
+      return canonicalExisting(dir);
+    } catch {
+      const parent = dirname(dir);
+      if (parent === dir) return dir;
+      dir = parent;
+    }
+  }
+}
+
+async function allowedRoots(): Promise<string[]> {
+  if (envFlag(BRAND_ENV.allowOutsideWorkspace)) return ['/'];
+  const roots = [await canonicalExisting(process.cwd())];
+  const brain = await getBrainPath();
+  if (brain) roots.push(await canonicalExisting(brain));
+  return roots;
+}
+
+function inside(abs: string, root: string): boolean {
+  return abs === root || abs.startsWith(root.endsWith(sep) ? root : root + sep);
+}
+
+function protectedSegment(abs: string): boolean {
+  const parts = abs.split(/[\\/]+/);
+  if (parts.some((p) => PROTECTED_SEGMENTS.has(p))) return true;
+  const base = basename(abs);
+  return base.startsWith('.env') && base !== '.env.example';
+}
+
+async function checkPathScope(path: string, intent: 'read' | 'write'): Promise<GateResult> {
+  const abs = intent === 'write' ? await existingAncestor(path) : await canonicalExisting(path);
+  const roots = await allowedRoots();
+  if (!roots.some((root) => inside(abs, root))) {
+    return {
+      ok: false,
+      reason: `path อยู่นอก workspace/brain ที่อนุญาต: "${path}" (ตั้ง ${BRAND_ENV.allowOutsideWorkspace}=1 เพื่อ opt-in)`,
+    };
+  }
+  return { ok: true };
+}
+
+/** กันอ่าน secrets/.git/node_modules และกันอ่านนอก workspace/brain */
+export async function checkReadPath(path: string): Promise<GateResult> {
+  const abs = await canonicalExisting(path);
+  if (protectedSegment(abs)) {
+    return { ok: false, reason: `path ที่ป้องกันถูกปฏิเสธ: "${path}" (secrets / .git / .env / node_modules)` };
+  }
+  return checkPathScope(path, 'read');
+}
+
+/** กันเขียนทับ secrets/shell-rc/.sanook + กันเขียนนอก workspace/brain */
+export async function checkWritePath(path: string): Promise<GateResult> {
   const abs = resolve(path);
   const inProtectedDir = PROTECTED_DIRS.some((d) => abs === d || abs.startsWith(d + sep));
-  if (PROTECTED_EXACT.has(abs) || inProtectedDir || PROTECTED_SEGMENT.test(abs)) {
+  if (PROTECTED_EXACT.has(abs) || inProtectedDir || protectedSegment(abs)) {
     return {
       ok: false,
       reason: `path ที่ป้องกันถูกปฏิเสธ: "${path}" (secrets / shell-rc / .sanook / .git / .env / node_modules)`,
     };
   }
-  return { ok: true };
+  return checkPathScope(path, 'write');
 }

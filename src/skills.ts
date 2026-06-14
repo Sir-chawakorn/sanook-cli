@@ -1,16 +1,16 @@
 import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
-import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { appHomePath, appProjectPath } from './brand.js';
 
 // skills = วิธีทำงานเฉพาะทาง/runbook ที่โหลด on-demand (progressive disclosure)
 // agent เห็นแค่ name+description ใน system prompt → โหลดเต็มด้วย `skill` tool เมื่อ task ตรง
 // self-improvement: agent สร้าง skill เองด้วย `create_skill` เมื่อเจอ procedure ที่ reuse ได้
 // 3 ชั้น: bundled (ship กับ CLI) → global (~/.sanook) → project (.sanook) — ชั้นหลัง override ชื่อซ้ำ
 const BUNDLED_SKILLS = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills');
-const GLOBAL_SKILLS = join(homedir(), '.sanook', 'skills');
-const projectSkills = (): string => join(process.cwd(), '.sanook', 'skills');
+const GLOBAL_SKILLS = appHomePath('skills');
+const projectSkills = (): string => appProjectPath(process.cwd(), 'skills');
 
 export interface Skill {
   name: string;

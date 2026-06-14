@@ -8,7 +8,8 @@ import { closeMcp } from './mcp.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { chmod, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { appHomePath, BRAND, BRAND_ENV, envFlag } from './brand.js';
 
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
@@ -59,7 +60,7 @@ async function runHeadless(
   json: boolean,
   history?: ModelMessage[],
   planMode = false,
-  permissionMode: 'auto' | 'ask' = 'auto',
+  permissionMode: 'auto' | 'ask' = 'ask',
   quiet = false,
   fallbackModel?: string,
 ): Promise<void> {
@@ -111,37 +112,39 @@ async function runHeadless(
 const VERSION = (
   JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
 ).version;
-const HELP = `Sanook — a terminal AI coding agent (BYOK)
+const HELP = `${BRAND.productName} — a terminal AI coding agent (BYOK)
 
 usage:
-  sanook "<task>"            run one task (headless)
-  sanook                     interactive REPL
-  sanook --json "<task>"     headless, JSONL output (for CI/scripts)
+  ${BRAND.cliName} "<task>"            run one task (headless)
+  ${BRAND.cliName}                     interactive REPL
+  ${BRAND.cliName} --json "<task>"     headless, JSONL output (for CI/scripts)
 
 gateway (อยู่ยาว 24/7 — HTTP loopback + cron):
-  sanook serve [--port 8787]            เปิด gateway (OpenAI-compat /v1/chat/completions + scheduler)
-  sanook cron add "<when>" "<task>"     ตั้งงานล่วงหน้า (when: "every 30m" | "09:00" | ISO | now)
-  sanook cron list                      ดู task ทั้งหมด
-  sanook cron rm <id>                   ลบ task
+  ${BRAND.cliName} serve [--port 8787]            เปิด gateway (OpenAI-compat /v1/chat/completions + scheduler)
+  ${BRAND.cliName} cron add "<when>" "<task>"     ตั้งงานล่วงหน้า (when: "every 30m" | "09:00" | ISO | now)
+  ${BRAND.cliName} cron list                      ดู task ทั้งหมด
+  ${BRAND.cliName} cron rm <id>                   ลบ task
 
 skills (69 built-in + ติดตั้งเพิ่มได้):
-  sanook skill list                     ดู skill ทั้งหมด
-  sanook skill add <user/repo|url|path> ติดตั้ง skill จาก GitHub / URL / local
-  sanook skill remove <name>            ลบ skill ที่ติดตั้ง
-  sanook models [provider]              ดู/verify model id (เทียบ provider จริงถ้ามี key)
+  ${BRAND.cliName} skill list                     ดู skill ทั้งหมด
+  ${BRAND.cliName} skill add <user/repo|url|path> ติดตั้ง skill จาก GitHub / URL / local
+  ${BRAND.cliName} skill remove <name>            ลบ skill ที่ติดตั้ง
+  ${BRAND.cliName} models [provider]              ดู/verify model id (เทียบ provider จริงถ้ามี key)
 
 second brain (Obsidian workspace สำหรับจัดเก็บงาน + ความจำ AI):
-  sanook brain init [path]              สร้างโครงสร้าง second-brain ที่ path (ไม่ใส่ = ถาม)
+  ${BRAND.cliName} brain init [path]              สร้างโครงสร้าง second-brain ที่ path (ไม่ใส่ = ถาม)
 
 config & mcp:
-  sanook config [get|set <k> <v>]       ดู/แก้ ~/.sanook/config.json (model/budgetUsd/permissionMode)
-  sanook mcp [list|add <name> <cmd> …|remove <name>]   จัดการ MCP servers
+  ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/budgetUsd/permissionMode)
+  ${BRAND.cliName} mcp [list|add <name> <cmd> …|remove <name>]   จัดการ MCP servers
+  ${BRAND.cliName} trust [status|add|remove]      อนุญาต/ยกเลิก project .sanook/mcp.json + hooks.json
 
 flags:
   -m, --model <spec>   sonnet/opus/haiku/fable · gpt/codex · gemini · grok · deepseek · mistral · groq · ollama/lmstudio
                        or "provider:model-id" (e.g. openai:gpt-5-codex, groq:fast, google:gemini-2.5-flash)
   -b, --budget <usd>   stop when estimated cost exceeds this
-  -c, --continue       resume the latest session (จำว่าทำถึงไหน → ทำต่อ)
+  -c, --continue       resume the latest session ของ project นี้
+      --continue-any   resume latest session ข้าม project (explicit)
       --plan           plan mode — สำรวจ+วางแผนเท่านั้น ไม่แก้ไฟล์ (read-only)
   -y, --yes            อนุมัติ tool อัตโนมัติ (ข้าม ask-mode permission)
       --json           machine-readable JSONL output
@@ -162,11 +165,12 @@ async function runServe(args: string[]): Promise<void> {
   const mIdx = args.findIndex((a) => a === '--model' || a === '-m');
   const config = await loadConfig({ model: mIdx !== -1 ? args[mIdx + 1] : undefined });
   const { startGateway } = await import('./gateway/serve.js');
-  process.stdout.write(`${DIM}Sanook gateway — model: ${config.model}${RESET}\n`);
+  process.stdout.write(`${DIM}${BRAND.productName} gateway — model: ${config.model}${RESET}\n`);
   const stop = await startGateway({
     port,
     model: config.model,
     budgetUsd: config.budgetUsd,
+    permissionMode: envFlag(BRAND_ENV.gatewayAllowWrite) ? 'auto' : config.permissionMode,
     onLog: (m) => process.stdout.write(`${DIM}[gateway] ${m}${RESET}\n`),
   });
   const shutdown = (): void => {
@@ -225,7 +229,7 @@ async function runCron(args: string[]): Promise<void> {
   if (action === 'list' || action === undefined) {
     const tasks = await listTasks();
     if (!tasks.length) {
-      console.log('ยังไม่มี task — เพิ่มด้วย: sanook cron add "every 1h" "เช็คข่าว AI"');
+      console.log(`ยังไม่มี task — เพิ่มด้วย: ${BRAND.cliName} cron add "every 1h" "เช็คข่าว AI"`);
       return;
     }
     for (const t of tasks) {
@@ -371,10 +375,10 @@ async function readStdin(): Promise<string> {
 async function runConfig(args: string[]): Promise<void> {
   const { readGlobalConfigRaw, patchGlobalConfig } = await import('./config.js');
   const [action, key, ...rest] = args;
-  const ALLOWED = ['model', 'fallbackModel', 'budgetUsd', 'permissionMode', 'brainPath'];
+  const ALLOWED = ['model', 'fallbackModel', 'budgetUsd', 'maxSteps', 'permissionMode', 'brainPath'];
   if (action === 'set') {
     if (!key || rest.length === 0) {
-      console.error(`ใช้: sanook config set <key> <value>   (key: ${ALLOWED.join(' | ')})`);
+      console.error(`ใช้: ${BRAND.cliName} config set <key> <value>   (key: ${ALLOWED.join(' | ')})`);
       process.exit(1);
     }
     if (!ALLOWED.includes(key)) {
@@ -382,7 +386,26 @@ async function runConfig(args: string[]): Promise<void> {
       process.exit(1);
     }
     const raw = rest.join(' ');
-    await patchGlobalConfig({ [key]: key === 'budgetUsd' ? Number(raw) : raw });
+    let value: unknown = raw;
+    if (key === 'budgetUsd') {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n <= 0) {
+        console.error('budgetUsd ต้องเป็นตัวเลขบวก เช่น 0.25');
+        process.exit(1);
+      }
+      value = n;
+    } else if (key === 'maxSteps') {
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n <= 0) {
+        console.error('maxSteps ต้องเป็น integer บวก เช่น 20');
+        process.exit(1);
+      }
+      value = n;
+    } else if (key === 'permissionMode' && raw !== 'auto' && raw !== 'ask') {
+      console.error('permissionMode ต้องเป็น auto หรือ ask');
+      process.exit(1);
+    }
+    await patchGlobalConfig({ [key]: value });
     console.log(`ตั้ง ${key} = ${raw}`);
     return;
   }
@@ -391,12 +414,12 @@ async function runConfig(args: string[]): Promise<void> {
     console.log(cfg[key] ?? '(ไม่ได้ตั้ง)');
     return;
   }
-  console.log(`~/.sanook/config.json:\n${JSON.stringify(await readGlobalConfigRaw(), null, 2)}`);
+  console.log(`${appHomePath('config.json')}:\n${JSON.stringify(await readGlobalConfigRaw(), null, 2)}`);
 }
 
 /** sanook mcp [list | add <name> <command> [args...] | remove <name>] — จัดการ ~/.sanook/mcp.json */
 async function runMcp(args: string[]): Promise<void> {
-  const mcpPath = join(homedir(), '.sanook', 'mcp.json');
+  const mcpPath = appHomePath('mcp.json');
   type Server = { command: string; args?: string[] };
   let cfg: { mcpServers: Record<string, Server> } = { mcpServers: {} };
   try {
@@ -407,13 +430,14 @@ async function runMcp(args: string[]): Promise<void> {
   }
   const write = async (): Promise<void> => {
     await mkdir(dirname(mcpPath), { recursive: true });
-    await writeFile(mcpPath, `${JSON.stringify(cfg, null, 2)}\n`);
+    await writeFile(mcpPath, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
+    await chmod(mcpPath, 0o600).catch(() => {});
   };
   const [action, name, command, ...cmdArgs] = args;
 
   if (action === 'add') {
     if (!name || !command) {
-      console.error('ใช้: sanook mcp add <name> <command> [args...]   (เช่น: mcp add fs npx -y @modelcontextprotocol/server-filesystem /path)');
+      console.error(`ใช้: ${BRAND.cliName} mcp add <name> <command> [args...]   (เช่น: mcp add fs npx -y @modelcontextprotocol/server-filesystem /path)`);
       process.exit(1);
     }
     cfg.mcpServers[name] = { command, args: cmdArgs };
@@ -431,11 +455,34 @@ async function runMcp(args: string[]): Promise<void> {
   }
   const names = Object.keys(cfg.mcpServers);
   if (!names.length) {
-    console.log('ยังไม่มี MCP server — เพิ่ม: sanook mcp add <name> <command> [args...]');
+    console.log(`ยังไม่มี MCP server — เพิ่ม: ${BRAND.cliName} mcp add <name> <command> [args...]`);
     return;
   }
   console.log(`${names.length} MCP servers:`);
   for (const n of names) console.log(`  ${n}  —  ${cfg.mcpServers[n].command} ${(cfg.mcpServers[n].args ?? []).join(' ')}`);
+}
+
+/** sanook trust [status|add|remove] — trust project config that can execute code (MCP/hooks) */
+async function runTrust(args: string[]): Promise<void> {
+  const action = args[0] ?? 'status';
+  const { projectTrustStatus, trustProject, untrustProject } = await import('./trust.js');
+  if (action === 'status') {
+    const s = await projectTrustStatus();
+    console.log(`${s.trusted ? 'trusted' : 'untrusted'} — ${s.root}${s.reason === 'env' ? ' (env override)' : ''}`);
+    return;
+  }
+  if (action === 'add') {
+    const root = await trustProject();
+    console.log(`trusted project: ${root}`);
+    return;
+  }
+  if (action === 'remove' || action === 'rm') {
+    const root = await untrustProject();
+    console.log(`removed trust: ${root}`);
+    return;
+  }
+  console.error(`ไม่รู้จัก: trust ${action} — ใช้ status / add / remove`);
+  process.exit(1);
 }
 
 async function main(): Promise<void> {
@@ -467,6 +514,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'brain' && ['init', undefined].includes(argv[1])) return runBrain(argv.slice(1));
   if (argv[0] === 'config' && ['get', 'set', 'list', undefined].includes(argv[1])) return runConfig(argv.slice(1));
   if (argv[0] === 'mcp' && ['add', 'list', 'remove', 'rm', undefined].includes(argv[1])) return runMcp(argv.slice(1));
+  if (argv[0] === 'trust' && ['status', 'add', 'remove', 'rm', undefined].includes(argv[1])) return runTrust(argv.slice(1));
 
   const { model, budget, json, quiet, prompt: argPrompt, planMode, yes } = parseArgs(argv);
   const budgetUsd = Number.isFinite(budget) ? budget : undefined;
@@ -477,8 +525,10 @@ async function main(): Promise<void> {
   if (prompt) {
     const config = await loadConfig({ model, budgetUsd });
     // --continue / -c → โหลด session ล่าสุดมาต่อ (จำว่าทำถึงไหน)
-    const history =
-      argv.includes('--continue') || argv.includes('-c') ? (await latestSession())?.messages : undefined;
+    const wantsContinue = argv.includes('--continue') || argv.includes('-c') || argv.includes('--continue-any');
+    const history = wantsContinue
+      ? (await latestSession(argv.includes('--continue-any') ? null : process.cwd()))?.messages
+      : undefined;
     await runHeadless(
       config.model,
       prompt,
@@ -502,7 +552,9 @@ async function main(): Promise<void> {
   const config = await loadConfig({ model, budgetUsd });
   // --continue / -c → โหลด conversation ล่าสุดเข้า REPL (เดิม resume ได้แค่ headless)
   const initialHistory =
-    argv.includes('--continue') || argv.includes('-c') ? (await latestSession())?.messages : undefined;
+    argv.includes('--continue') || argv.includes('-c') || argv.includes('--continue-any')
+      ? (await latestSession(argv.includes('--continue-any') ? null : process.cwd()))?.messages
+      : undefined;
   const { startRepl } = await import('./ui/render.js');
   startRepl({
     initialModel: config.model,

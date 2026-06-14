@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { appHomePath, appProjectPath, BRAND } from './brand.js';
+import { projectTrustStatus } from './trust.js';
 
-export const CONFIG_DIR = join(homedir(), '.sanook');
+export const CONFIG_DIR = appHomePath();
 const CONFIG_PATH = join(CONFIG_DIR, 'config.json');
 const AUTH_PATH = join(CONFIG_DIR, 'auth.json'); // API keys (chmod 0600)
 
@@ -14,7 +15,7 @@ export const ConfigSchema = z.object({
   budgetUsd: z.number().positive().optional(),
   maxSteps: z.number().int().positive().default(20),
   // auto = รัน tool เลย (act-first) · ask = ขออนุมัติก่อน write/bash/commit
-  permissionMode: z.enum(['auto', 'ask']).default('auto'),
+  permissionMode: z.enum(['auto', 'ask']).default('ask'),
   // path ของ second-brain workspace ที่ scaffold ไว้ (sanook brain) — optional
   brainPath: z.string().optional(),
 });
@@ -30,8 +31,14 @@ async function readJson(path: string): Promise<Record<string, unknown>> {
   }
 }
 
+function sanitizeUntrustedProjectConfig(cfg: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...cfg };
+  delete out.permissionMode;
+  return out;
+}
+
 /**
- * โหลด config แบบ layered: global (~/.sanook) < project (.sanook) < CLI overrides
+ * โหลด config แบบ layered: global (~/.sanook) < project (.sanook) < env < CLI overrides
  * merge raw ทุกชั้นก่อน แล้ว validate zod ทีเดียวที่ merged สุดท้าย
  * (config flat — shallow merge พอ; strip undefined ใน overrides กัน override ทับ default)
  */
@@ -39,15 +46,19 @@ export async function loadConfig(
   overrides: Record<string, unknown> = {},
   cwd: string = process.cwd(),
 ): Promise<Config> {
-  const global = await readJson(join(homedir(), '.sanook', 'config.json'));
-  const project = await readJson(join(cwd, '.sanook', 'config.json'));
+  const global = await readJson(CONFIG_PATH);
+  const projectRaw = await readJson(appProjectPath(cwd, 'config.json'));
+  const trust = await projectTrustStatus(cwd);
+  const project = trust.trusted ? projectRaw : sanitizeUntrustedProjectConfig(projectRaw);
+  const envConfig: Record<string, unknown> = {};
+  if (process.env[BRAND.modelEnvVar]) envConfig.model = process.env[BRAND.modelEnvVar];
 
   const cleanOverrides: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(overrides)) {
     if (v !== undefined) cleanOverrides[k] = v;
   }
 
-  const merged = { ...global, ...project, ...cleanOverrides };
+  const merged = { ...global, ...project, ...envConfig, ...cleanOverrides };
   return ConfigSchema.parse(merged);
 }
 
@@ -65,14 +76,16 @@ export async function isFirstRun(): Promise<boolean> {
 export async function saveGlobalConfig(cfg: { model: string; provider?: string }): Promise<void> {
   await mkdir(CONFIG_DIR, { recursive: true });
   const existing = await readJson(CONFIG_PATH);
-  await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, ...cfg }, null, 2)}\n`);
+  await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, ...cfg }, null, 2)}\n`, { mode: 0o600 });
+  await chmod(CONFIG_PATH, 0o600).catch(() => {});
 }
 
 /** บันทึก path ของ second-brain workspace ลง global config (merge — ไม่ทับ field อื่น) */
 export async function saveBrainPath(path: string): Promise<void> {
   await mkdir(CONFIG_DIR, { recursive: true });
   const existing = await readJson(CONFIG_PATH);
-  await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, brainPath: path }, null, 2)}\n`);
+  await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, brainPath: path }, null, 2)}\n`, { mode: 0o600 });
+  await chmod(CONFIG_PATH, 0o600).catch(() => {});
 }
 
 /** อ่าน config.json ดิบ (ไม่ apply default/schema) — สำหรับ `sanook config` */
@@ -84,7 +97,8 @@ export async function readGlobalConfigRaw(): Promise<Record<string, unknown>> {
 export async function patchGlobalConfig(patch: Record<string, unknown>): Promise<void> {
   await mkdir(CONFIG_DIR, { recursive: true });
   const existing = await readJson(CONFIG_PATH);
-  await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, ...patch }, null, 2)}\n`);
+  await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, ...patch }, null, 2)}\n`, { mode: 0o600 });
+  await chmod(CONFIG_PATH, 0o600).catch(() => {});
 }
 
 /** บันทึก API key ลง ~/.sanook/auth.json (chmod 0600) + set env ทันทีสำหรับ session นี้ */
@@ -97,7 +111,7 @@ export async function saveKey(envVar: string, key: string): Promise<void> {
     /* ยังไม่มีไฟล์ */
   }
   auth[envVar] = key;
-  await writeFile(AUTH_PATH, `${JSON.stringify(auth, null, 2)}\n`);
+  await writeFile(AUTH_PATH, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
   await chmod(AUTH_PATH, 0o600); // เจ้าของอ่าน/เขียนเท่านั้น
   process.env[envVar] = key;
 }

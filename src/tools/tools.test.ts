@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { exactMatch, whitespaceFlexMatch, findMatch, editFileTool } from './edit.js';
-import { checkBash, checkWritePath } from './permission.js';
+import { checkBash, checkReadPath, checkWritePath } from './permission.js';
 import { readFileTool } from './read.js';
 import { writeFileTool } from './write.js';
 import { listDirTool } from './list.js';
@@ -52,21 +52,33 @@ describe('permission gate', () => {
   it('block git reset --hard', () => expect(checkBash('git reset --hard HEAD~2').ok).toBe(false));
   it('block git push --force', () => expect(checkBash('git push origin main --force').ok).toBe(false));
   it('allow safe cmd', () => expect(checkBash('ls -la && grep foo bar').ok).toBe(true));
-  it('block write to .env', () => expect(checkWritePath('.env').ok).toBe(false));
-  it('block write inside .git', () => expect(checkWritePath('repo/.git/config').ok).toBe(false));
-  it('block write inside node_modules', () => expect(checkWritePath('node_modules/x/y.js').ok).toBe(false));
-  it('allow normal path', () => expect(checkWritePath('src/foo.ts').ok).toBe(true));
+  it('block write to .env', async () => expect((await checkWritePath('.env')).ok).toBe(false));
+  it('block write inside .git', async () => expect((await checkWritePath('repo/.git/config')).ok).toBe(false));
+  it('block write inside .sanook', async () => expect((await checkWritePath('.sanook/hooks.json')).ok).toBe(false));
+  it('block write inside node_modules', async () => expect((await checkWritePath('node_modules/x/y.js')).ok).toBe(false));
+  it('allow normal path', async () => expect((await checkWritePath('src/foo.ts')).ok).toBe(true));
+  it('block read outside workspace by default', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'sanook-outside-'));
+    try {
+      await writeFile(join(outside, 'secret.txt'), 'nope');
+      expect((await checkReadPath(join(outside, 'secret.txt'))).ok).toBe(false);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('editFileTool (integration)', () => {
   let dir: string;
   let file: string;
   beforeEach(async () => {
+    vi.stubEnv('SANOOK_ALLOW_OUTSIDE_WORKSPACE', '1');
     dir = await mkdtemp(join(tmpdir(), 'sanook-'));
     file = join(dir, 'f.ts');
     await writeFile(file, 'const a = 1;\nconst b = 2;\nconst c = 3;\n');
   });
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await rm(dir, { recursive: true, force: true });
   });
 
@@ -108,9 +120,11 @@ describe('editFileTool (integration)', () => {
 describe('write / read / list tools', () => {
   let dir: string;
   beforeEach(async () => {
+    vi.stubEnv('SANOOK_ALLOW_OUTSIDE_WORKSPACE', '1');
     dir = await mkdtemp(join(tmpdir(), 'sanook-'));
   });
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await rm(dir, { recursive: true, force: true });
   });
 

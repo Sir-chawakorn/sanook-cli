@@ -7,10 +7,12 @@ import { join } from 'node:path';
 // ยืนยันว่า "ใช้ได้จริง" ไม่ใช่แค่ typecheck ผ่าน
 const WS = mkdtempSync(join(tmpdir(), 'sanook-ws-'));
 const HOME = mkdtempSync(join(tmpdir(), 'sanook-home-'));
+const REPO = process.cwd();
 const opt = {} as never; // tool.execute options (ไม่ใช้ใน test)
 
 beforeAll(() => {
   vi.stubEnv('HOME', HOME);
+  vi.stubEnv('SANOOK_ALLOW_OUTSIDE_WORKSPACE', '1');
 });
 afterAll(() => {
   vi.unstubAllEnvs();
@@ -116,7 +118,7 @@ describe('session store (resume)', () => {
       cwd: WS,
       messages: [{ role: 'user', content: 'hi' }],
     });
-    const latest = await latestSession();
+    const latest = await latestSession(WS);
     expect(latest?.id).toBe(id);
     expect(latest?.messages.length).toBe(1);
   });
@@ -201,7 +203,7 @@ describe('cost + compaction + git + hooks', () => {
 
   it('gitContext ใน repo จริง → branch', async () => {
     const { gitContext } = await import('./git.js');
-    const ctx = await gitContext(process.cwd());
+    const ctx = await gitContext(REPO);
     expect(ctx).toContain('branch:');
   });
 
@@ -209,6 +211,42 @@ describe('cost + compaction + git + hooks', () => {
     const { maybeWrapHooks } = await import('./hooks.js');
     const fake = { x: { execute: async () => 'ok' } } as never;
     expect(await maybeWrapHooks(fake)).toBe(fake);
+  });
+
+  it('project hooks fail closed until the project is trusted', async () => {
+    mkdirSync(join(WS, '.sanook'), { recursive: true });
+    writeFileSync(
+      join(WS, '.sanook', 'hooks.json'),
+      JSON.stringify({ PreToolUse: [{ matcher: 'x', command: 'node -e "process.exit(7)"' }] }),
+    );
+
+    const { maybeWrapHooks } = await import('./hooks.js');
+    const fake = { x: { execute: async () => 'ok' } } as never;
+    expect(await maybeWrapHooks(fake, WS)).toBe(fake);
+
+    const { trustProject } = await import('./trust.js');
+    await trustProject(WS);
+    const wrapped = (await maybeWrapHooks(fake, WS)) as unknown as { x: { execute: (input: unknown, opts: unknown) => Promise<string> } };
+    expect(await wrapped.x.execute({}, opt)).toMatch(/block|hook/i);
+  });
+
+  it('project MCP config is ignored until that project is trusted', async () => {
+    const project = join(WS, 'mcp-project');
+    mkdirSync(join(project, '.sanook'), { recursive: true });
+    writeFileSync(join(project, 'package.json'), '{}');
+    writeFileSync(
+      join(project, '.sanook', 'mcp.json'),
+      JSON.stringify({ mcpServers: { local: { command: 'node', args: ['server.js'] } } }),
+    );
+
+    const logs: string[] = [];
+    const { loadMcpConfig } = await import('./mcp.js');
+    expect(await loadMcpConfig((m) => logs.push(m), project)).toEqual({});
+    expect(logs.join('\n')).toMatch(/ข้าม|trust/);
+
+    const { trustProject } = await import('./trust.js');
+    await trustProject(project);
+    expect(await loadMcpConfig(undefined, project)).toHaveProperty('local.command', 'node');
   });
 });
 

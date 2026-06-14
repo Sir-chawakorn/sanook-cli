@@ -9,6 +9,8 @@ import { parseCommand } from '../commands.js';
 import { runAgent, type AgentEvent } from '../loop.js';
 import { saveSession, newSessionId } from '../session.js';
 import { getBrainPath, appendBrainWorklog } from '../memory.js';
+import { autoCompact, estimateTokens } from '../compaction.js';
+import { BRAND } from '../brand.js';
 import { Banner } from './banner.js';
 
 interface Turn {
@@ -26,7 +28,7 @@ export interface AppProps {
   initialHistory?: ModelMessage[];
 }
 
-export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = 'auto', initialHistory }: AppProps) {
+export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = 'ask', initialHistory }: AppProps) {
   const { exit } = useApp();
   const [history, setHistory] = useState<Turn[]>(
     initialHistory?.length
@@ -102,12 +104,19 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         msgsRef.current = [];
         return setHistory([]);
       }
+      if (cmd.action === 'compact') {
+        const before = estimateTokens(msgsRef.current);
+        msgsRef.current = autoCompact(msgsRef.current, 40_000, 20);
+        const after = estimateTokens(msgsRef.current);
+        addTurn('system', `บีบ context แล้ว: ~${before} → ~${after} tokens`);
+        return;
+      }
       if (cmd.action === 'diff') {
         void runGit(['diff', '--stat'], 'diff');
         return;
       }
       if (cmd.action === 'undo') {
-        void runGit(['stash', 'push', '-u', '-m', 'sanook /undo'], 'undo').then(() =>
+        void runGit(['stash', 'push', '-u', '-m', BRAND.undoStashMessage], 'undo').then(() =>
           addTurn('system', 'กู้คืน: git stash pop'),
         );
         return;

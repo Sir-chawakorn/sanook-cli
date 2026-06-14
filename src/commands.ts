@@ -1,4 +1,5 @@
 import { PROVIDERS, parseSpec } from './providers/registry.js';
+import { appHomePath, BRAND } from './brand.js';
 
 export interface CommandResult {
   /** true = เป็น slash command (ไม่ส่งเข้า agent) */
@@ -14,7 +15,7 @@ const HELP_TEXT = `คำสั่ง:
   /help            แสดงคำสั่งทั้งหมด
   /model [spec]    ดู/เปลี่ยน model (เช่น /model opus, /model openai:gpt-5)
   /tools           ดู tools ที่ agent ใช้ได้
-  /skills          ดูจำนวน skills (จัดการ: sanook skill list)
+  /skills          ดูจำนวน skills (จัดการ: ${BRAND.cliName} skill list)
   /diff            ดู git diff (สิ่งที่ agent แก้ในรอบนี้)
   /undo            stash การแก้ไฟล์ล่าสุด (กู้คืนด้วย git stash pop)
   /cost            ดู token + cost รอบล่าสุด
@@ -77,7 +78,7 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
     case 'tools':
       return { handled: true, message: `tools ที่ agent ใช้ได้ (+ MCP ที่ตั้งไว้):\n  ${TOOLS_LIST}` };
     case 'skills':
-      return { handled: true, message: 'skills โหลดจาก built-in + ~/.sanook/skills — จัดการด้วย "sanook skill list/add/remove"' };
+      return { handled: true, message: `skills โหลดจาก built-in + ${appHomePath('skills')} — จัดการด้วย "${BRAND.cliName} skill list/add/remove"` };
     case 'diff':
       return { handled: true, action: 'diff' };
     case 'undo':

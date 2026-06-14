@@ -1,9 +1,9 @@
 import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { appHomePath } from '../brand.js';
 
-const GATEWAY_DIR = join(homedir(), '.sanook', 'gateway');
+const GATEWAY_DIR = appHomePath('gateway');
 const TOKEN_FILE = join(GATEWAY_DIR, 'token');
 
 /** โหลด bearer token ของ gateway; ไม่มี → สร้าง 256-bit ใหม่ เก็บ chmod 600 */

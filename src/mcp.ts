@@ -1,9 +1,9 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { dynamicTool, jsonSchema, type ToolSet } from 'ai';
+import { appHomePath, appProjectPath, BRAND } from './brand.js';
+import { hasUntrustedProjectConfig, projectConfigPathIfTrusted, projectRoot } from './trust.js';
 
 // version จาก package.json (single source of truth) — กัน drift เหมือน bin.ts/banner
 const VERSION = (
@@ -126,7 +126,7 @@ class McpClient {
     await this.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
-      clientInfo: { name: 'sanook', version: VERSION },
+      clientInfo: { name: BRAND.mcpClientName, version: VERSION },
     });
     this.notify('notifications/initialized');
   }
@@ -157,15 +157,28 @@ class McpClient {
   }
 }
 
-async function loadMcpConfig(): Promise<Record<string, McpServerConfig>> {
+async function readMcpFile(path: string, merged: Record<string, McpServerConfig>): Promise<void> {
+  const cfg = JSON.parse(await readFile(path, 'utf8')) as McpConfig;
+  Object.assign(merged, cfg.mcpServers ?? {});
+}
+
+export async function loadMcpConfig(onLog?: (m: string) => void, cwd: string = process.cwd()): Promise<Record<string, McpServerConfig>> {
   const merged: Record<string, McpServerConfig> = {};
-  for (const p of [join(homedir(), '.sanook', 'mcp.json'), join(process.cwd(), '.sanook', 'mcp.json')]) {
+  try {
+    await readMcpFile(appHomePath('mcp.json'), merged);
+  } catch {
+    /* ไม่มี global config = ข้าม */
+  }
+  const root = await projectRoot(cwd);
+  const projectPath = await projectConfigPathIfTrusted('mcp.json', root);
+  if (projectPath) {
     try {
-      const cfg = JSON.parse(await readFile(p, 'utf8')) as McpConfig;
-      Object.assign(merged, cfg.mcpServers ?? {});
-    } catch {
-      /* ไม่มี config = ข้าม */
+      await readMcpFile(projectPath, merged);
+    } catch (e) {
+      onLog?.(`project MCP config อ่านไม่ได้: ${(e as Error).message}`);
     }
+  } else if (await hasUntrustedProjectConfig('mcp.json', root)) {
+    onLog?.(`project MCP config ถูกข้าม (ยังไม่ trust): ${appProjectPath(root, 'mcp.json')}`);
   }
   return merged;
 }
@@ -180,7 +193,7 @@ export function getMcpTools(onLog?: (m: string) => void): Promise<ToolSet> {
 }
 
 async function buildMcpTools(onLog?: (m: string) => void): Promise<ToolSet> {
-  const config = await loadMcpConfig();
+  const config = await loadMcpConfig(onLog);
   if (!Object.keys(config).length) return {};
   const tools: Record<string, ReturnType<typeof dynamicTool>> = {};
   const clients: McpClient[] = [];

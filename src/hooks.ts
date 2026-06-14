@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import type { ToolSet } from 'ai';
+import { appHomePath, appProjectPath, BRAND_ENV, envFlag } from './brand.js';
+import { hasUntrustedProjectConfig, projectConfigPathIfTrusted, projectRoot } from './trust.js';
 
 // hooks = รัน command ของ user ก่อน/หลัง tool (เลียน Claude Code hooks) — บังคับ lint/format/policy
 // config: ~/.sanook/hooks.json + project .sanook/hooks.json (merge)
@@ -17,16 +17,35 @@ interface HooksConfig {
   PostToolUse?: HookEntry[];
 }
 
-export async function loadHooksConfig(): Promise<HooksConfig> {
+const SAFE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR', 'APPDATA'];
+function safeEnv(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of SAFE_ENV_KEYS) {
+    const v = process.env[k];
+    if (v != null) out[k] = v;
+  }
+  return out;
+}
+
+async function readHooksFile(path: string, merged: HooksConfig): Promise<void> {
+  const cfg = JSON.parse(await readFile(path, 'utf8')) as HooksConfig;
+  if (Array.isArray(cfg.PreToolUse)) merged.PreToolUse!.push(...cfg.PreToolUse);
+  if (Array.isArray(cfg.PostToolUse)) merged.PostToolUse!.push(...cfg.PostToolUse);
+}
+
+export async function loadHooksConfig(cwd: string = process.cwd()): Promise<HooksConfig> {
   const merged: HooksConfig = { PreToolUse: [], PostToolUse: [] };
-  for (const p of [join(homedir(), '.sanook', 'hooks.json'), join(process.cwd(), '.sanook', 'hooks.json')]) {
-    try {
-      const cfg = JSON.parse(await readFile(p, 'utf8')) as HooksConfig;
-      if (Array.isArray(cfg.PreToolUse)) merged.PreToolUse!.push(...cfg.PreToolUse);
-      if (Array.isArray(cfg.PostToolUse)) merged.PostToolUse!.push(...cfg.PostToolUse);
-    } catch {
-      /* ไม่มี config = ข้าม */
-    }
+  try {
+    await readHooksFile(appHomePath('hooks.json'), merged);
+  } catch {
+    /* ไม่มี global config = ข้าม */
+  }
+  const root = await projectRoot(cwd);
+  const projectPath = await projectConfigPathIfTrusted('hooks.json', root);
+  if (projectPath) {
+    await readHooksFile(projectPath, merged);
+  } else if (await hasUntrustedProjectConfig('hooks.json', root)) {
+    /* project hook config มีอยู่แต่ยังไม่ trusted = ข้ามแบบ fail-closed */
   }
   return merged;
 }
@@ -43,7 +62,10 @@ export function matches(matcher: string, tool: string): boolean {
 /** รัน command — payload เข้า stdin (เป็น DATA ไม่ใช่ shell arg → กัน injection); command = config ของ user (trusted) */
 function runCommand(command: string, payload: unknown, timeoutMs = 10_000): Promise<{ code: number; out: string }> {
   return new Promise((resolve) => {
-    const child = spawn(command, { shell: true });
+    const child = spawn(command, {
+      shell: true,
+      env: envFlag(BRAND_ENV.hooksInheritEnv) ? process.env : safeEnv(),
+    });
     let stdout = '';
     let stderr = '';
     const timer = setTimeout(() => {
@@ -113,8 +135,8 @@ function wrapToolsWithHooks(tools: ToolSet, cfg: HooksConfig): ToolSet {
 }
 
 /** wrap tools ด้วย hooks ถ้ามี config (ไม่มี → คืน tools เดิม zero overhead) */
-export async function maybeWrapHooks(tools: ToolSet): Promise<ToolSet> {
-  const cfg = await loadHooksConfig();
+export async function maybeWrapHooks(tools: ToolSet, cwd: string = process.cwd()): Promise<ToolSet> {
+  const cfg = await loadHooksConfig(cwd);
   if (!(cfg.PreToolUse?.length || cfg.PostToolUse?.length)) return tools;
   return wrapToolsWithHooks(tools, cfg);
 }

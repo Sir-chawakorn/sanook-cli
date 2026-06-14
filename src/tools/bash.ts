@@ -6,6 +6,16 @@ import { clamp } from './util.js';
 import { checkBash } from './permission.js';
 
 const execAsync = promisify(exec);
+const SAFE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR', 'APPDATA'];
+
+function safeEnv(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of SAFE_ENV_KEYS) {
+    const v = process.env[k];
+    if (v != null) out[k] = v;
+  }
+  return out;
+}
 
 export const bashTool = tool({
   description: 'รันคำสั่ง shell (ls/grep/find/cat/test/npm ฯลฯ) เพื่อค้นหา ตรวจสอบ หรือรัน build/test',
@@ -16,7 +26,12 @@ export const bashTool = tool({
     const guard = checkBash(cmd);
     if (!guard.ok) return `BLOCKED: ${guard.reason}`;
     try {
-      const { stdout, stderr } = await execAsync(cmd, { timeout: 120_000, maxBuffer: 10 * 1024 * 1024 });
+      const { stdout, stderr } = await execAsync(cmd, {
+        cwd: process.cwd(),
+        env: safeEnv(),
+        timeout: 120_000,
+        maxBuffer: 10 * 1024 * 1024,
+      });
       const out = (stdout + (stderr ? `\n[stderr]\n${stderr}` : '')).trim();
       return clamp(out) || '(no output)';
     } catch (err) {

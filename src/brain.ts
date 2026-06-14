@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { appHomePath } from './brand.js';
 
 /** ขยาย ~ ขึ้นต้น path เป็น home dir */
 export function expandHome(p: string): string {
@@ -212,6 +213,7 @@ export async function scaffoldBrain(
 
   // 2) rich seed files (substitute placeholders)
   for (const rel of await walk(TEMPLATE_DIR)) {
+    if (rel.split('/').pop() === '_Index.md') continue; // generated จาก FOLDERS[] แล้ว ไม่ copy ซ้ำจาก template source
     const raw = await readFile(join(TEMPLATE_DIR, rel), 'utf8');
     await writeIfMissing(join(targetPath, rel), substitute(raw, cfg), created, skipped);
   }
@@ -227,7 +229,7 @@ export async function scaffoldBrain(
  * → agent อ่าน/เขียน vault ที่เพิ่ง scaffold ได้ทันที (ไม่ต้อง hand-author mcp.json)
  */
 export async function wireBrainMcp(vaultPath: string): Promise<'added' | 'exists'> {
-  const mcpPath = join(homedir(), '.sanook', 'mcp.json');
+  const mcpPath = appHomePath('mcp.json');
   let cfg: { mcpServers?: Record<string, unknown> } = {};
   try {
     cfg = JSON.parse(await readFile(mcpPath, 'utf8')) as typeof cfg;
