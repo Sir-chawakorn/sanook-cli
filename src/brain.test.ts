@@ -67,6 +67,33 @@ describe('scaffoldBrain', () => {
     expect(q).toContain('up:: [[Intake/_Index]]');
   });
 
+  it('full parity (GEMINI.md) — โฟลเดอร์ครบ + Evals/Rules seed files + _Index มี put/avoid', async () => {
+    const target = join(dir, 'vault');
+    await scaffoldBrain(target, CFG);
+    // โฟลเดอร์ที่เพิ่มให้ตรง GEMINI.md §B
+    for (const d of ['Shared/Scripts', 'Shared/Scripts-Archive', 'Shared/mcp-servers', 'Shared/Context-Packs', 'Shared/AI-Threads', 'Shared/Prompting', 'Shared/Glossary', 'Shared/Assets', '.agents/skills', '.agents/workflows', 'copilot']) {
+      expect((await stat(join(target, d))).isDirectory(), `ขาดโฟลเดอร์ ${d}`).toBe(true);
+    }
+    // seed files ที่ทำให้ frontier loops ทำงาน
+    for (const f of [
+      'Evals/failure-taxonomy.md',
+      'Evals/self-eval-rubric.md',
+      'Evals/golden-set.md',
+      'Evals/correction-pairs.md',
+      'Evals/quality-ledger.md',
+      'Runbooks/eval-loop.md',
+      'Shared/Rules/memory-write-protocol.md',
+      'Shared/Rules/review-and-staleness-policy.md',
+      'Playbooks/playbook-template.md',
+    ]) {
+      expect((await stat(join(target, f))).isFile(), `ขาด seed file ${f}`).toBe(true);
+    }
+    // _Index ละเอียด: มี put/avoid
+    const idx = await readFile(join(target, 'Projects', '_Index.md'), 'utf8');
+    expect(idx).toContain('## ใส่ที่นี่');
+    expect(idx).toContain('## ไม่ใส่ที่นี่');
+  });
+
   it('Vault Structure Map ครอบทุกโฟลเดอร์ใน FOLDERS (กัน drift) + Raw Sources มีจริง', async () => {
     const target = join(dir, 'vault');
     await scaffoldBrain(target, CFG);

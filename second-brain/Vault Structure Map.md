@@ -88,6 +88,22 @@ ai_surface: hot
 | `Shared/User-Persona/` | identity static (read-only) | บทบาท/ค่านิยม/ภาษา/timezone | สิ่งที่ AI เรียนรู้ (→User-Memory) |
 | `Shared/Provenance/` | source ledger | บรรทัด ingest ต่อแหล่ง | โน้ต derived (ใส่ `source::` แทน) |
 | `Shared/Archive/` | cold storage (ไม่ลบ) | โน้ต stale/retired ออกจาก retrieval | ของที่ยังใช้ |
+| `Shared/Scripts/` | automation maintenance | lint/graph-audit/metrics script | one-off retired (→Scripts-Archive) |
+| `Shared/Scripts-Archive/` | สคริปต์ one-off retired | script เก่า (ประวัติ) | script ที่ยังใช้ (→Scripts) |
+| `Shared/mcp-servers/` | vendored MCP server bundle | code/README ของ MCP server | config การต่อ (→Tech-Standards) |
+| `Shared/Context-Packs/` | full-context bundle | pack รวม context พร้อมโหลด | โน้ตเดี่ยว |
+| `Shared/Context7-Docs/` | cached lib doc (regenerable) | cache context7/lib doc | durable knowledge (→Learning) |
+| `Shared/AI-Threads/` | saved AI reasoning trail | thread review/resume/promote | durable decision (→Decision-Memory) |
+| `Shared/Prompting/` | prompt-engineering pattern | pattern การเขียน prompt | prompt asset (→Prompts) |
+| `Shared/Glossary/` | vocabulary กลาง | term + นิยาม | entity page (→Entities) |
+| `Shared/Assets/` | รูป/logo/binary | image/logo/asset | โน้ต .md |
+
+### AI agent config / vendor (root-level)
+| Folder | Role | ใส่ที่นี่ | ห้ามใส่ |
+|---|---|---|---|
+| `.agents/` `.agents/skills/` | skill folders (SKILL.md) | SKILL.md ที่ agent โหลด on-demand | prose how-to (→Runbooks) |
+| `.agents/workflows/` | workflow guides | multi-step orchestration ที่ทำซ้ำ | one-off task |
+| `copilot/` | vendor export (review/promote) | export จาก Copilot | durable (promote เข้า durable layer) |
 
 ## §3 Decision Rules (เคสกำกวม)
 

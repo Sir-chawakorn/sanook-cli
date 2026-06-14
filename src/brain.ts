@@ -40,49 +40,70 @@ export const BRAIN_DEFAULTS: Omit<BrainConfig, 'today'> = {
  * top-level parent = Home · Shared/<x> parent = Shared/_Index (Shared เองชี้ Home)
  */
 // ⚠ sync กับ second-brain/Vault Structure Map.md — แก้ role/โฟลเดอร์ ต้องแก้ทั้งสองที่ (มี test กัน drift)
-export const FOLDERS: { dir: string; role: string }[] = [
-  // Core (MVV)
-  { dir: 'Projects', role: 'workspace ของงานจริง — 1 โฟลเดอร์ = 1 โปรเจค (overview/context/current-state)' },
-  { dir: 'Sessions', role: 'flat chronological log ของงาน + checkpoint (YYYY-MM-DD-<topic>.md)' },
-  { dir: 'Intake', role: 'จุดรับของใหม่เข้า vault (raw input + task framing) ก่อนกระจายเข้าปลายทาง' },
-  { dir: 'Intake/_Quarantine', role: 'external content (web/paste) ที่ยัง untrusted — scan injection ก่อน promote (ดู Runbooks/ingest-quarantine)' },
-  { dir: 'Intake/Raw Sources', role: 'ต้นฉบับ external ที่ผ่าน scan แล้ว — immutable read-only, source:: ชี้มาที่นี่ได้' },
-  { dir: 'Skills', role: 'reusable unit ที่ executable + ผ่าน verification command — ไม่ใช่ prose (นั่นคือ Runbooks) ดู Shared/Rules/skills-admission' },
-  { dir: 'Runbooks', role: 'prose how-to ที่อ่านแล้วทำตามเอง (setup/deploy/maintain) — ไม่ใช่ runnable unit (นั่นคือ Skills)' },
-  { dir: 'Templates', role: 'แม่แบบโน้ต — instantiate จากที่นี่ตอนสร้างโน้ตใหม่' },
-  { dir: 'Bugs', role: 'bug report reproducible ลงวันที่ ไม่ลบ — project bug ก็มาที่นี่ (global, flat) + link กลับ project' },
-  { dir: 'Handoffs', role: 'เอกสารส่งมอบงานค้าง 1 ชิ้น (state + next steps) — snapshot ครั้งเดียว ไม่ใช่ live coordination' },
-  // Direction
-  { dir: 'Goals', role: 'north-star + objective รายไตรมาส/ปี (finite, มีวันจบ) — ไม่เก็บ live status (นั่นคือ Operating-State)' },
-  { dir: 'Areas', role: 'PARA — โดเมนงานต่อเนื่องที่ไม่มีวันจบ (brand/trading/content...)' },
-  // Knowledge pipeline
-  { dir: 'Research', role: 'finding ที่อิงแหล่งภายนอก (มี source::) + market scan + reference synthesis' },
-  { dir: 'Learning', role: 'knowledge ที่ตัวเองกลั่น/deep-dive ตาม topic (ไม่มี external source) — curated MOC' },
-  { dir: 'Distillations', role: 'หลักการ evergreen ที่กลั่นนิ่งแล้ว (เห็น ≥3 ครั้ง) — atomic' },
-  { dir: 'Retrospectives', role: 'reflection หลังงาน (event-triggered: what worked/failed)' },
-  { dir: 'Reviews', role: 'review ตาม cadence (time-triggered: weekly/monthly) + vault health' },
-  { dir: 'Traces', role: 'exploration/reasoning chain ยาว (คำถามใหญ่เกินโน้ตเดียว)' },
-  { dir: 'Prompts', role: 'prompt text/template ที่หยิบมารันได้ทันที (input ให้ LLM)' },
-  { dir: 'Acceptance', role: 'golden input→expected-output fixtures ที่ใช้ตัดสิน done/not-done — ไม่ใช่ checklist, ไม่ใช่ runner (นั่นคือ Evals)' },
-  { dir: 'Checklists', role: 'preflight/postflight gate (ticklist ก่อน-หลังลงมือ) — ไม่เก็บ expected output' },
-  // Frontier loops
-  { dir: 'Playbooks', role: 'กลยุทธ์/ลำดับการตัดสินใจที่ปรับดีขึ้นจากผลจริง (how-to-decide) — ไม่ใช่ prompt text, ไม่ใช่ runnable unit' },
-  { dir: 'Evals', role: 'quality loop ที่รัน Acceptance/golden-set แล้ว error-analysis + self-eval (runner + ผล, ไม่เก็บ case เอง)' },
-  { dir: 'Entities', role: 'canonical page ต่อ entity/person/org/concept (LLM-wiki, bi-temporal)' },
-  // Shared (สมองกลาง) — Shared/_Index เองชี้ Home
-  { dir: 'Shared', role: 'สมองกลาง: memory + rules + coordination (เข้าผ่าน AI-Context-Index)' },
-  { dir: 'Shared/Operating-State', role: 'live status/metrics ตอนนี้ (current-state + health/queue)' },
-  { dir: 'Shared/User-Memory', role: 'สิ่งที่ AI เรียนรู้เกี่ยวกับเจ้าของระหว่างทำงาน — preference/response-example (mutable)' },
-  { dir: 'Shared/Decision-Memory', role: 'การตัดสินใจที่ AI บันทึก locked (latest-wins + supersedes)' },
-  { dir: 'Shared/Memory-Inbox', role: 'candidate durable memory ที่ยังไม่ชัด/ขัดกัน — รอ promote (เคลียร์ทุก weekly)' },
-  { dir: 'Shared/Rules', role: 'กฎ operating always-on (memory/frontmatter/context-assembly/graph)' },
-  { dir: 'Shared/Tech-Standards', role: 'มาตรฐานเทคนิค (MCP/stack/DoD/verification)' },
-  { dir: 'Shared/Core-Facts', role: 'ground truth ที่เจ้าของเขียนเอง — read-only, AI ไม่ supersede/ไม่แก้' },
-  { dir: 'Shared/Coordination', role: 'live coordination ของหลาย agent พร้อมกัน (NOW.md baton + task-board + registry) — ไม่ใช่เอกสารส่งมอบ (นั่นคือ Handoffs)' },
-  { dir: 'Shared/Working-Memory', role: 'scratchpad ระหว่าง 1 task — ลบทิ้งได้หลังจบ ไม่มีวัน promote' },
-  { dir: 'Shared/User-Persona', role: 'identity profile ที่เปลี่ยนน้อยมาก (บทบาท/ค่านิยม/ภาษา/timezone) — human-owned, read-only' },
-  { dir: 'Shared/Provenance', role: 'lineage ledger — ทุก claim ชี้ source:: ได้ (ingest-log)' },
-  { dir: 'Shared/Archive', role: 'cold storage — โน้ตที่ stale/retired ออกจาก retrieval (ไม่ลบ)' },
+// full parity กับ GEMINI.md §B (vault-builder) — ทุกโฟลเดอร์มี _Index ที่บอก role + ใส่อะไร + ไม่ใส่อะไร
+interface Folder {
+  dir: string;
+  role: string;
+  put?: string; // ใส่อะไรที่นี่
+  avoid?: string; // ไม่ใส่อะไรที่นี่ (กัน routing ผิด)
+}
+export const FOLDERS: Folder[] = [
+  // ── Core (MVV) ──
+  { dir: 'Projects', role: 'workspace ของงานจริง — 1 โฟลเดอร์ = 1 โปรเจค', put: 'deliverable + overview/context/current-state ของ project', avoid: 'ความรู้ทั่วไป (→Learning) · log งาน (→Sessions)' },
+  { dir: 'Sessions', role: 'flat chronological log ของงาน (YYYY-MM-DD-<topic>.md)', put: 'session log 7 หัวข้อ + checkpoint', avoid: 'code/config · subfolder (Sessions = flat เสมอ)' },
+  { dir: 'Intake', role: 'จุดรับของใหม่เข้า vault ก่อนกระจายเข้าปลายทาง', put: 'task framing + raw input ที่รอจัด', avoid: 'durable knowledge (จัดเข้าปลายทางก่อน)' },
+  { dir: 'Intake/_Quarantine', role: 'external content (web/paste) ที่ยัง untrusted', put: 'web clip/paste/email ก่อน scan injection (ดู Runbooks/ingest-quarantine)', avoid: 'content ที่ scan ผ่านแล้ว (→Raw Sources)' },
+  { dir: 'Intake/Raw Sources', role: 'ต้นฉบับ external ที่ผ่าน scan แล้ว — immutable read-only', put: 'original หลัง scan · source:: ชี้มาที่นี่ได้', avoid: 'โน้ตที่ derived/สรุปแล้ว' },
+  { dir: 'Skills', role: 'reusable unit ที่ executable + ผ่าน verification command', put: 'script/command ที่รัน test ผ่าน (ดู Shared/Rules/skills-admission)', avoid: 'prose how-to (→Runbooks) · unverified (→Memory-Inbox)' },
+  { dir: 'Runbooks', role: 'prose how-to ที่อ่านแล้วทำตามเอง', put: 'ขั้นตอน setup/deploy/maintain + loop driver', avoid: 'runnable unit (→Skills)' },
+  { dir: 'Templates', role: 'แม่แบบโน้ต — instantiate จากที่นี่', put: 'template ไว้ instantiate (session/bug/handoff/project)', avoid: 'โน้ตจริง' },
+  { dir: 'Bugs', role: 'bug report reproducible ลงวันที่ ไม่ลบ', put: 'bug report (global flat) + link กลับ project · system/OS → Bugs/System-OS/', avoid: 'bug ที่ reproduce ไม่ได้' },
+  { dir: 'Handoffs', role: 'เอกสารส่งมอบงานค้าง 1 ชิ้น (snapshot)', put: 'state + next steps ส่งต่อ agent/session', avoid: 'live coordination (→Shared/Coordination)' },
+  // ── Direction ──
+  { dir: 'Goals', role: 'north-star + objective รายไตรมาส/ปี (finite, มีวันจบ)', put: 'objective + track progress', avoid: 'live status (→Operating-State) · โดเมนต่อเนื่อง (→Areas)' },
+  { dir: 'Areas', role: 'PARA — โดเมนงานต่อเนื่องที่ไม่มีวันจบ', put: 'brand/trading/content/products ฯลฯ', avoid: 'งานที่มีวันจบ (→Projects/Goals)' },
+  // ── Knowledge pipeline ──
+  { dir: 'Research', role: 'finding ที่อิงแหล่งภายนอก (มี source::)', put: 'สรุปอิงแหล่ง + market scan + citation', avoid: 'ความรู้ที่กลั่นเอง (→Learning)' },
+  { dir: 'Learning', role: 'knowledge ที่ตัวเองกลั่น/deep-dive ตาม topic', put: 'topic MOC ที่ไม่มี external source', avoid: 'finding อิงแหล่ง (→Research)' },
+  { dir: 'Distillations', role: 'หลักการ evergreen ที่กลั่นนิ่งแล้ว (≥3 ครั้ง) — atomic', put: 'principle ที่ reusable + นิ่งแล้ว', avoid: 'สิ่งที่ยังปรับเปลี่ยน (→Playbooks)' },
+  { dir: 'Retrospectives', role: 'reflection หลังงาน (event-triggered)', put: 'what worked/failed หลังงานเสร็จ', avoid: 'review ตามรอบเวลา (→Reviews)' },
+  { dir: 'Reviews', role: 'review ตาม cadence (time-triggered)', put: 'weekly/monthly + vault health + consolidation trace', avoid: 'reflection รายงาน (→Retrospectives)' },
+  { dir: 'Traces', role: 'exploration/reasoning chain ยาว', put: 'การสืบสวนหลายขั้น (คำถามใหญ่เกินโน้ตเดียว)', avoid: 'คำตอบสั้น (→โน้ตปกติ)' },
+  { dir: 'Prompts', role: 'prompt text/template ที่หยิบมารันได้ทันที', put: 'prompt/execution standard ต่อ task-family', avoid: 'fixtures (→Acceptance) · tactic (→Playbooks)' },
+  { dir: 'Acceptance', role: 'golden input→expected-output fixtures', put: 'case ที่ใช้ตัดสิน done/not-done', avoid: 'gate ticklist (→Checklists) · runner (→Evals)' },
+  { dir: 'Checklists', role: 'preflight/postflight gate (ticklist)', put: 'ticklist ก่อน-หลังลงมือ ต่อ task-family', avoid: 'expected output (→Acceptance)' },
+  // ── Frontier loops (self-improving) ──
+  { dir: 'Playbooks', role: 'กลยุทธ์/ลำดับการตัดสินใจที่ปรับดีขึ้นจากผลจริง (ACE)', put: 'tactic/heuristic ที่ดีขึ้นจากผล (counter [H/W])', avoid: 'prompt text (→Prompts) · runnable (→Skills)' },
+  { dir: 'Evals', role: 'quality loop (runner + ผล) — error-analysis + self-eval', put: 'failure-taxonomy/self-eval-rubric/golden-set/correction-pairs/quality-ledger', avoid: 'golden case เอง (→Acceptance)' },
+  { dir: 'Entities', role: 'canonical page ต่อ entity/person/org/concept (LLM-wiki, bi-temporal)', put: 'หน้า canonical ของ entity ที่เจอ ≥2 sessions', avoid: 'event log (→Sessions)' },
+  // ── Shared (สมองกลาง) — Shared/_Index เองชี้ Home ──
+  { dir: 'Shared', role: 'สมองกลาง: memory + rules + coordination', put: 'เข้าผ่าน AI-Context-Index', avoid: 'โน้ตงานทั่วไป' },
+  { dir: 'Shared/Operating-State', role: 'live status/metrics ตอนนี้', put: 'current-state + health/queue + workbench', avoid: 'objective (→Goals)' },
+  { dir: 'Shared/User-Memory', role: 'สิ่งที่ AI เรียนรู้เกี่ยวกับเจ้าของ (mutable)', put: 'preference/response-example/signal', avoid: 'identity static (→User-Persona)' },
+  { dir: 'Shared/Decision-Memory', role: 'การตัดสินใจที่ AI บันทึก (latest-wins + supersedes)', put: 'decision locked + เหตุผล', avoid: 'ground truth คน (→Core-Facts)' },
+  { dir: 'Shared/Memory-Inbox', role: 'candidate durable memory ที่ยังไม่ชัด/ขัดกัน', put: 'observation รอ promote (เคลียร์ทุก weekly)', avoid: 'durable ที่ชัดแล้ว (→ปลายทาง)' },
+  { dir: 'Shared/Rules', role: 'กฎ operating always-on', put: 'memory-write-protocol/frontmatter/context-assembly/formatting/staleness', avoid: 'how-to ทำงาน (→Runbooks)' },
+  { dir: 'Shared/Tech-Standards', role: 'มาตรฐานเทคนิคกลาง', put: 'MCP/stack/DoD/verification rulebook', avoid: 'กฎ memory/format (→Rules)' },
+  { dir: 'Shared/Core-Facts', role: 'ground truth ที่เจ้าของเขียนเอง (read-only, invariant)', put: 'protected-facts ที่ AI ห้ามแก้/supersede', avoid: 'decision ที่ AI ตัด (→Decision-Memory)' },
+  { dir: 'Shared/Coordination', role: 'live coordination ของหลาย agent พร้อมกัน', put: 'NOW.md baton + task-board + agent-registry', avoid: 'เอกสารส่งมอบครั้งเดียว (→Handoffs)' },
+  { dir: 'Shared/Working-Memory', role: 'scratchpad ระหว่าง 1 task (ลบทิ้งได้)', put: 'ของชั่วคราวระหว่างทำงาน', avoid: 'อะไรที่จะเก็บ (→Memory-Inbox)' },
+  { dir: 'Shared/User-Persona', role: 'identity profile ที่เปลี่ยนน้อยมาก (human-owned)', put: 'บทบาท/ค่านิยม/ภาษา/timezone (read-only)', avoid: 'สิ่งที่ AI เรียนรู้ (→User-Memory)' },
+  { dir: 'Shared/Provenance', role: 'lineage ledger — ทุก claim ชี้ source:: ได้', put: 'บรรทัด ingest ต่อแหล่ง (ingest-log)', avoid: 'โน้ต derived (ใส่ source:: แทน)' },
+  { dir: 'Shared/Archive', role: 'cold storage (ไม่ลบ)', put: 'โน้ต stale/retired ที่ออกจาก retrieval', avoid: 'ของที่ยังใช้' },
+  { dir: 'Shared/Scripts', role: 'automation maintenance (lint/graph audit/metrics)', put: 'สคริปต์ maintenance ที่รันจริง', avoid: 'one-off ที่ retired (→Scripts-Archive)' },
+  { dir: 'Shared/Scripts-Archive', role: 'สคริปต์ one-off ที่ retired', put: 'script เก่าเก็บเป็นประวัติ', avoid: 'script ที่ยังใช้ (→Scripts)' },
+  { dir: 'Shared/mcp-servers', role: 'vendored local MCP server bundle (code/README)', put: 'โค้ด/README ของ MCP server (config อยู่ Tech-Standards)', avoid: 'config การต่อ (→Tech-Standards/mcp.json)' },
+  { dir: 'Shared/Context-Packs', role: 'full-context bundle ต่อ domain/task-type', put: 'pack รวม context พร้อมโหลด', avoid: 'โน้ตเดี่ยว (→ปลายทางปกติ)' },
+  { dir: 'Shared/Context7-Docs', role: 'cached external lib doc (regenerable — gitignore)', put: 'cache ของ context7/lib doc', avoid: 'durable knowledge (→Learning/Research)' },
+  { dir: 'Shared/AI-Threads', role: 'saved AI reasoning/conversation trail (ไม่ใช่ source of truth)', put: 'thread ที่เก็บไว้ review/resume/promote', avoid: 'durable decision (promote → Decision-Memory)' },
+  { dir: 'Shared/Prompting', role: 'prompt-engineering pattern (style/structure)', put: 'pattern การเขียน prompt ที่ reuse', avoid: 'prompt asset ต่อ task (→Prompts)' },
+  { dir: 'Shared/Glossary', role: 'vocabulary กลาง (routes ไป category pages)', put: 'term + นิยาม กลาง', avoid: 'entity page (→Entities)' },
+  { dir: 'Shared/Assets', role: 'รูป/logo/binary ของ vault', put: 'image/logo/asset', avoid: 'โน้ต .md' },
+  // ── AI agent config / vendor exports ──
+  { dir: '.agents', role: 'agent-specific assets (skills/workflows) ของ vault นี้', put: 'skill + workflow guide ที่ agent ใช้', avoid: 'โน้ตงาน (→ปลายทางปกติ)' },
+  { dir: '.agents/skills', role: 'skill folders (SKILL.md) ที่ agent โหลด on-demand', put: 'SKILL.md ต่อ skill', avoid: 'prose how-to (→Runbooks)' },
+  { dir: '.agents/workflows', role: 'workflow guide (multi-step orchestration)', put: 'workflow ที่ทำซ้ำได้', avoid: 'one-off task' },
+  { dir: 'copilot', role: 'vendor export (conversation/custom-prompt/memory snapshot) — review/promote, ไม่ใช่ source of truth', put: 'export จาก Copilot ที่เก็บใน-vault', avoid: 'durable (promote เข้า durable layer)' },
 ];
 
 /** แทน {{KEY}} ด้วยค่าจริงจาก config */
@@ -101,11 +122,11 @@ export function substitute(text: string, cfg: BrainConfig): string {
   return text.replace(/\{\{(\w+)\}\}/g, (whole, key: string) => (key in map ? map[key] : whole));
 }
 
-/** generate _Index.md ของโฟลเดอร์ — frontmatter + role + up:: (ตาม §18 / §B.3 rule 2-3) */
-function renderIndex(dir: string, role: string, cfg: BrainConfig): string {
-  const name = dir.split('/').pop() ?? dir;
+/** generate _Index.md ของโฟลเดอร์ — frontmatter + role + ใส่อะไร/ไม่ใส่อะไร + up:: (ตาม §18 / §B.3 rule 2-3) */
+function renderIndex(f: Folder, cfg: BrainConfig): string {
+  const name = f.dir.split('/').pop() ?? f.dir;
   // parent = _Index ของโฟลเดอร์แม่ (nested) หรือ Home (top-level)
-  const parent = dir.includes('/') ? `${dir.split('/').slice(0, -1).join('/')}/_Index` : 'Home';
+  const parent = f.dir.includes('/') ? `${f.dir.split('/').slice(0, -1).join('/')}/_Index` : 'Home';
   const tag = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   return `---
 tags: [index, moc, ${tag}]
@@ -117,7 +138,15 @@ parent: "[[${parent}]]"
 
 # ${name}
 
-> ${role}
+> ${f.role}
+
+## ใส่ที่นี่
+${f.put ?? '_(ดู role ด้านบน)_'}
+
+## ไม่ใส่ที่นี่
+${f.avoid ?? '_(—)_'}
+
+> รายละเอียดทุกโฟลเดอร์ + decision rules → [[Vault Structure Map]]
 
 _(ยังว่าง — โน้ตในโฟลเดอร์นี้จะถูกลิงก์ที่นี่)_
 
@@ -175,10 +204,10 @@ export async function scaffoldBrain(
   const created: string[] = [];
   const skipped: string[] = [];
 
-  // 1) folders + generated _Index
-  for (const { dir, role } of FOLDERS) {
-    await mkdir(join(targetPath, dir), { recursive: true });
-    await writeIfMissing(join(targetPath, dir, '_Index.md'), renderIndex(dir, role, cfg), created, skipped);
+  // 1) folders + generated _Index (role + ใส่อะไร/ไม่ใส่อะไร)
+  for (const f of FOLDERS) {
+    await mkdir(join(targetPath, f.dir), { recursive: true });
+    await writeIfMissing(join(targetPath, f.dir, '_Index.md'), renderIndex(f, cfg), created, skipped);
   }
 
   // 2) rich seed files (substitute placeholders)
