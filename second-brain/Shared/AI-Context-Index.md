@@ -11,6 +11,10 @@ ai_surface: hot
 
 > **ไฟล์ที่ AI อ่านก่อนเสมอ** (§1) — ได้ context ครบในไฟล์เดียว แล้วค่อยเดินลิงก์ไปลึก
 
+## Folder Map (ของชนิดนี้เก็บที่ไหน)
+
+> **อ่านก่อนสร้าง/ย้ายโน้ตทุกครั้ง** → [[Vault Structure Map]] — แผนที่ครบ 36 โฟลเดอร์ (role + ใส่อะไร + ห้ามใส่อะไร)
+
 ## Quick Identity
 
 - เจ้าของ: **{{OWNER_NAME}}** · AI = {{AI_NAME}} ({{AI_PRONOUN}}) · ภาษา {{LANGUAGE}} · โทน {{TONE}}
@@ -32,6 +36,8 @@ ai_surface: hot
 | decision สำคัญ | [[Shared/Decision-Memory/decision-log]] |
 | ยังไม่ชัด/ขัดกัน | [[Shared/Memory-Inbox/memory-inbox]] |
 | invariant truth | [[Shared/Core-Facts/protected-facts]] |
+| entity/person/org page | `Entities/<name>.md` |
+| อื่นๆ / ไม่แน่ใจว่าโฟลเดอร์ไหน | [[Vault Structure Map]] |
 
 ## Framework Rules (โหลดตาม task — ดู CLAUDE.md §19)
 

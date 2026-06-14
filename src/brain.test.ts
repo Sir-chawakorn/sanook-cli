@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { scaffoldBrain, substitute, expandHome, BRAIN_DEFAULTS, type BrainConfig } from './brain.js';
+import { scaffoldBrain, substitute, expandHome, FOLDERS, BRAIN_DEFAULTS, type BrainConfig } from './brain.js';
 
 const CFG: BrainConfig = { ...BRAIN_DEFAULTS, ownerName: 'ปิ๊ก', aiName: 'หนู', today: '2026-06-14' };
 
@@ -65,6 +65,20 @@ describe('scaffoldBrain', () => {
     // nested _Index parent ถูก (Intake/_Quarantine → Intake/_Index)
     const q = await readFile(join(target, 'Intake', '_Quarantine', '_Index.md'), 'utf8');
     expect(q).toContain('up:: [[Intake/_Index]]');
+  });
+
+  it('Vault Structure Map ครอบทุกโฟลเดอร์ใน FOLDERS (กัน drift) + Raw Sources มีจริง', async () => {
+    const target = join(dir, 'vault');
+    await scaffoldBrain(target, CFG);
+    // central map มีจริง + เป็น root file
+    const map = await readFile(join(target, 'Vault Structure Map.md'), 'utf8');
+    // ทุกโฟลเดอร์ใน manifest ต้องถูกพูดถึงในแผนที่ (map ↔ FOLDERS sync)
+    for (const { dir: d } of FOLDERS) {
+      expect(map, `Vault Structure Map ขาดโฟลเดอร์ ${d}`).toContain(d);
+    }
+    // โฟลเดอร์ใหม่ที่ rule อื่นอ้างถึง
+    expect((await stat(join(target, 'Intake', 'Raw Sources'))).isDirectory()).toBe(true);
+    expect((await stat(join(target, 'Intake', 'Raw Sources', '_Index.md'))).isFile()).toBe(true);
   });
 
   it('แทน placeholder หมด (ไม่เหลือ {{KEY}} ของเรา) + owner ถูกแทน', async () => {

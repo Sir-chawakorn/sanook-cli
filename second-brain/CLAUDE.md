@@ -39,11 +39,13 @@
 | decision สำคัญ | `Shared/Decision-Memory/decision-log.md` |
 | session เปลี่ยน priority | `Shared/Operating-State/current-state.md` |
 | ยังไม่ชัด/ขัดกัน | `Shared/Memory-Inbox/memory-inbox.md` |
+| entity/person/org page | `Entities/<name>.md` |
+| อื่นๆ / ไม่แน่ใจว่าโฟลเดอร์ไหน | `Vault Structure Map.md` |
 
 **Merge, Don't Append** — ก่อนเขียน durable memory: search entry เดิมก่อน → เจอ → แก้ (bump `updated:`) ห้ามเพิ่มซ้ำ · ขัดกัน → เข้า Memory-Inbox
 
 ## §5 KNOWLEDGE PIPELINE
-`CAPTURE → ORGANIZE → DISTILL → EXPRESS → CONNECT` · source-linked → `Research/` · reusable pattern → `Distillations/` · reusable procedure → `Runbooks/` · **โน้ตใหม่ทุกอันต้องลิงก์กลับเข้ากราฟ** (`up::` + ≥1 inbound link)
+`CAPTURE → ORGANIZE → DISTILL → EXPRESS → CONNECT` · routing: finding มี external `source::` → `Research/` · knowledge ที่กลั่นเอง (deep-dive) → `Learning/` · หลักการ evergreen (≥3 ครั้ง) → `Distillations/` · how-to prose → `Runbooks/` · unit ที่ executable+ผ่าน test → `Skills/` (เช็ก [[Skills/_Index]] ก่อนเขียน script ใหม่) · **โน้ตใหม่ทุกอันต้องลิงก์กลับเข้ากราฟ** (`up::` + ≥1 inbound link)
 
 ## §6 PERIODIC REVIEW
 Daily: session log เฉพาะวันมีงาน · Weekly: เคลียร์ Memory-Inbox + อัปเดต current-state + promote durable · Monthly: vault health audit
@@ -76,10 +78,11 @@ Merge don't append · ลบ fact obsolete · รวม fact ซ้อน · ห
 คำสั่งตรงจากเจ้าของ > ไฟล์นี้ > local config ใน vault > folder `_rules.md` · ขัดกัน → ยึดลำดับบน · ไม่ชัด → ถาม
 
 ## §16-§18 FOLDER RULES · FRONTMATTER
-โฟลเดอร์ที่มี `_rules.md` → อ่านก่อนทำงานในนั้น · ทุกโน้ตต้องมี frontmatter: `tags` `note_type` `created` `updated` `parent` + ท้ายไฟล์ `up:: [[parent/_Index]]` · ห้ามสร้างไฟล์ที่ root (ยกเว้น Home/USER/README + agent-config)
+โฟลเดอร์ที่มี `_rules.md` → อ่านก่อนทำงานในนั้น · ทุกโน้ตต้องมี frontmatter: `tags` `note_type` `created` `updated` `parent` + ท้ายไฟล์ `up:: [[parent/_Index]]` · ห้ามสร้างไฟล์ที่ root (ยกเว้น Home/USER/README, named dashboard เช่น `Vault Structure Map.md`, + agent-config CLAUDE/GEMINI/AGENTS)
 
-## Folder Roles (ย่อ)
-`Projects` งานจริง · `Sessions` log งาน (flat) · `Shared` สมองกลาง · `Intake` รับงานดิบ · `Runbooks` how-to · `Templates` แม่แบบ · `Goals/Areas` ทิศทาง · `Research/Learning/Distillations` ความรู้ · `Skills` หน่วยที่รันได้+verified
+## Folder Roles
+**ครบ 36 โฟลเดอร์ + ใส่อะไร/ห้ามใส่อะไร → `Vault Structure Map.md`** (เข้าถึงผ่าน AI-Context-Index — อ่านก่อนสร้าง/ย้ายโน้ต)
+ย่อ: `Projects`=งานจริง · `Sessions`=log · `Shared`=สมองกลาง · `Intake`=รับงานดิบ (`_Quarantine`=untrusted, `Raw Sources`=ต้นฉบับ) · `Skills`=หน่วย verified · `Runbooks`=prose how-to · `Playbooks`=tactic · `Entities`=fact pages · `Shared/Coordination`=multi-agent baton · `Shared/Provenance`=source ledger
 
 ## §19 — Framework Rules (SOTA — โหลดตาม task)
 

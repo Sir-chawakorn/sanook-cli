@@ -13,7 +13,10 @@
 | `Shared/` | สมองกลาง — memory, rules, decisions, state |
 | `Intake/` `Runbooks/` `Templates/` `Bugs/` `Handoffs/` | core workflow |
 | `Goals/` `Areas/` | ทิศทาง (north-star + โดเมนต่อเนื่อง) |
-| `Research/` `Learning/` `Distillations/` ... | knowledge pipeline |
+| `Research/` `Learning/` `Distillations/` | knowledge pipeline |
+| `Skills/` `Playbooks/` `Evals/` `Entities/` | frontier loops (self-improving) |
+
+> รายละเอียดครบทุกโฟลเดอร์ (role + ใส่อะไร / ห้ามใส่อะไร) → **`Vault Structure Map.md`**
 
 ## ใช้ยังไง
 

@@ -16,7 +16,7 @@ parent: "[[Runbooks/_Index]]"
 1. **Route inbox** — เคลียร์ `[[Shared/Memory-Inbox/memory-inbox]]` → promote เข้า durable (User-Memory / Decision-Memory / Entities) หรือ discard · ตัดสิน op: ADD/UPDATE/DELETE/NOOP (Merge, Don't Append)
 2. **Dedup + merge** — รวมโน้ตซ้อน · เจอ fact ขัดกัน → bi-temporal supersede (ดู [[Shared/Rules/frontmatter-standard]])
 3. **Stale → Archive** — โน้ตเลย `stale_after` + ไม่ถูกแตะนาน + low-action → **flag → ถามก่อน → ย้ายเข้า `[[Shared/Archive]]`** (ออกจาก retrieval, ไม่ลบ · Core-Facts ยกเว้น)
-4. **Pattern → Playbook** — เห็น pattern ≥3 ครั้ง → promote เป็น `Playbooks/` หรือ `Distillations/`
+4. **Pattern → promote** — เห็น pattern ≥3 ครั้ง → tactic/heuristic ที่ปรับดีขึ้นเรื่อยๆ → `Playbooks/` · principle ที่กลั่นนิ่งแล้ว → `Distillations/`
 5. **Retrieval check** — รัน [[Evals/retrieval-eval]] กับงานล่าสุด → failure เข้า failure-taxonomy
 
 ## หลักการ
