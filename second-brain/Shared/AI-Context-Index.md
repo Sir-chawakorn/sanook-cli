@@ -44,6 +44,7 @@ ai_surface: hot
 - **ก่อนประกอบ context เสมอ** → [[Shared/Rules/context-assembly-policy]] (head/tail + budget, กัน context-rot)
 - ingest ของนอก → [[Runbooks/ingest-quarantine]] · fact → [[Shared/Rules/frontmatter-standard]] (bi-temporal + `source::`)
 - script ทำซ้ำ → [[Shared/Rules/skills-admission]] (Skills/) · consolidate → [[Runbooks/sleep-time-consolidation]]
+- หลาย agent ทำพร้อมกัน → อ่าน [[Shared/Coordination/NOW]] ก่อนแตะ vault · เขียน/แก้ fact → [[Shared/Rules/memory-write-protocol]] (ADD/UPDATE/DELETE/NOOP)
 
 ## Current Snapshot
 

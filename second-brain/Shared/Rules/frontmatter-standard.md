@@ -13,6 +13,16 @@ parent: "[[Shared/Rules/_Index]]"
 ## Core fields (ทุกโน้ต)
 `tags` · `note_type` · `created` · `updated` · `parent` + ท้ายไฟล์ `up:: [[parent/_Index]]`
 
+## Note Type Taxonomy (allowed values — ห้ามมั่ว type ใหม่เอง)
+- **Project:** `project-overview` `context` `current-state` `session` `index` `reference`
+- **Memory:** `user-preferences` `decision-log` `operating-state` `response-examples` `working-patterns` `success-signals`
+- **Session/Knowledge:** `session-log` `retrospective` `learning-note` `distillation` `research-note` `moc`
+- **Durable:** `durable-index` `protocol` `registry` `standard-reference`
+- **System:** `template` `rule` `glossary` `runbook` `intake` `bug-report` `handoff` `weekly-review`
+- **Dashboard:** `homepage` `projects-dashboard`
+
+> ไม่มี type ที่ตรง → ใช้ `reference` (อย่าคิด type ใหม่)
+
 ## Bi-temporal validity (fact notes: Core-Facts / Decision-Memory / Entities)
 
 | field | ความหมาย |
