@@ -94,6 +94,11 @@ gateway (อยู่ยาว 24/7 — HTTP loopback + cron):
   sanook cron list                      ดู task ทั้งหมด
   sanook cron rm <id>                   ลบ task
 
+skills (69 built-in + ติดตั้งเพิ่มได้):
+  sanook skill list                     ดู skill ทั้งหมด
+  sanook skill add <user/repo|url|path> ติดตั้ง skill จาก GitHub / URL / local
+  sanook skill remove <name>            ลบ skill ที่ติดตั้ง
+
 flags:
   -m, --model <spec>   sonnet/opus/haiku/fable · gpt/codex · gemini · grok · deepseek · mistral · groq · ollama/lmstudio
                        or "provider:model-id" (e.g. openai:gpt-5-codex, groq:fast, google:gemini-2.5-flash)
@@ -195,6 +200,49 @@ async function runCron(args: string[]): Promise<void> {
   process.exit(1);
 }
 
+/** sanook skill list | add <source> | remove <name> */
+async function runSkill(args: string[]): Promise<void> {
+  const [action, ...rest] = args;
+
+  if (action === 'add') {
+    const source = rest[0];
+    if (!source) {
+      console.error('ใช้: sanook skill add <github "user/repo" | URL ของ SKILL.md | local path>');
+      process.exit(1);
+    }
+    console.error(`${DIM}⚠ skill = instruction ที่ AI จะทำตาม — ติดตั้งจาก source ที่เชื่อถือเท่านั้น${RESET}`);
+    const { installSkill } = await import('./skill-install.js');
+    try {
+      const installed = await installSkill(source, (m) => process.stderr.write(`${DIM}${m}${RESET}\n`));
+      console.log(`ติดตั้ง ${installed.length} skill: ${installed.map((s) => s.name).join(', ')}`);
+    } catch (e) {
+      console.error(`ติดตั้งไม่สำเร็จ: ${redactKey((e as Error).message)}`);
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (action === 'remove' || action === 'rm') {
+    if (!rest[0]) {
+      console.error('ใช้: sanook skill remove <name>');
+      process.exit(1);
+    }
+    const { removeInstalledSkill } = await import('./skill-install.js');
+    const ok = await removeInstalledSkill(rest[0]);
+    console.log(ok ? `ลบ skill ${rest[0]} แล้ว` : `ไม่เจอ skill ${rest[0]} ที่ติดตั้งไว้ (bundled ลบไม่ได้)`);
+    return;
+  }
+
+  // list (default)
+  const { loadSkills } = await import('./skills.js');
+  const skills = await loadSkills();
+  console.log(`${skills.length} skills:`);
+  for (const s of skills) {
+    const d = s.description.length > 72 ? `${s.description.slice(0, 72)}…` : s.description;
+    console.log(`  ${s.name}  —  ${d}`);
+  }
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv.includes('-v') || argv.includes('--version')) {
@@ -216,6 +264,9 @@ async function main(): Promise<void> {
   if (argv[0] === 'serve' && (argv.length === 1 || argv[1].startsWith('--'))) return runServe(argv.slice(1));
   if (argv[0] === 'cron' && ['add', 'list', 'rm', 'remove', undefined].includes(argv[1])) {
     return runCron(argv.slice(1));
+  }
+  if (argv[0] === 'skill' && ['list', 'add', 'remove', 'rm', undefined].includes(argv[1])) {
+    return runSkill(argv.slice(1));
   }
 
   const { model, budget, json, prompt, planMode } = parseArgs(argv);
