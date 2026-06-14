@@ -60,7 +60,7 @@ export async function startGateway(opts: GatewayOpts): Promise<() => void> {
       allowedChatIds: parseAllowedChats(process.env.TELEGRAM_ALLOWED_CHATS),
       onLog: log,
     });
-    log('Telegram: long-polling เริ่มแล้ว');
+    // หมายเหตุ: log "เริ่มแล้ว" อยู่ใน startTelegram (success path) — ถ้า fail-closed จะ log "ไม่เริ่ม" แทน
   }
 
   log(`scheduler tick ทุก ${(opts.tickMs ?? 60_000) / 1000}s · token: ~/.sanook/gateway/token (chmod 600)`);

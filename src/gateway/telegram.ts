@@ -60,6 +60,7 @@ export function startTelegram(opts: TelegramOpts): () => void {
     opts.onLog?.('⛔ Telegram ไม่เริ่ม: ต้องตั้ง TELEGRAM_ALLOWED_CHATS (chat id ที่อนุญาต) — remote surface นี้รัน bash/แก้ไฟล์ได้');
     return () => {};
   }
+  opts.onLog?.(`Telegram: long-polling เริ่มแล้ว (allowlist ${opts.allowedChatIds.length} chat)`);
   const ctrl = new AbortController();
   let stopped = false;
   const running = new Set<number>(); // กัน flood: 1 chat = 1 งานพร้อมกัน
