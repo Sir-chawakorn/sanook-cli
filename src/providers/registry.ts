@@ -84,7 +84,7 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
       smart: 'gpt-5.5',
       fast: 'gpt-5.4-mini',
       gpt: 'gpt-5.5',
-      codex: 'gpt-5-codex', // coding-tuned, เรียกผ่าน OpenAI API ปกติ
+      codex: 'gpt-5.3-codex', // coding-tuned (gpt-5-codex deprecated มิ.ย. 2026 — doc audit); เรียกผ่าน OpenAI API ปกติ
     },
     create: (key, baseURL) => createOpenAI({ apiKey: key, baseURL }),
     note: 'Bearer key. org/project ผ่าน env. ห้าม reuse ChatGPT/Codex OAuth',
@@ -95,7 +95,8 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     envVar: 'DEEPSEEK_API_KEY',
     requiresKey: true,
     keyFormat: null, // opaque sk- → ข้าม format check
-    models: { default: 'deepseek-chat', smart: 'deepseek-reasoner', fast: 'deepseek-chat' },
+    // V4 ids (doc audit มิ.ย. 2026): deepseek-chat/deepseek-reasoner เลิกใช้ 2026-07-24 → redirect มา V4 (dual thinking-mode)
+    models: { default: 'deepseek-v4-flash', smart: 'deepseek-v4-pro', fast: 'deepseek-v4-flash' },
     create: (key) => createDeepSeek({ apiKey: key }),
   },
   xai: {
@@ -104,7 +105,8 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     envVar: 'XAI_API_KEY',
     requiresKey: true,
     keyFormat: /^xai-[A-Za-z0-9]{16,}$/,
-    models: { default: 'grok-4', smart: 'grok-4', grok: 'grok-4' },
+    // grok-4 (snapshot grok-4-0709) retired 2026-05-15 → redirect grok-4.3 (doc audit มิ.ย. 2026)
+    models: { default: 'grok-4.3', smart: 'grok-4.3', grok: 'grok-4.3' },
     create: (key) => createXai({ apiKey: key }),
   },
   mistral: {
@@ -169,16 +171,18 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
   },
   glm: {
     id: 'glm',
-    label: 'GLM (Zhipu AI)',
+    label: 'GLM (z.ai / Zhipu Coding Plan)',
     envVar: 'ZHIPU_API_KEY',
     envFallbacks: ['ZAI_API_KEY', 'GLM_API_KEY'],
-    baseURL: 'https://api.z.ai/api/paas/v4',
+    // Coding Plan (subscription) ใช้ Anthropic Messages API — เหมือนที่ต่อกับ Claude Code.
+    // pay-as-you-go /paas/v4 (OpenAI-compat) มีแค่ glm-4.5-flash ฟรี ที่เหลือ 429 ถ้าไม่มี balance
+    baseURL: 'https://api.z.ai/api/anthropic/v1',
     requiresKey: true,
-    keyFormat: null, // opaque
-    models: { default: 'glm-4.6', smart: 'glm-4.7', glm: 'glm-4.6' },
+    keyFormat: null, // opaque ({id}.{secret})
+    models: { default: 'glm-4.6', smart: 'glm-5.1', air: 'glm-4.5-air', glm: 'glm-4.6' },
     create: (key, baseURL) =>
-      createOpenAICompatible({ name: 'glm', apiKey: key, baseURL: baseURL ?? 'https://api.z.ai/api/paas/v4' }),
-    note: 'OpenAI-compat /api/paas/v4. data จีน. GLM_BASE_URL override (intl ↔ open.bigmodel.cn/api/paas/v4)',
+      createAnthropic({ apiKey: key, baseURL: baseURL ?? 'https://api.z.ai/api/anthropic/v1' }),
+    note: 'z.ai Coding Plan ผ่าน Anthropic Messages API. GLM_BASE_URL override → open.bigmodel.cn/api/anthropic/v1 (จีน)',
   },
 
   // ── Delegate: OpenAI Codex ผ่าน ChatGPT plan quota (wrap official codex CLI, ToS-safe) ──
