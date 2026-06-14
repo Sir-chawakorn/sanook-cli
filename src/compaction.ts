@@ -2,6 +2,7 @@ import type { ModelMessage } from 'ai';
 
 const TRUNC_HEAD = 400;
 const TRUNC_TAIL = 600;
+const CHARS_PER_TOKEN = 4; // ประมาณคร่าวๆ (จริง ~3.5-4 ต่อ token)
 
 /** ตัดข้อความยาว เก็บหัว (intent) + ท้าย (error/result) */
 export function truncateText(s: string): string {
@@ -37,4 +38,50 @@ export function pruneToolResults(messages: ModelMessage[], keepTail = 4): ModelM
       }),
     } as ModelMessage;
   });
+}
+
+/** ประมาณ token ของ conversation (chars/4) — ไม่เป๊ะแต่พอใช้ตัดสิน compact */
+export function estimateTokens(messages: ModelMessage[]): number {
+  let chars = 0;
+  for (const m of messages) {
+    if (typeof m.content === 'string') {
+      chars += m.content.length;
+    } else if (Array.isArray(m.content)) {
+      for (const part of m.content as Record<string, unknown>[]) {
+        if (typeof part.text === 'string') chars += part.text.length;
+        else if (
+          part.type === 'tool-result' &&
+          (part.output as { type?: string; value?: unknown })?.type === 'text' &&
+          typeof (part.output as { value?: unknown }).value === 'string'
+        ) {
+          chars += ((part.output as { value: string }).value).length;
+        } else {
+          chars += JSON.stringify(part).length;
+        }
+      }
+    }
+  }
+  return Math.ceil(chars / CHARS_PER_TOKEN);
+}
+
+/**
+ * auto-compact (zero LLM cost) — กัน context overflow ในงานยาว:
+ * 1) ถ้า token ≤ limit → คืนเดิม (no-op)
+ * 2) prune tool results เต็ม (transcript = token ส่วนใหญ่)
+ * 3) ยังเกิน → sliding window: เก็บ user แรก (intent) + N message ล่าสุด, ตัดกลาง + marker
+ */
+export function autoCompact(messages: ModelMessage[], tokenLimit: number, keepRecent = 20): ModelMessage[] {
+  if (estimateTokens(messages) <= tokenLimit) return messages;
+
+  const pruned = pruneToolResults(messages, 2);
+  if (estimateTokens(pruned) <= tokenLimit) return pruned;
+
+  if (pruned.length <= keepRecent + 1) return pruned;
+  const firstUser = pruned.find((m) => m.role === 'user');
+  const recent = pruned.slice(-keepRecent);
+  const marker: ModelMessage = {
+    role: 'user',
+    content: '[บทสนทนาเก่าถูกตัดออกเพื่อประหยัด context — รายละเอียดดูได้จาก memory/session]',
+  };
+  return firstUser && !recent.includes(firstUser) ? [firstUser, marker, ...recent] : [marker, ...recent];
 }

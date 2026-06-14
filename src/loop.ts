@@ -9,7 +9,10 @@ import { agentContext } from './agentContext.js';
 import { approvalContext, wrapToolsWithApproval, type ApprovalFn } from './approval.js';
 import { getMcpTools } from './mcp.js';
 import { gitContext } from './git.js';
-import { pruneToolResults } from './compaction.js';
+import { autoCompact } from './compaction.js';
+
+// auto-compact เมื่อ context ใกล้เต็ม — conservative (safe สำหรับ model 200K, เผื่อ output)
+const AUTO_COMPACT_TOKENS = 120_000;
 
 const SYSTEM = `You are Sanook, an autonomous coding agent running in a terminal.
 - Use the tools (read_file, write_file, edit_file, list_dir, glob, grep, run_bash) to inspect and modify the workspace — find files yourself instead of asking for paths.
@@ -136,7 +139,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     stopWhen: [stepCountIs(opts.maxSteps ?? 20), () => meter.overBudget],
     abortSignal: opts.signal,
     // งานยาว (tool calls เยอะ) → prune tool output เก่า กัน context บวม
-    prepareStep: ({ messages }) => (messages.length > 40 ? { messages: pruneToolResults(messages) } : {}),
+    prepareStep: ({ messages }) => {
+      const compacted = autoCompact(messages, AUTO_COMPACT_TOKENS);
+      return compacted !== messages ? { messages: compacted } : {};
+    },
     onStepFinish: ({ usage, providerMetadata }) => {
       // cacheWrite (cache creation) อยู่ใน providerMetadata แยกจาก usage.inputTokens
       const meta = providerMetadata?.anthropic as Record<string, unknown> | undefined;
