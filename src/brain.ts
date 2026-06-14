@@ -107,10 +107,8 @@ export const FOLDERS: Folder[] = [
   { dir: '.agents/skills', role: 'skill folders (SKILL.md) ที่ agent โหลด on-demand', put: 'SKILL.md ต่อ skill', avoid: 'prose how-to (→Runbooks)' },
   { dir: '.agents/workflows', role: 'workflow guide (multi-step orchestration)', put: 'workflow ที่ทำซ้ำได้', avoid: 'one-off task' },
   { dir: 'copilot', role: 'vendor export (conversation/custom-prompt/memory snapshot) — review/promote, ไม่ใช่ source of truth', put: 'export จาก Copilot ที่เก็บใน-vault', avoid: 'durable (promote เข้า durable layer)' },
-  // ── Optional / machine-local (จาก GEMINI.md §B.0; ยังมี _Index เพื่อ AI route ได้ถูก) ──
+  // ── Optional / machine-local ที่ยังเกี่ยวกับ coding workflow ──
   { dir: 'Tools', role: 'utility/tooling เฉพาะเครื่องหรือเฉพาะ vault', put: 'local helper, binary wrapper, one-off utility ที่ยังใช้อยู่', avoid: 'durable knowledge (→Learning/Runbooks) · verified executable skill (→Skills)' },
-  { dir: 'Excalidraw', role: 'ภาพวาด/diagram canvas ของ Obsidian Excalidraw', put: 'diagram source และ sketch ที่ owner/AI ใช้ประกอบงาน', avoid: 'รูป export ทั่วไป (→Shared/Assets)' },
-  { dir: 'Fonts', role: 'font assets เฉพาะ vault หรือ visual work', put: 'font files/license note ที่ใช้กับ vault/design output', avoid: 'text notes หรือ design spec (→Projects/Research)' },
 ];
 
 /** แทน {{KEY}} ด้วยค่าจริงจาก config */

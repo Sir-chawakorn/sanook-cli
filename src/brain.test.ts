@@ -86,8 +86,6 @@ describe('scaffoldBrain', () => {
       '.agents/workflows',
       'copilot',
       'Tools',
-      'Excalidraw',
-      'Fonts',
     ]) {
       expect((await stat(join(target, d))).isDirectory(), `ขาดโฟลเดอร์ ${d}`).toBe(true);
     }

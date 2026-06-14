@@ -113,8 +113,6 @@ ai_surface: hot
 | Folder | Role | ใส่ที่นี่ | ห้ามใส่ |
 |---|---|---|---|
 | `Tools/` | utility เฉพาะเครื่อง/vault | local helper, wrapper, utility ที่ยังใช้ | durable knowledge หรือ verified skill |
-| `Excalidraw/` | drawing canvas | diagram source, sketch | image export ทั่วไป (→Shared/Assets) |
-| `Fonts/` | font assets | font files/license note | text note หรือ design spec |
 
 ## §3 Decision Rules (เคสกำกวม)
 
