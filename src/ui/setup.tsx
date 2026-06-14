@@ -1,23 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
-import { Select, PasswordInput, TextInput } from '@inkjs/ui';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { Select, PasswordInput } from '@inkjs/ui';
 import { PROVIDERS } from '../providers/registry.js';
 import { listRemoteModels, mergeModelOptions } from '../providers/models.js';
-import { BRAIN_DEFAULTS } from '../brain.js';
 
 export interface SetupResult {
   provider: string;
   model: string; // "provider:modelId"
   envVar: string;
   key: string; // '' ถ้าเป็น local provider
-  brainPath?: string; // ถ้า user เลือกสร้าง second-brain ตอน first-run
+  createBrain?: boolean; // เลือกสร้าง second-brain → ต่อด้วย BrainWizard (เก็บ identity จริง)
 }
 
-type Step = 'provider' | 'key' | 'model' | 'brain-offer' | 'brain-path';
-
-const DEFAULT_BRAIN_PATH = join(homedir(), 'Documents', BRAIN_DEFAULTS.vaultName);
+type Step = 'provider' | 'key' | 'model' | 'brain-offer';
 
 /** first-run setup wizard: เลือก provider → ใส่ API key → เลือก model → เสนอสร้าง second-brain */
 export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => void }) {
@@ -31,7 +26,6 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
   const cfg = provider ? PROVIDERS[provider] : undefined;
   const providerOptions = Object.values(PROVIDERS).map((p) => ({ label: p.label, value: p.id }));
 
-  // เข้า step เลือก model → ดึงรายชื่อ model จริงจาก provider (เลือกของที่เจ้าของมี)
   useEffect(() => {
     if (step !== 'model' || !cfg) return;
     let alive = true;
@@ -45,8 +39,8 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
   }, [step, cfg, key]);
 
   const modelOptions = cfg ? mergeModelOptions(cfg, remote) : [];
-  const finish = (brainPath?: string): void =>
-    onComplete({ provider, model, envVar: cfg?.envVar ?? '', key, brainPath });
+  const finish = (createBrain?: boolean): void =>
+    onComplete({ provider, model, envVar: cfg?.envVar ?? '', key, createBrain });
 
   return (
     <Box flexDirection="column" gap={1} marginY={1}>
@@ -104,22 +98,10 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
           <Text>4. สร้าง &quot;second brain&quot; workspace (Obsidian) สำหรับจัดเก็บงาน + ความจำ AI?</Text>
           <Select
             options={[
-              { label: 'สร้างเลย — เลือกที่เก็บ', value: 'yes' },
+              { label: 'สร้างเลย — ตอบไม่กี่ข้อ (ชื่อ + ที่เก็บ)', value: 'yes' },
               { label: 'ข้ามไปก่อน (สั่ง sanook brain init ทีหลังได้)', value: 'no' },
             ]}
-            onChange={(v) => (v === 'yes' ? setStep('brain-path') : finish())}
-          />
-        </Box>
-      )}
-
-      {step === 'brain-path' && (
-        <Box flexDirection="column">
-          <Text>วางโครงสร้างไว้ที่ไหน? (Enter = default)</Text>
-          <Text color="gray">   {DEFAULT_BRAIN_PATH}</Text>
-          <TextInput
-            defaultValue={DEFAULT_BRAIN_PATH}
-            placeholder={DEFAULT_BRAIN_PATH}
-            onSubmit={(v) => finish(v.trim() || DEFAULT_BRAIN_PATH)}
+            onChange={(v) => finish(v === 'yes')}
           />
         </Box>
       )}

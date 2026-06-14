@@ -192,3 +192,26 @@ export async function scaffoldBrain(
 
   return { created, skipped };
 }
+
+/**
+ * wire filesystem MCP server ชี้ไป vault ใน ~/.sanook/mcp.json (merge — ไม่ทับ server เดิม)
+ * → agent อ่าน/เขียน vault ที่เพิ่ง scaffold ได้ทันที (ไม่ต้อง hand-author mcp.json)
+ */
+export async function wireBrainMcp(vaultPath: string): Promise<'added' | 'exists'> {
+  const mcpPath = join(homedir(), '.sanook', 'mcp.json');
+  let cfg: { mcpServers?: Record<string, unknown> } = {};
+  try {
+    cfg = JSON.parse(await readFile(mcpPath, 'utf8')) as typeof cfg;
+  } catch {
+    /* ยังไม่มีไฟล์ */
+  }
+  cfg.mcpServers ??= {};
+  if (cfg.mcpServers['second-brain']) return 'exists';
+  cfg.mcpServers['second-brain'] = {
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-filesystem', vaultPath],
+  };
+  await mkdir(dirname(mcpPath), { recursive: true });
+  await writeFile(mcpPath, `${JSON.stringify(cfg, null, 2)}\n`);
+  return 'added';
+}

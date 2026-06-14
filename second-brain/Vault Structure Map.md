@@ -30,7 +30,7 @@ ai_surface: hot
 | bug | `Bugs/` | `YYYY-MM-DD-<bug>.md` |
 | ส่งมอบงานค้าง | `Handoffs/` | |
 
-## §2 Full Reference (ครบ 36 — ใส่อะไร / ห้ามใส่)
+## §2 Full Reference (ครบทุกโฟลเดอร์ — ใส่อะไร / ห้ามใส่)
 
 ### Core
 | Folder | Role | ใส่ที่นี่ | ห้ามใส่ |

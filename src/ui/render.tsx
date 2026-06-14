@@ -8,7 +8,7 @@ export function startRepl(props: AppProps): void {
   render(<App {...props} />);
 }
 
-/** render first-run wizard → save key+config (+ optional second-brain) → resolve เมื่อเสร็จ */
+/** render first-run wizard → save key+config → (ถ้าเลือก) ต่อ BrainWizard สร้าง second-brain → resolve */
 export function startSetup(): Promise<SetupResult> {
   return new Promise((resolve) => {
     let unmount: () => void = () => {};
@@ -16,15 +16,8 @@ export function startSetup(): Promise<SetupResult> {
       void (async () => {
         if (r.key) await saveKey(r.envVar, r.key);
         await saveGlobalConfig({ model: r.model, provider: r.provider });
-        if (r.brainPath) {
-          const { scaffoldBrain, BRAIN_DEFAULTS, expandHome } = await import('../brain.js');
-          const target = expandHome(r.brainPath);
-          const today = new Date().toISOString().slice(0, 10);
-          const res = await scaffoldBrain(target, { ...BRAIN_DEFAULTS, today });
-          await saveBrainPath(target);
-          process.stdout.write(`\n✅ second-brain — ${target} (สร้าง ${res.created.length}, ข้าม ${res.skipped.length})\n`);
-        }
         unmount();
+        if (r.createBrain) await startBrainSetup(); // ถาม identity + path จริง แล้ว scaffold
         resolve(r);
       })();
     };
@@ -33,13 +26,13 @@ export function startSetup(): Promise<SetupResult> {
   });
 }
 
-/** standalone: sanook brain init (interactive) → ถาม path + ตัวตน → scaffold */
+/** standalone / first-run brain: ถาม path + ตัวตน → scaffold (personalized) + auto-wire filesystem MCP */
 export function startBrainSetup(): Promise<void> {
   return new Promise((resolve) => {
     let unmount: () => void = () => {};
     const onComplete = (a: BrainAnswers): void => {
       void (async () => {
-        const { scaffoldBrain, BRAIN_DEFAULTS, expandHome } = await import('../brain.js');
+        const { scaffoldBrain, BRAIN_DEFAULTS, expandHome, wireBrainMcp } = await import('../brain.js');
         const today = new Date().toISOString().slice(0, 10);
         const target = expandHome(a.path);
         const res = await scaffoldBrain(target, {
@@ -50,9 +43,12 @@ export function startBrainSetup(): Promise<void> {
           today,
         });
         await saveBrainPath(target);
+        const wired = await wireBrainMcp(target).catch(() => 'skip');
         unmount();
         process.stdout.write(
-          `\n✅ second-brain — ${target}\n   สร้าง ${res.created.length} · ข้าม ${res.skipped.length} (มีอยู่แล้ว ไม่ทับ)\n   เปิดใน Obsidian: Open folder as vault\n`,
+          `\n✅ second-brain — ${target}\n   สร้าง ${res.created.length} · ข้าม ${res.skipped.length} (มีอยู่แล้ว ไม่ทับ)` +
+            `\n   ${wired === 'added' ? 'wire filesystem MCP เข้า vault แล้ว (agent อ่าน/เขียนได้)' : 'MCP: มี server เดิมอยู่แล้ว (ไม่ทับ)'}` +
+            `\n   เปิดใน Obsidian: Open folder as vault\n`,
         );
         resolve();
       })();

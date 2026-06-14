@@ -319,15 +319,17 @@ async function runBrain(args: string[]): Promise<void> {
     return;
   }
 
-  const { scaffoldBrain, BRAIN_DEFAULTS, expandHome } = await import('./brain.js');
+  const { scaffoldBrain, BRAIN_DEFAULTS, expandHome, wireBrainMcp } = await import('./brain.js');
   const target = expandHome(pathArg ?? join(homedir(), 'Documents', BRAIN_DEFAULTS.vaultName));
   const today = new Date().toISOString().slice(0, 10);
   try {
     const res = await scaffoldBrain(target, { ...BRAIN_DEFAULTS, today });
     const { saveBrainPath } = await import('./config.js');
     await saveBrainPath(target);
+    const wired = await wireBrainMcp(target).catch(() => 'skip');
     console.log(`✅ second-brain — ${target}`);
     console.log(`   สร้าง ${res.created.length} ไฟล์/โฟลเดอร์ · ข้าม ${res.skipped.length} (มีอยู่แล้ว ไม่ทับ)`);
+    console.log(`   ${wired === 'added' ? 'wire filesystem MCP เข้า vault แล้ว' : 'MCP: มี server เดิม (ไม่ทับ)'}`);
     console.log(`   เปิดใน Obsidian: Open folder as vault → ${target}`);
   } catch (e) {
     console.error(`สร้างไม่สำเร็จ: ${(e as Error).message}`);

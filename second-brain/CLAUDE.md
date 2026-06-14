@@ -81,7 +81,7 @@ Merge don't append · ลบ fact obsolete · รวม fact ซ้อน · ห
 โฟลเดอร์ที่มี `_rules.md` → อ่านก่อนทำงานในนั้น · ทุกโน้ตต้องมี frontmatter: `tags` `note_type` `created` `updated` `parent` + ท้ายไฟล์ `up:: [[parent/_Index]]` · ห้ามสร้างไฟล์ที่ root (ยกเว้น Home/USER/README, named dashboard เช่น `Vault Structure Map.md`, + agent-config CLAUDE/GEMINI/AGENTS)
 
 ## Folder Roles
-**ครบ 36 โฟลเดอร์ + ใส่อะไร/ห้ามใส่อะไร → `Vault Structure Map.md`** (เข้าถึงผ่าน AI-Context-Index — อ่านก่อนสร้าง/ย้ายโน้ต)
+**ครบทุกโฟลเดอร์ + ใส่อะไร/ห้ามใส่อะไร → `Vault Structure Map.md`** (เข้าถึงผ่าน AI-Context-Index — อ่านก่อนสร้าง/ย้ายโน้ต)
 ย่อ: `Projects`=งานจริง · `Sessions`=log · `Shared`=สมองกลาง · `Intake`=รับงานดิบ (`_Quarantine`=untrusted, `Raw Sources`=ต้นฉบับ) · `Skills`=หน่วย verified · `Runbooks`=prose how-to · `Playbooks`=tactic · `Entities`=fact pages · `Shared/Coordination`=multi-agent baton · `Shared/Provenance`=source ledger
 
 ## §19 — Framework Rules (SOTA — โหลดตาม task)
