@@ -79,4 +79,15 @@ Merge don't append · ลบ fact obsolete · รวม fact ซ้อน · ห
 โฟลเดอร์ที่มี `_rules.md` → อ่านก่อนทำงานในนั้น · ทุกโน้ตต้องมี frontmatter: `tags` `note_type` `created` `updated` `parent` + ท้ายไฟล์ `up:: [[parent/_Index]]` · ห้ามสร้างไฟล์ที่ root (ยกเว้น Home/USER/README + agent-config)
 
 ## Folder Roles (ย่อ)
-`Projects` งานจริง · `Sessions` log งาน (flat) · `Shared` สมองกลาง · `Intake` รับงานดิบ · `Runbooks` how-to · `Templates` แม่แบบ · `Goals/Areas` ทิศทาง · `Research/Learning/Distillations` ความรู้
+`Projects` งานจริง · `Sessions` log งาน (flat) · `Shared` สมองกลาง · `Intake` รับงานดิบ · `Runbooks` how-to · `Templates` แม่แบบ · `Goals/Areas` ทิศทาง · `Research/Learning/Distillations` ความรู้ · `Skills` หน่วยที่รันได้+verified
+
+## §19 — Framework Rules (SOTA — โหลดตาม task)
+
+| เมื่อ | อ่าน / ทำ |
+|---|---|
+| **ก่อนประกอบ context ทุกงาน** | `Shared/Rules/context-assembly-policy.md` — สำคัญที่หัว/ท้าย ไม่ฝังกลาง · budget ~2k · identifier ก่อน body (กัน context-rot) |
+| **ingest content ภายนอก** (web/paste/email) | `Runbooks/ingest-quarantine.md` → ลง `Intake/_Quarantine/` + scan injection ก่อน promote |
+| **เขียน/แก้ fact** | `Shared/Rules/frontmatter-standard.md` — bi-temporal (`valid_from`/`invalidated_at`/`status`/`superseded_by`) แทนการทับเงียบ |
+| **claim ที่มาจากแหล่ง** | ใส่ `source::` ที่ resolve ไป `Shared/Provenance/ingest-log.md` (verification gate ต้องผ่าน) |
+| **ได้ script/หน่วยที่ทำซ้ำได้** | `Shared/Rules/skills-admission.md` → เข้า `Skills/` ต่อเมื่อรัน test ผ่าน |
+| **consolidate ความจำ (รอบ)** | `Runbooks/sleep-time-consolidation.md` — inbox→durable · stale→`Shared/Archive` · `Evals/retrieval-eval` |

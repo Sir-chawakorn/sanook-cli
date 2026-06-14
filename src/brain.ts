@@ -44,6 +44,8 @@ const FOLDERS: { dir: string; role: string }[] = [
   { dir: 'Projects', role: 'workspace ของงานจริง — 1 โฟลเดอร์ = 1 โปรเจค (overview/context/current-state)' },
   { dir: 'Sessions', role: 'flat chronological log ของงาน + checkpoint (YYYY-MM-DD-<topic>.md)' },
   { dir: 'Intake', role: 'staging ของ task framing + raw input ก่อนจัดเข้าที่' },
+  { dir: 'Intake/_Quarantine', role: 'external content (web/paste) ที่ยัง untrusted — scan injection ก่อน promote (ดู Runbooks/ingest-quarantine)' },
+  { dir: 'Skills', role: 'reusable verified unit (script/command) — เข้าได้ต่อเมื่อรัน test ผ่าน (ดู Shared/Rules/skills-admission)' },
   { dir: 'Runbooks', role: 'ขั้นตอนทำซ้ำได้ (setup/deploy/maintain) แบบ step-by-step' },
   { dir: 'Templates', role: 'แม่แบบโน้ต — instantiate จากที่นี่ตอนสร้างโน้ตใหม่' },
   { dir: 'Bugs', role: 'bug report ลงวันที่ ไม่ลบ (status frontmatter)' },
@@ -77,6 +79,8 @@ const FOLDERS: { dir: string; role: string }[] = [
   { dir: 'Shared/Coordination', role: 'multi-agent: NOW.md baton + task-board + agent-registry' },
   { dir: 'Shared/Working-Memory', role: 'scratchpad ชั่วคราวต่อ task (NOT durable)' },
   { dir: 'Shared/User-Persona', role: 'identity profile ของเจ้าของ (static)' },
+  { dir: 'Shared/Provenance', role: 'lineage ledger — ทุก claim ชี้ source:: ได้ (ingest-log)' },
+  { dir: 'Shared/Archive', role: 'cold storage — โน้ตที่ stale/retired ออกจาก retrieval (ไม่ลบ)' },
 ];
 
 /** แทน {{KEY}} ด้วยค่าจริงจาก config */
@@ -98,7 +102,8 @@ export function substitute(text: string, cfg: BrainConfig): string {
 /** generate _Index.md ของโฟลเดอร์ — frontmatter + role + up:: (ตาม §18 / §B.3 rule 2-3) */
 function renderIndex(dir: string, role: string, cfg: BrainConfig): string {
   const name = dir.split('/').pop() ?? dir;
-  const parent = dir === 'Shared' || !dir.includes('/') ? 'Home' : 'Shared/_Index';
+  // parent = _Index ของโฟลเดอร์แม่ (nested) หรือ Home (top-level)
+  const parent = dir.includes('/') ? `${dir.split('/').slice(0, -1).join('/')}/_Index` : 'Home';
   const tag = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   return `---
 tags: [index, moc, ${tag}]

@@ -44,6 +44,29 @@ describe('scaffoldBrain', () => {
     }
   });
 
+  it('SOTA upgrades — folders + rules/runbooks ใหม่มีจริง', async () => {
+    const target = join(dir, 'vault');
+    await scaffoldBrain(target, CFG);
+    for (const d of ['Skills', 'Intake/_Quarantine', 'Shared/Provenance', 'Shared/Archive']) {
+      expect((await stat(join(target, d))).isDirectory()).toBe(true);
+      expect((await stat(join(target, d, '_Index.md'))).isFile()).toBe(true);
+    }
+    for (const f of [
+      'Shared/Rules/context-assembly-policy.md',
+      'Shared/Rules/frontmatter-standard.md',
+      'Shared/Rules/skills-admission.md',
+      'Runbooks/ingest-quarantine.md',
+      'Runbooks/sleep-time-consolidation.md',
+      'Shared/Provenance/ingest-log.md',
+      'Evals/retrieval-eval.md',
+    ]) {
+      expect((await stat(join(target, f))).isFile()).toBe(true);
+    }
+    // nested _Index parent ถูก (Intake/_Quarantine → Intake/_Index)
+    const q = await readFile(join(target, 'Intake', '_Quarantine', '_Index.md'), 'utf8');
+    expect(q).toContain('up:: [[Intake/_Index]]');
+  });
+
   it('แทน placeholder หมด (ไม่เหลือ {{KEY}} ของเรา) + owner ถูกแทน', async () => {
     const target = join(dir, 'vault');
     await scaffoldBrain(target, CFG);

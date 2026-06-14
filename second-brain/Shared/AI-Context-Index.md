@@ -33,6 +33,12 @@ ai_surface: hot
 | ยังไม่ชัด/ขัดกัน | [[Shared/Memory-Inbox/memory-inbox]] |
 | invariant truth | [[Shared/Core-Facts/protected-facts]] |
 
+## Framework Rules (โหลดตาม task — ดู CLAUDE.md §19)
+
+- **ก่อนประกอบ context เสมอ** → [[Shared/Rules/context-assembly-policy]] (head/tail + budget, กัน context-rot)
+- ingest ของนอก → [[Runbooks/ingest-quarantine]] · fact → [[Shared/Rules/frontmatter-standard]] (bi-temporal + `source::`)
+- script ทำซ้ำ → [[Shared/Rules/skills-admission]] (Skills/) · consolidate → [[Runbooks/sleep-time-consolidation]]
+
 ## Current Snapshot
 
 _(อัปเดตเมื่อ priority เปลี่ยน — ดู [[Shared/Operating-State/current-state]])_
