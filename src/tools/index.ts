@@ -5,7 +5,7 @@ import { listDirTool } from './list.js';
 import { globTool, grepTool } from './search.js';
 import { bashTool } from './bash.js';
 import { rememberTool } from './remember.js';
-import { skillTool, createSkillTool } from './skill.js';
+import { skillTool, createSkillTool, findSkillsTool } from './skill.js';
 import { recallTool } from './recall.js';
 import { scheduleTaskTool, listScheduledTool, cancelScheduledTool } from './schedule.js';
 import { taskTool } from './task.js';
@@ -23,6 +23,7 @@ export const tools = {
   remember: rememberTool,
   recall: recallTool,
   skill: skillTool,
+  find_skills: findSkillsTool,
   create_skill: createSkillTool,
   schedule_task: scheduleTaskTool,
   list_scheduled: listScheduledTool,

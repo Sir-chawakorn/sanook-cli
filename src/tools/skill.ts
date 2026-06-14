@@ -1,6 +1,37 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { getSkillBody, saveSkill } from '../skills.js';
+import { getSkillBody, saveSkill, loadSkills } from '../skills.js';
+
+/** ค้น skill ที่เกี่ยวกับงาน — "skill ช่วยไปหา skill" (discovery) */
+export const findSkillsTool = tool({
+  description:
+    'ค้น skill ที่เกี่ยวกับงานนี้ — คืน skill ที่ match (จาก built-in + ที่ติดตั้งไว้). ' +
+    'ใช้ตอนเริ่มงานเพื่อดูว่ามี skill ไหนช่วยได้ ก่อนลงมือเอง แล้วโหลดด้วย skill tool',
+  inputSchema: z.object({
+    query: z.string().describe('ประเภทงาน เช่น "review code", "debug", "deploy", "เขียน test"'),
+  }),
+  execute: async ({ query }) => {
+    const terms = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length > 1);
+    const skills = await loadSkills();
+    const scored = skills
+      .map((s) => {
+        const hay = `${s.name} ${s.description} ${s.whenToUse ?? ''}`.toLowerCase();
+        return { s, score: terms.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0) };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8);
+    if (!scored.length) {
+      return `ไม่เจอ skill ตรงกับ "${query}" — มี ${skills.length} skills (ดู <available_skills>)`;
+    }
+    return `${scored
+      .map(({ s }) => `- ${s.name}: ${s.description}${s.whenToUse ? ` (ใช้เมื่อ: ${s.whenToUse})` : ''}`)
+      .join('\n')}\n\nโหลดเต็มด้วย skill tool`;
+  },
+});
 
 /** โหลด skill เต็มเมื่อ task ตรงกับ available_skills */
 export const skillTool = tool({
