@@ -103,6 +103,7 @@ skills (69 built-in + ติดตั้งเพิ่มได้):
   sanook skill list                     ดู skill ทั้งหมด
   sanook skill add <user/repo|url|path> ติดตั้ง skill จาก GitHub / URL / local
   sanook skill remove <name>            ลบ skill ที่ติดตั้ง
+  sanook models [provider]              ดู/verify model id (เทียบ provider จริงถ้ามี key)
 
 flags:
   -m, --model <spec>   sonnet/opus/haiku/fable · gpt/codex · gemini · grok · deepseek · mistral · groq · ollama/lmstudio
@@ -249,6 +250,43 @@ async function runSkill(args: string[]): Promise<void> {
   }
 }
 
+/** sanook models [provider] — ดู models + verify กับ provider จริง (flag id ที่ stale) */
+async function runModels(args: string[]): Promise<void> {
+  const { PROVIDERS } = await import('./providers/registry.js');
+  const provider = args[0];
+  if (!provider) {
+    console.log(`providers: ${Object.keys(PROVIDERS).join(' ')}`);
+    console.log('ใช้: sanook models <provider>  (ใส่ API key ใน env เพื่อ verify กับของจริง)');
+    return;
+  }
+  const cfg = PROVIDERS[provider];
+  if (!cfg) {
+    console.error(`ไม่รู้จัก provider "${provider}" — มี: ${Object.keys(PROVIDERS).join(' ')}`);
+    process.exit(1);
+  }
+  console.log(`${cfg.label} — curated (registry):`);
+  for (const [alias, id] of Object.entries(cfg.models)) console.log(`  ${alias.padEnd(10)} → ${id}`);
+
+  const { resolveKeyFromEnv } = await import('./providers/keys.js');
+  const key = resolveKeyFromEnv(cfg.envVar, cfg.envFallbacks);
+  if (!key && cfg.requiresKey) {
+    console.log(`\n(ใส่ ${cfg.envVar} เพื่อ verify model id กับ provider จริง)`);
+    return;
+  }
+  const { listRemoteModels } = await import('./providers/models.js');
+  const live = await listRemoteModels(cfg, key ?? cfg.localPlaceholderKey);
+  if (!live.length) {
+    console.log('\n(ดึง live models ไม่ได้ — endpoint/key)');
+    return;
+  }
+  console.log(`\nlive (${live.length} จาก provider):`);
+  console.log(`  ${live.slice(0, 30).join('\n  ')}${live.length > 30 ? '\n  …' : ''}`);
+  const liveSet = new Set(live);
+  const stale = [...new Set(Object.values(cfg.models))].filter((id) => !liveSet.has(id));
+  if (stale.length) console.log(`\n⚠ id ใน registry ที่ provider ไม่มีแล้ว (อาจ stale): ${stale.join(', ')}`);
+  else console.log('\n✓ ทุก curated id มีใน provider');
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv.includes('-v') || argv.includes('--version')) {
@@ -274,6 +312,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'skill' && ['list', 'add', 'remove', 'rm', undefined].includes(argv[1])) {
     return runSkill(argv.slice(1));
   }
+  if (argv[0] === 'models') return runModels(argv.slice(1));
 
   const { model, budget, json, prompt, planMode, yes } = parseArgs(argv);
   const budgetUsd = Number.isFinite(budget) ? budget : undefined;
