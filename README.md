@@ -65,6 +65,7 @@ sanook --json "..."             # JSONL output for CI / scripts
 | **Hooks** | Run your own command before/after any tool. A non-zero `PreToolUse` exit blocks the tool — enforce lint, format, or policy. |
 | **Plan mode** | `--plan` restricts the agent to read-only tools and asks it to produce a plan before touching anything. |
 | **Auto-compaction** | A token-aware sliding window keeps long sessions under the context limit with zero extra LLM cost. |
+| **Second brain** | `sanook brain init` scaffolds a structured Obsidian "second-brain" workspace (folders + `_Index` + a portable AI operating constitution) for organising work and giving the agent durable, cross-session memory. |
 
 ## Providers
 
@@ -161,6 +162,19 @@ sanook skill remove my-skill
 ```
 
 > ⚠️ A skill is an instruction the agent will follow. Install only from sources you trust.
+
+## Second brain
+
+Scaffold a structured [Obsidian](https://obsidian.md) workspace for organising your work and giving the agent a durable, cross-session memory:
+
+```bash
+sanook brain init                  # interactive — asks where + a few identity questions
+sanook brain init ~/notes/brain    # non-interactive (with --yes)
+```
+
+It creates a full folder taxonomy (`Projects/`, `Sessions/`, `Shared/` memory layer, `Goals/`, `Research/`, …), an `_Index.md` in every folder, seed memory files, and a portable AI **operating constitution** (`CLAUDE.md` / `GEMINI.md` / `AGENTS.md`) so any AI agent works with the vault consistently. The first-run setup wizard also offers to create one.
+
+Everything is **create-if-missing** — re-running never overwrites your notes. Point an Obsidian or filesystem MCP server at the workspace to let the agent read and write it.
 
 ## MCP
 

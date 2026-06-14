@@ -13,6 +13,8 @@ export const ConfigSchema = z.object({
   maxSteps: z.number().int().positive().default(20),
   // auto = รัน tool เลย (act-first) · ask = ขออนุมัติก่อน write/bash/commit
   permissionMode: z.enum(['auto', 'ask']).default('auto'),
+  // path ของ second-brain workspace ที่ scaffold ไว้ (sanook brain) — optional
+  brainPath: z.string().optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -60,7 +62,15 @@ export async function isFirstRun(): Promise<boolean> {
 /** บันทึก global config (model/provider ที่เลือกตอน setup) */
 export async function saveGlobalConfig(cfg: { model: string; provider?: string }): Promise<void> {
   await mkdir(CONFIG_DIR, { recursive: true });
-  await writeFile(CONFIG_PATH, `${JSON.stringify(cfg, null, 2)}\n`);
+  const existing = await readJson(CONFIG_PATH);
+  await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, ...cfg }, null, 2)}\n`);
+}
+
+/** บันทึก path ของ second-brain workspace ลง global config (merge — ไม่ทับ field อื่น) */
+export async function saveBrainPath(path: string): Promise<void> {
+  await mkdir(CONFIG_DIR, { recursive: true });
+  const existing = await readJson(CONFIG_PATH);
+  await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, brainPath: path }, null, 2)}\n`);
 }
 
 /** บันทึก API key ลง ~/.sanook/auth.json (chmod 0600) + set env ทันทีสำหรับ session นี้ */

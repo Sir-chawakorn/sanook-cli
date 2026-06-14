@@ -6,6 +6,8 @@ import { loadConfig, isFirstRun, loadKeysIntoEnv } from './config.js';
 import { saveSession, latestSession, newSessionId } from './session.js';
 import { closeMcp } from './mcp.js';
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
@@ -108,6 +110,9 @@ skills (69 built-in + ติดตั้งเพิ่มได้):
   sanook skill add <user/repo|url|path> ติดตั้ง skill จาก GitHub / URL / local
   sanook skill remove <name>            ลบ skill ที่ติดตั้ง
   sanook models [provider]              ดู/verify model id (เทียบ provider จริงถ้ามี key)
+
+second brain (Obsidian workspace สำหรับจัดเก็บงาน + ความจำ AI):
+  sanook brain init [path]              สร้างโครงสร้าง second-brain ที่ path (ไม่ใส่ = ถาม)
 
 flags:
   -m, --model <spec>   sonnet/opus/haiku/fable · gpt/codex · gemini · grok · deepseek · mistral · groq · ollama/lmstudio
@@ -295,6 +300,41 @@ async function runModels(args: string[]): Promise<void> {
   else console.log('\n✓ ทุก curated id มีใน provider');
 }
 
+/** sanook brain init [path] — scaffold second-brain workspace (interactive ถ้าไม่ใส่ path) */
+async function runBrain(args: string[]): Promise<void> {
+  if (args[0] !== 'init') {
+    console.log(`ใช้: sanook brain init [path]   สร้างโครงสร้าง second-brain (Obsidian vault)
+  ไม่ใส่ path → wizard ถาม path + ตัวตน
+  -y, --yes  ใช้ค่า default ทั้งหมด (ต้องระบุ path)`);
+    return;
+  }
+  const rest = args.slice(1);
+  const yes = rest.includes('-y') || rest.includes('--yes');
+  const pathArg = rest.find((a) => !a.startsWith('-'));
+
+  // interactive: ไม่มี path และไม่ --yes → render BrainWizard
+  if (!pathArg && !yes) {
+    const { startBrainSetup } = await import('./ui/render.js');
+    await startBrainSetup();
+    return;
+  }
+
+  const { scaffoldBrain, BRAIN_DEFAULTS, expandHome } = await import('./brain.js');
+  const target = expandHome(pathArg ?? join(homedir(), 'Documents', BRAIN_DEFAULTS.vaultName));
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const res = await scaffoldBrain(target, { ...BRAIN_DEFAULTS, today });
+    const { saveBrainPath } = await import('./config.js');
+    await saveBrainPath(target);
+    console.log(`✅ second-brain — ${target}`);
+    console.log(`   สร้าง ${res.created.length} ไฟล์/โฟลเดอร์ · ข้าม ${res.skipped.length} (มีอยู่แล้ว ไม่ทับ)`);
+    console.log(`   เปิดใน Obsidian: Open folder as vault → ${target}`);
+  } catch (e) {
+    console.error(`สร้างไม่สำเร็จ: ${(e as Error).message}`);
+    process.exit(1);
+  }
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv.includes('-v') || argv.includes('--version')) {
@@ -321,6 +361,7 @@ async function main(): Promise<void> {
     return runSkill(argv.slice(1));
   }
   if (argv[0] === 'models') return runModels(argv.slice(1));
+  if (argv[0] === 'brain' && ['init', undefined].includes(argv[1])) return runBrain(argv.slice(1));
 
   const { model, budget, json, prompt, planMode, yes } = parseArgs(argv);
   const budgetUsd = Number.isFinite(budget) ? budget : undefined;
