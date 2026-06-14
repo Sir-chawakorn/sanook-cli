@@ -110,8 +110,8 @@ export async function saveSkill(name: string, description: string, body: string,
 /** render รายชื่อ skill (name+desc) สำหรับ inject เข้า system prompt */
 export function renderAvailableSkills(skills: Skill[]): string {
   if (!skills.length) return '';
-  const lines = skills.map(
-    (s) => `- ${s.name}: ${s.description}${s.whenToUse ? ` — ใช้เมื่อ: ${s.whenToUse}` : ''}`,
-  );
-  return `<available_skills note="วิธีทำงานเฉพาะทาง — โหลดเต็มด้วย skill tool เมื่อ task ตรงกับ skill นั้น">\n${lines.join('\n')}\n</available_skills>`;
+  // truncate description กัน system prompt บวมเมื่อ skill เยอะ (whenToUse/body เต็มอ่านผ่าน skill/find_skills tool)
+  const trunc = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n).trimEnd()}…` : s);
+  const lines = skills.map((s) => `- ${s.name}: ${trunc(s.description, 140)}`);
+  return `<available_skills note="โหลดเต็มด้วย skill tool · ค้นด้วย find_skills เมื่อไม่แน่ใจว่าตัวไหนตรง">\n${lines.join('\n')}\n</available_skills>`;
 }
