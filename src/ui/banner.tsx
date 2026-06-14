@@ -2,9 +2,15 @@ import { Box, Text, useStdout } from 'ink';
 import Gradient from 'ink-gradient';
 import BigText from 'ink-big-text';
 import { homedir } from 'node:os';
+import { readFileSync } from 'node:fs';
 
 // gradient ของ Sanook: เขียว → ส้ม → ฟ้า (สนุก = สดใส)
 const SANOOK_GRADIENT = ['#22C55E', '#F97316', '#38BDF8'];
+
+// version จาก package.json (single source of truth) — กัน default drift เหมือน bin.ts
+const VERSION = (
+  JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }
+).version;
 
 export interface BannerProps {
   model: string;
@@ -14,7 +20,7 @@ export interface BannerProps {
 }
 
 /** welcome banner — big ASCII + gradient + info line (responsive ตามความกว้าง terminal) */
-export function Banner({ model, version = '0.2.0', account = 'BYOK', cwd }: BannerProps) {
+export function Banner({ model, version = VERSION, account = 'BYOK', cwd }: BannerProps) {
   const { stdout } = useStdout();
   const columns = stdout?.columns ?? 80;
   const dir = (cwd ?? process.cwd()).replace(homedir(), '~');
