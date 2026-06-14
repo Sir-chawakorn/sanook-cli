@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Memory routing into the vault**: `remember` now routes facts into the second-brain `Shared/Memory-Inbox`, and headless runs append a daily worklog to `Sessions/` — the agent actually writes to *your* brain.
+- **Fallback model**: if the primary model fails mid-stream (rate-limit/billing), it retries once with `config.fallbackModel`.
+- **Headless output**: `--output-format final` / `-q` prints only the answer (no tool/cost chatter) for scripting/CI.
+- **REPL**: `/diff` (git diff of the agent's changes) and `/undo` (git-stash the last edits, recoverable).
+- **`sanook config` / `sanook mcp`** management commands; fixed Codex delegate streaming (was repeating the message); added a tag-triggered npm publish workflow (`release.yml`, with provenance).
+- Tests for memory routing, the sub-agent depth guard, `cleanProviderError`, the BYOK/redaction core, and the budget cap (152 total).
+
 ## 0.4.0 — second brain, GLM Coding Plan, Telegram, hardening
 
 - **Second brain**: `sanook brain init` scaffolds a portable Obsidian "second-brain" workspace — full folder taxonomy (each with `_Index.md`), a central `Vault Structure Map.md`, seed memory files, and a portable AI operating constitution (`CLAUDE/GEMINI/AGENTS.md`). Research-backed rules: context-assembly (anti context-rot), intake quarantine + injection-scan, bi-temporal fact validity, provenance tracking, a verification-gated `Skills/` library, sleep-time consolidation. The agent now **loads the vault** into context, and `brain init` **auto-wires a filesystem MCP** to it. First-run wizard offers to create one (personalized).

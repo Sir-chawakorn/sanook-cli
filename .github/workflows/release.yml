@@ -1,0 +1,27 @@
+name: Release
+
+# auto-publish ขึ้น npm เมื่อ push tag v* (เช่น `npm version patch && git push --follow-tags`)
+# ต้องตั้ง repo secret: NPM_TOKEN = npm Automation token (Settings → Secrets → Actions)
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write # ให้ npm provenance ออก attestation ได้ (build จาก GitHub Actions OIDC)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - run: npm test
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

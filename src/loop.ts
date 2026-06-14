@@ -94,8 +94,11 @@ async function runDelegate(opts: RunAgentOptions): Promise<RunAgentResult> {
     signal: opts.signal,
     onEvent: (e) => {
       if (e.type === 'text') {
-        text = e.text ?? text;
-        opts.onEvent?.({ type: 'text', text: e.text });
+        // codex ส่ง text แบบ cumulative → forward เฉพาะส่วนใหม่ (กัน REPL/headless ต่อทั้งก้อนซ้ำ)
+        const full = e.text ?? '';
+        const delta = full.length >= text.length ? full.slice(text.length) : full;
+        text = full;
+        if (delta) opts.onEvent?.({ type: 'text', text: delta });
       } else if (e.type === 'usage') {
         opts.onEvent?.({ type: 'finish', detail: 'codex · ChatGPT quota' });
       }
