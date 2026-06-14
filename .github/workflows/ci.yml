@@ -28,3 +28,7 @@ jobs:
       - name: verify bin is executable (กัน 'permission denied')
         if: runner.os != 'Windows'
         run: test -x dist/bin.js
+      - name: smoke — bin รันได้ (--version, --help)
+        run: |
+          node dist/bin.js --version
+          node dist/bin.js --help

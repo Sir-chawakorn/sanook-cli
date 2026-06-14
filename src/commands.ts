@@ -13,10 +13,19 @@ export interface CommandResult {
 const HELP_TEXT = `คำสั่ง:
   /help            แสดงคำสั่งทั้งหมด
   /model [spec]    ดู/เปลี่ยน model (เช่น /model opus, /model openai:gpt-5)
+  /tools           ดู tools ที่ agent ใช้ได้
+  /skills          ดูจำนวน skills (จัดการ: sanook skill list)
   /cost            ดู token + cost รอบล่าสุด
   /clear           ล้าง conversation (เริ่มใหม่)
   /compact         บีบ context
   /quit            ออก`;
+
+const TOOLS_LIST = [
+  'read_file write_file edit_file list_dir glob grep run_bash',
+  'git_status git_diff git_log git_commit',
+  'remember recall · skill find_skills create_skill',
+  'schedule_task list_scheduled cancel_scheduled · task',
+].join('\n  ');
 
 export interface CommandContext {
   model: string;
@@ -63,6 +72,10 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
     case 'model':
       if (!args[0]) return { handled: true, message: modelMenu(ctx.model) };
       return { handled: true, modelChange: args[0], message: `เปลี่ยน model → ${args[0]}` };
+    case 'tools':
+      return { handled: true, message: `tools ที่ agent ใช้ได้ (+ MCP ที่ตั้งไว้):\n  ${TOOLS_LIST}` };
+    case 'skills':
+      return { handled: true, message: 'skills โหลดจาก built-in + ~/.sanook/skills — จัดการด้วย "sanook skill list/add/remove"' };
     case 'cost':
       return { handled: true, message: ctx.costSummary ?? '(ยังไม่มี usage รอบนี้)' };
     default:
