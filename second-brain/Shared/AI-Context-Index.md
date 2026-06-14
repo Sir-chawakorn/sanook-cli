@@ -1,0 +1,40 @@
+---
+tags: [index, durable-index, ai-context]
+note_type: durable-index
+created: {{DATE}}
+updated: {{DATE}}
+parent: "[[Shared/_Index]]"
+ai_surface: hot
+---
+
+# AI Context Index — Single Retrieval Path
+
+> **ไฟล์ที่ AI อ่านก่อนเสมอ** (§1) — ได้ context ครบในไฟล์เดียว แล้วค่อยเดินลิงก์ไปลึก
+
+## Quick Identity
+
+- เจ้าของ: **{{OWNER_NAME}}** · AI = {{AI_NAME}} ({{AI_PRONOUN}}) · ภาษา {{LANGUAGE}} · โทน {{TONE}}
+- Autonomy: **{{AUTONOMY}}** — ดู `CLAUDE.md` / `GEMINI.md` / `AGENTS.md`
+
+## Default Retrieval Path (อ่านตามลำดับเท่าที่ต้องการ)
+
+1. [[USER]] — เจ้าของเป็นใคร
+2. [[Shared/Operating-State/current-state]] — ตอนนี้โฟกัสอะไร
+3. [[Shared/User-Memory/user-preferences]] — ชอบ/ไม่ชอบอะไร
+4. [[Shared/Decision-Memory/decision-log]] — ตัดสินใจอะไรไปแล้ว
+5. งาน project → [[Projects/_Index]] → overview → context → current-state
+
+## Memory Routing (เจออะไร เก็บที่ไหน — §4)
+
+| สิ่งที่พบ | → |
+|---|---|
+| preference ใหม่ | [[Shared/User-Memory/user-preferences]] |
+| decision สำคัญ | [[Shared/Decision-Memory/decision-log]] |
+| ยังไม่ชัด/ขัดกัน | [[Shared/Memory-Inbox/memory-inbox]] |
+| invariant truth | [[Shared/Core-Facts/protected-facts]] |
+
+## Current Snapshot
+
+_(อัปเดตเมื่อ priority เปลี่ยน — ดู [[Shared/Operating-State/current-state]])_
+
+up:: [[Shared/_Index]]
