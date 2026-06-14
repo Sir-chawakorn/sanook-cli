@@ -13,13 +13,16 @@ export interface ApprovalCtx {
 export const approvalContext = new AsyncLocalStorage<ApprovalCtx>();
 
 // tool ที่เปลี่ยน state จริง → ต้องขออนุมัติใน ask-mode
-const MUTATE_TOOLS = new Set([
+// NOTE: ต้อง sync กับ tools ที่ mutate — มี test guard ใน approval.test.ts กันหลุด
+export const MUTATE_TOOLS = new Set([
   'write_file',
   'edit_file',
   'run_bash',
   'git_commit',
   'schedule_task',
   'cancel_scheduled',
+  'remember', // เขียน auto-memory ถาวร
+  'create_skill', // เขียน skill ถาวร
 ]);
 
 /** สรุป tool input เป็นบรรทัดเดียวให้ user ตัดสินใจ */
@@ -38,6 +41,10 @@ export function summarizeToolCall(tool: string, input: unknown): string {
       return `ตั้ง cron: ${String(i.when ?? '')} → ${String(i.task ?? '').slice(0, 40)}`;
     case 'cancel_scheduled':
       return `ยกเลิก task ${String(i.id ?? '')}`;
+    case 'remember':
+      return `จำ: ${String(i.fact ?? '').slice(0, 50)}`;
+    case 'create_skill':
+      return `สร้าง skill ${String(i.name ?? '')}`;
     default:
       return tool;
   }

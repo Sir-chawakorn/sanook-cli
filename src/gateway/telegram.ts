@@ -1,32 +1,37 @@
 import { runAgent } from '../loop.js';
 import { redactKey } from '../providers/keys.js';
 
-// Telegram channel adapter — long-polling (ไม่ต้อง public URL, เหมาะ local gateway แบบ Hermes)
-// รับข้อความ → runAgent (fresh) → ตอบกลับ. security: allowlist chat id (กันคนอื่นใช้ agent ของเรา)
+// Telegram channel adapter — long-polling (ไม่ต้อง public URL, เหมาะ local 24/7 แบบ Hermes)
+// ⚠ remote surface ที่รัน agent ได้ → security: REQUIRED allowlist (fail-closed) + private chat only +
+// per-chat rate-limit + error ไม่ leak internal. ทุกอย่าง fail-closed (ค่า default = ปฏิเสธ)
 const api = (token: string, method: string): string => `https://api.telegram.org/bot${token}/${method}`;
 
 interface TgUpdate {
   update_id: number;
-  message?: { text?: string; chat: { id: number }; from?: { username?: string } };
+  message?: {
+    text?: string;
+    chat: { id: number; type?: string };
+    from?: { id?: number; username?: string };
+  };
 }
 
 export interface TelegramOpts {
   token: string;
   model: string;
   budgetUsd?: number;
-  allowedChatIds?: number[]; // ว่าง = อนุญาตทุกคน (ไม่แนะนำ)
+  allowedChatIds?: number[]; // REQUIRED — ว่าง = ไม่ start (fail-closed)
   onLog?: (m: string) => void;
 }
 
 async function getUpdates(token: string, offset: number, signal: AbortSignal): Promise<TgUpdate[]> {
   const r = await fetch(`${api(token, 'getUpdates')}?offset=${offset}&timeout=30`, { signal });
+  if (r.status === 409) throw new Error('409: มี consumer อื่น/webhook ใช้ token นี้อยู่ (ปิดตัวอื่นก่อน หรือ deleteWebhook)');
   if (!r.ok) throw new Error(`getUpdates ${r.status}`);
   const j = (await r.json()) as { ok: boolean; result?: TgUpdate[] };
   return j.result ?? [];
 }
 
 async function sendMessage(token: string, chatId: number, text: string): Promise<void> {
-  // Telegram จำกัด 4096 ตัวอักษร/ข้อความ
   await fetch(api(token, 'sendMessage'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -34,9 +39,9 @@ async function sendMessage(token: string, chatId: number, text: string): Promise
   }).catch(() => {});
 }
 
-/** แยกว่า chat ได้รับอนุญาตไหม (allowlist) */
+/** allowlist — fail-closed: ว่าง = ปฏิเสธทุกคน (ต้องตั้ง TELEGRAM_ALLOWED_CHATS ชัดเจน) */
 export function isAllowed(chatId: number, allowed?: number[]): boolean {
-  if (!allowed || allowed.length === 0) return true; // ไม่ตั้ง = อนุญาตทุกคน
+  if (!allowed || allowed.length === 0) return false;
   return allowed.includes(chatId);
 }
 
@@ -49,13 +54,15 @@ export function parseAllowedChats(raw: string | undefined): number[] {
     .filter((n) => Number.isInteger(n));
 }
 
-/** start long-polling loop — คืน stop() */
+/** start long-polling — คืน stop(). ไม่ start ถ้าไม่มี allowlist (fail-closed) */
 export function startTelegram(opts: TelegramOpts): () => void {
+  if (!opts.allowedChatIds?.length) {
+    opts.onLog?.('⛔ Telegram ไม่เริ่ม: ต้องตั้ง TELEGRAM_ALLOWED_CHATS (chat id ที่อนุญาต) — remote surface นี้รัน bash/แก้ไฟล์ได้');
+    return () => {};
+  }
   const ctrl = new AbortController();
   let stopped = false;
-  if (!opts.allowedChatIds?.length) {
-    opts.onLog?.('⚠ Telegram: ไม่ได้ตั้ง allowlist (TELEGRAM_ALLOWED_CHATS) — ใครก็คุยกับ agent ได้');
-  }
+  const running = new Set<number>(); // กัน flood: 1 chat = 1 งานพร้อมกัน
 
   async function loop(): Promise<void> {
     let offset = 0;
@@ -65,32 +72,50 @@ export function startTelegram(opts: TelegramOpts): () => void {
         for (const u of updates) {
           offset = u.update_id + 1;
           const text = u.message?.text;
-          const chatId = u.message?.chat.id;
-          if (!text || chatId == null) continue;
-          if (!isAllowed(chatId, opts.allowedChatIds)) {
-            opts.onLog?.(`Telegram: ปฏิเสธ chat ${chatId} (ไม่อยู่ใน allowlist)`);
-            await sendMessage(opts.token, chatId, '⛔ ไม่ได้รับอนุญาตให้ใช้ bot นี้');
+          const chat = u.message?.chat;
+          if (!text || !chat) continue;
+          // private chat เท่านั้น (group id < 0 → ทุกคนในกลุ่มจะ inherit สิทธิ์ — ปฏิเสธ)
+          if (chat.type !== 'private' || chat.id < 0) {
+            opts.onLog?.(`Telegram: ปฏิเสธ non-private chat ${chat.id}`);
             continue;
           }
-          opts.onLog?.(`Telegram ${chatId}: ${text.slice(0, 50)}`);
-          await sendMessage(opts.token, chatId, '⏳ กำลังคิด…');
-          try {
-            const { text: out } = await runAgent({
-              model: opts.model,
-              prompt: text,
-              maxSteps: 20,
-              budgetUsd: opts.budgetUsd,
-              permissionMode: 'auto', // non-interactive → รันเลย (caller ผ่าน allowlist แล้ว)
-            });
-            await sendMessage(opts.token, chatId, out || '(ไม่มีผลลัพธ์)');
-          } catch (e) {
-            await sendMessage(opts.token, chatId, `เกิดข้อผิดพลาด: ${redactKey((e as Error).message)}`);
+          if (!isAllowed(chat.id, opts.allowedChatIds)) {
+            opts.onLog?.(`Telegram: ปฏิเสธ chat ${chat.id} (ไม่อยู่ใน allowlist)`);
+            await sendMessage(opts.token, chat.id, '⛔ ไม่ได้รับอนุญาตให้ใช้ bot นี้');
+            continue;
           }
+          if (running.has(chat.id)) {
+            await sendMessage(opts.token, chat.id, '⏳ กำลังทำงานก่อนหน้าอยู่ รอสักครู่');
+            continue;
+          }
+          running.add(chat.id);
+          opts.onLog?.(`Telegram ${chat.id}: ${text.slice(0, 50)}`);
+          void (async () => {
+            try {
+              await sendMessage(opts.token, chat.id, '⏳ กำลังคิด…');
+              const { text: out } = await runAgent({
+                model: opts.model,
+                prompt: text,
+                maxSteps: 20,
+                budgetUsd: opts.budgetUsd,
+                permissionMode: 'auto', // chat ผ่าน allowlist + private = trusted (เหมือน user สั่งเอง)
+              });
+              await sendMessage(opts.token, chat.id, out || '(ไม่มีผลลัพธ์)');
+            } catch (e) {
+              // ไม่ส่ง internal detail ให้ remote — log ฝั่ง server เท่านั้น
+              opts.onLog?.(`Telegram run error (${chat.id}): ${redactKey((e as Error).message)}`);
+              await sendMessage(opts.token, chat.id, 'เกิดข้อผิดพลาดภายใน');
+            } finally {
+              running.delete(chat.id);
+            }
+          })();
         }
       } catch (e) {
         if (stopped) break;
-        opts.onLog?.(`Telegram poll error: ${(e as Error).message} — รอ 5s`);
-        await new Promise((r) => setTimeout(r, 5000));
+        const msg = (e as Error).message;
+        const backoff = msg.startsWith('409') ? 30_000 : 5000; // conflict → รอยาวขึ้น
+        opts.onLog?.(`Telegram poll error: ${msg} — รอ ${backoff / 1000}s`);
+        await new Promise((r) => setTimeout(r, backoff));
       }
     }
   }

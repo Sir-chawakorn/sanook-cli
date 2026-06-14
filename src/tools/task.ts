@@ -1,6 +1,7 @@
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
 import { agentContext } from '../agentContext.js';
+import { approvalContext } from '../approval.js';
 
 // task = มอบงานย่อยให้ sub-agent ทำใน context แยก (เลียน Claude Code Task tool)
 // depth/model/budget thread ผ่าน AsyncLocalStorage (parallel-safe, ไม่ใช่ process.env)
@@ -33,10 +34,13 @@ export const taskTool = tool({
       ? entries.filter(([k]) => READ_TOOLS.includes(k))
       : entries.filter(([k]) => !SUBAGENT_EXCLUDE.includes(k));
 
+    const appr = approvalContext.getStore();
     const { text } = await runAgent({
       model: ctx?.model ?? 'sonnet', // inherit จาก main
       budgetUsd: ctx?.budgetUsd, // cap เดียวกับ main (กัน sub-agent วิ่ง uncapped)
       subagentDepth: depth + 1, // thread depth ผ่าน param — ไม่ mutate global
+      permissionMode: appr?.mode ?? 'auto', // inherit ask-mode (กัน sub-agent เลี่ยง approval)
+      approve: appr?.approve,
       prompt,
       maxSteps: 15,
       tools: Object.fromEntries(picked) as unknown as ToolSet,

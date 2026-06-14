@@ -8,9 +8,9 @@ describe('telegram allowlist (security)', () => {
     expect(parseAllowedChats('abc,12,')).toEqual([12]); // ข้ามที่ไม่ใช่เลข
   });
 
-  it('isAllowed: ไม่ตั้ง allowlist → อนุญาตทุกคน', () => {
-    expect(isAllowed(999, [])).toBe(true);
-    expect(isAllowed(999, undefined)).toBe(true);
+  it('isAllowed: ไม่ตั้ง allowlist → ปฏิเสธทุกคน (fail-closed)', () => {
+    expect(isAllowed(999, [])).toBe(false);
+    expect(isAllowed(999, undefined)).toBe(false);
   });
 
   it('isAllowed: มี allowlist → เฉพาะที่ตรง', () => {

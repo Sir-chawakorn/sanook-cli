@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wrapToolsWithApproval, approvalContext, summarizeToolCall } from './approval.js';
+import { wrapToolsWithApproval, approvalContext, summarizeToolCall, MUTATE_TOOLS } from './approval.js';
 import type { ToolSet } from 'ai';
 
 const mkTools = (): ToolSet =>
@@ -53,5 +53,31 @@ describe('approval gate', () => {
     expect(summarizeToolCall('run_bash', { cmd: 'ls -la' })).toBe('$ ls -la');
     expect(summarizeToolCall('git_commit', { message: 'fix bug' })).toContain('fix bug');
     expect(summarizeToolCall('write_file', { path: '/x.ts' })).toContain('/x.ts');
+  });
+
+  it('mutating tools ที่รู้จักถูก gate ครบ (guard — กันลืม gate ตัวใหม่)', () => {
+    for (const t of [
+      'write_file',
+      'edit_file',
+      'run_bash',
+      'git_commit',
+      'schedule_task',
+      'cancel_scheduled',
+      'remember',
+      'create_skill',
+    ]) {
+      expect(MUTATE_TOOLS.has(t)).toBe(true);
+    }
+  });
+
+  it('remember/create_skill ถูก gate (regression — เขียน state ถาวร)', async () => {
+    const w = wrapToolsWithApproval({
+      remember: { execute: async () => 'saved' },
+      create_skill: { execute: async () => 'made' },
+    } as unknown as ToolSet);
+    await approvalContext.run({ mode: 'ask', approve: async () => false }, async () => {
+      expect(await w.remember.execute!({ fact: 'x' }, {} as never)).toContain('ปฏิเสธ');
+      expect(await w.create_skill.execute!({ name: 'y' }, {} as never)).toContain('ปฏิเสธ');
+    });
   });
 });

@@ -267,6 +267,10 @@ async function runModels(args: string[]): Promise<void> {
   console.log(`${cfg.label} — curated (registry):`);
   for (const [alias, id] of Object.entries(cfg.models)) console.log(`  ${alias.padEnd(10)} → ${id}`);
 
+  if (cfg.kind === 'delegate') {
+    console.log('\n(delegate provider — ไม่มี /models endpoint; ใช้ curated id ด้านบน)');
+    return;
+  }
   const { resolveKeyFromEnv } = await import('./providers/keys.js');
   const key = resolveKeyFromEnv(cfg.envVar, cfg.envFallbacks);
   if (!key && cfg.requiresKey) {
