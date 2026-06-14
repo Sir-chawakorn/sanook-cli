@@ -2,11 +2,14 @@
 
 # Sanook CLI
 
-**A terminal AI coding agent — built from scratch in TypeScript.**
+**The open-source terminal AI coding agent that remembers across sessions.**
 
-Bring your own key, run with any of 12 model providers, and let it remember what it did across sessions.
+Bring your own key · 12 providers · MCP · a built-in **"second brain"** that gives the AI durable memory across sessions — the thing Claude Code, Codex, and Gemini CLI lose at the session boundary.
 
-[![Version](https://img.shields.io/badge/version-0.3.0-2563eb.svg)](https://github.com/Sir-chawakorn/sanook-cli/releases)
+🇹🇭 [อ่านภาษาไทย](README.th.md)
+
+[![npm](https://img.shields.io/npm/v/sanook-cli.svg?color=2563eb)](https://www.npmjs.com/package/sanook-cli)
+[![downloads](https://img.shields.io/npm/dm/sanook-cli.svg?color=2563eb)](https://www.npmjs.com/package/sanook-cli)
 [![License](https://img.shields.io/badge/license-Apache--2.0-22c55e.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
@@ -14,6 +17,9 @@ Bring your own key, run with any of 12 model providers, and let it remember what
 [![CI](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml)
 
 [Quickstart](#quickstart) · [Providers](#providers) · [Usage](#usage) · [Gateway](#gateway--scheduling) · [Skills](#skills) · [MCP](#mcp) · [Security](#security)
+
+<!-- 📹 DEMO GIF — record the close-session → reopen → "it remembered" loop (asciinema + agg), save to docs/demo.gif, then uncomment: -->
+<!-- ![sanook-cli demo](docs/demo.gif) -->
 
 </div>
 
@@ -30,6 +36,21 @@ prompt → LLM → tool call → result → loop → answer
 — wrapped with everything that makes it usable for real work: a permission gate, a memory the agent writes itself, a long-running gateway with cron and chat channels, on-demand skills, MCP servers, and first-class git awareness.
 
 It is **BYOK (bring your own key)** by design. Every provider connects with a **direct API key from that provider's own console** — Sanook never reuses OAuth or subscription credentials, because that violates provider terms and gets accounts banned.
+
+## How it compares
+
+The agent loop, BYOK, and MCP are table stakes now. What Sanook has that the big vendor CLIs don't is **memory that survives the session** — a structured Obsidian "second brain" the agent reads at the start of every run.
+
+| | **Sanook** | Claude Code | Codex CLI | Gemini CLI |
+|---|:---:|:---:|:---:|:---:|
+| Open-source | ✅ | ❌ | ✅ | ✅ |
+| Bring your own key | ✅ | — | ✅ | ✅ |
+| Providers | **12** | 1 | 1 | 1 |
+| Local models (Ollama / LM Studio) | ✅ | ❌ | ❌ | ❌ |
+| MCP | ✅ | ✅ | ✅ | ✅ |
+| **Durable cross-session memory** | ✅ | ❌ | ❌ | ❌ |
+
+On raw benchmark scores the frontier vendors win — Sanook's bet is **portability + persistent memory**, not beating Opus on SWE-bench. Use whatever fits; this one remembers.
 
 ## Quickstart
 
@@ -234,6 +255,14 @@ CI runs the suite across macOS / Linux / Windows on Node 22 and 24. Requires **N
 
 [Apache-2.0](LICENSE)
 
+---
+
 <div align="center">
+
+**Built by [Sanook AI](https://www.facebook.com/sanookai)** — AI tools & education 🇹🇭
+
+[Facebook](https://www.facebook.com/sanookai) · [X / Twitter](https://x.com/sanook_ai)
+
 <sub>Built from scratch in TypeScript on the Vercel AI SDK — no framework, no magic.</sub>
+
 </div>
