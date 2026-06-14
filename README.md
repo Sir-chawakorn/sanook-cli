@@ -10,7 +10,7 @@ Bring your own key, run with any of 12 model providers, and let it remember what
 [![License](https://img.shields.io/badge/license-Apache--2.0-22c55e.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-122%20passing-22c55e.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-143%20passing-22c55e.svg)](#development)
 [![CI](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml)
 
 [Quickstart](#quickstart) · [Providers](#providers) · [Usage](#usage) · [Gateway](#gateway--scheduling) · [Skills](#skills) · [MCP](#mcp) · [Security](#security)
@@ -223,7 +223,7 @@ Hardened across several adversarial security reviews covering command injection,
 ```bash
 npm install
 npm run build       # → dist/
-npm test            # vitest — 122 tests
+npm test            # vitest — 143 tests
 npm run typecheck   # tsc --noEmit (strict)
 npm run dev -- "…"  # run from source without building
 ```

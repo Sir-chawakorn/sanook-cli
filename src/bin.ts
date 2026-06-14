@@ -7,7 +7,8 @@ import { saveSession, latestSession, newSessionId } from './session.js';
 import { closeMcp } from './mcp.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
@@ -113,6 +114,10 @@ skills (69 built-in + ติดตั้งเพิ่มได้):
 
 second brain (Obsidian workspace สำหรับจัดเก็บงาน + ความจำ AI):
   sanook brain init [path]              สร้างโครงสร้าง second-brain ที่ path (ไม่ใส่ = ถาม)
+
+config & mcp:
+  sanook config [get|set <k> <v>]       ดู/แก้ ~/.sanook/config.json (model/budgetUsd/permissionMode)
+  sanook mcp [list|add <name> <cmd> …|remove <name>]   จัดการ MCP servers
 
 flags:
   -m, --model <spec>   sonnet/opus/haiku/fable · gpt/codex · gemini · grok · deepseek · mistral · groq · ollama/lmstudio
@@ -344,6 +349,77 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+/** sanook config [get <k> | set <k> <v>] — ดู/แก้ ~/.sanook/config.json โดยไม่ต้องแก้มือ */
+async function runConfig(args: string[]): Promise<void> {
+  const { readGlobalConfigRaw, patchGlobalConfig } = await import('./config.js');
+  const [action, key, ...rest] = args;
+  const ALLOWED = ['model', 'budgetUsd', 'permissionMode', 'brainPath'];
+  if (action === 'set') {
+    if (!key || rest.length === 0) {
+      console.error(`ใช้: sanook config set <key> <value>   (key: ${ALLOWED.join(' | ')})`);
+      process.exit(1);
+    }
+    if (!ALLOWED.includes(key)) {
+      console.error(`ตั้งได้เฉพาะ: ${ALLOWED.join(', ')}`);
+      process.exit(1);
+    }
+    const raw = rest.join(' ');
+    await patchGlobalConfig({ [key]: key === 'budgetUsd' ? Number(raw) : raw });
+    console.log(`ตั้ง ${key} = ${raw}`);
+    return;
+  }
+  if (action === 'get') {
+    const cfg = await readGlobalConfigRaw();
+    console.log(cfg[key] ?? '(ไม่ได้ตั้ง)');
+    return;
+  }
+  console.log(`~/.sanook/config.json:\n${JSON.stringify(await readGlobalConfigRaw(), null, 2)}`);
+}
+
+/** sanook mcp [list | add <name> <command> [args...] | remove <name>] — จัดการ ~/.sanook/mcp.json */
+async function runMcp(args: string[]): Promise<void> {
+  const mcpPath = join(homedir(), '.sanook', 'mcp.json');
+  type Server = { command: string; args?: string[] };
+  let cfg: { mcpServers: Record<string, Server> } = { mcpServers: {} };
+  try {
+    const parsed = JSON.parse(await readFile(mcpPath, 'utf8')) as { mcpServers?: Record<string, Server> };
+    cfg = { mcpServers: parsed.mcpServers ?? {} };
+  } catch {
+    /* ยังไม่มีไฟล์ */
+  }
+  const write = async (): Promise<void> => {
+    await mkdir(dirname(mcpPath), { recursive: true });
+    await writeFile(mcpPath, `${JSON.stringify(cfg, null, 2)}\n`);
+  };
+  const [action, name, command, ...cmdArgs] = args;
+
+  if (action === 'add') {
+    if (!name || !command) {
+      console.error('ใช้: sanook mcp add <name> <command> [args...]   (เช่น: mcp add fs npx -y @modelcontextprotocol/server-filesystem /path)');
+      process.exit(1);
+    }
+    cfg.mcpServers[name] = { command, args: cmdArgs };
+    await write();
+    console.log(`เพิ่ม MCP server "${name}"`);
+    return;
+  }
+  if (action === 'remove' || action === 'rm') {
+    if (name && cfg.mcpServers[name]) {
+      delete cfg.mcpServers[name];
+      await write();
+      console.log(`ลบ MCP server "${name}" แล้ว`);
+    } else console.log(`ไม่เจอ MCP server "${name ?? ''}"`);
+    return;
+  }
+  const names = Object.keys(cfg.mcpServers);
+  if (!names.length) {
+    console.log('ยังไม่มี MCP server — เพิ่ม: sanook mcp add <name> <command> [args...]');
+    return;
+  }
+  console.log(`${names.length} MCP servers:`);
+  for (const n of names) console.log(`  ${n}  —  ${cfg.mcpServers[n].command} ${(cfg.mcpServers[n].args ?? []).join(' ')}`);
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv.includes('-v') || argv.includes('--version')) {
@@ -371,6 +447,8 @@ async function main(): Promise<void> {
   }
   if (argv[0] === 'models') return runModels(argv.slice(1));
   if (argv[0] === 'brain' && ['init', undefined].includes(argv[1])) return runBrain(argv.slice(1));
+  if (argv[0] === 'config' && ['get', 'set', 'list', undefined].includes(argv[1])) return runConfig(argv.slice(1));
+  if (argv[0] === 'mcp' && ['add', 'list', 'remove', 'rm', undefined].includes(argv[1])) return runMcp(argv.slice(1));
 
   const { model, budget, json, prompt: argPrompt, planMode, yes } = parseArgs(argv);
   const budgetUsd = Number.isFinite(budget) ? budget : undefined;

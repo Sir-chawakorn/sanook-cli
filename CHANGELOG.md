@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — second brain, GLM Coding Plan, Telegram, hardening
+
+- **Second brain**: `sanook brain init` scaffolds a portable Obsidian "second-brain" workspace — full folder taxonomy (each with `_Index.md`), a central `Vault Structure Map.md`, seed memory files, and a portable AI operating constitution (`CLAUDE/GEMINI/AGENTS.md`). Research-backed rules: context-assembly (anti context-rot), intake quarantine + injection-scan, bi-temporal fact validity, provenance tracking, a verification-gated `Skills/` library, sleep-time consolidation. The agent now **loads the vault** into context, and `brain init` **auto-wires a filesystem MCP** to it. First-run wizard offers to create one (personalized).
+- **GLM Coding Plan**: GLM routes through the Anthropic-compatible endpoint (`/api/anthropic`), so Coding Plan keys work; curated ids `glm-4.6 / glm-5.1 / glm-4.5-air`.
+- **Telegram channel**: drive the agent from your phone (long-polling, fail-closed allowlist, private-only). Remote surface defaults to ask-mode (mutations denied) unless `TELEGRAM_ALLOW_WRITE=1`.
+- **Auto-compaction**: token-aware sliding window keeps long sessions under the limit.
+- **Interactive approval** (`ask` mode) + capability-based gating — any non-read-only tool (incl. MCP) is confirmed before running.
+- **REPL resume** (`sanook -c`), **stdin piping** (`git diff | sanook "review"`), gateway multi-turn history, and `sanook config` / `sanook mcp` management commands.
+- **Provider audit**: corrected stale model ids (OpenAI `gpt-5.3-codex`, DeepSeek `v4-flash/pro`, xAI `grok-4.3`).
+- **Hardening**: budget cap now actually fires on the default fast model; write paths confined (no `~/.sanook` / shell-rc / ssh backdoors); MCP child processes get a minimal env (no secret leakage); provider errors surface a clean one-line message; versions read from `package.json`. Added tests for the BYOK/redaction core and budget cap.
+
 ## 0.3.0 — providers, memory, gateway, MCP, git
 
 - **Providers**: data-driven registry, now 12 providers (added MiniMax, GLM, and OpenAI Codex via the official CLI). Per-provider model picker that fetches the live model list.

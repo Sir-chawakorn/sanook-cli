@@ -34,7 +34,7 @@ export interface AgentEvent {
  * — provider error จริง (เช่น "Insufficient balance", rate limit, auth) มักฝังใน lastError.responseBody
  * ไม่งั้นจะได้ "No output generated" กำกวม + stack dump ยาว
  */
-function cleanProviderError(err: unknown): string {
+export function cleanProviderError(err: unknown): string {
   const e = err as { message?: string; lastError?: unknown };
   const api = (e?.lastError ?? e) as { message?: string; statusCode?: number; responseBody?: unknown };
   let detail = api?.message;

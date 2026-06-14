@@ -73,6 +73,18 @@ export async function saveBrainPath(path: string): Promise<void> {
   await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, brainPath: path }, null, 2)}\n`);
 }
 
+/** อ่าน config.json ดิบ (ไม่ apply default/schema) — สำหรับ `sanook config` */
+export async function readGlobalConfigRaw(): Promise<Record<string, unknown>> {
+  return readJson(CONFIG_PATH);
+}
+
+/** merge patch ลง config.json (สำหรับ `sanook config set`) */
+export async function patchGlobalConfig(patch: Record<string, unknown>): Promise<void> {
+  await mkdir(CONFIG_DIR, { recursive: true });
+  const existing = await readJson(CONFIG_PATH);
+  await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, ...patch }, null, 2)}\n`);
+}
+
 /** บันทึก API key ลง ~/.sanook/auth.json (chmod 0600) + set env ทันทีสำหรับ session นี้ */
 export async function saveKey(envVar: string, key: string): Promise<void> {
   await mkdir(CONFIG_DIR, { recursive: true });
