@@ -81,6 +81,12 @@ async function runHeadless(
     // จำ session ไว้ทำงานต่อได้ (sanook --continue "...") — แก้ concern AI ลืมว่าทำถึงไหน
     const now = new Date().toISOString();
     await saveSession({ id: newSessionId(), created: now, updated: now, model, cwd: process.cwd(), messages });
+    // auto-worklog เข้า second-brain (ถ้าตั้ง brainPath) — "vault จำว่าวันนี้ทำอะไร"
+    const { getBrainPath, appendBrainWorklog } = await import('./memory.js');
+    const brain = await getBrainPath();
+    if (brain) {
+      await appendBrainWorklog(brain, { prompt, summary: cost.summary(), model, today: now.slice(0, 10) }).catch(() => {});
+    }
   } catch (err) {
     const msg = redactKey((err as Error).message);
     if (json) process.stdout.write(`${JSON.stringify({ type: 'error', message: msg })}\n`);

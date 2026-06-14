@@ -5,7 +5,7 @@ import { appendMemory } from '../memory.js';
 export const rememberTool = tool({
   description:
     'จำข้อเท็จจริง/preference/decision สำคัญข้าม session — ใช้เมื่อเจอสิ่งที่ควรจำไว้ใช้ครั้งหน้า ' +
-    '(เช่น user ชอบ/ไม่ชอบอะไร, decision สำคัญ, convention ของ project). บันทึกลง ~/.sanook/memory',
+    '(เช่น user ชอบ/ไม่ชอบอะไร, decision สำคัญ, convention ของ project). บันทึกลง ~/.sanook/memory + route เข้า second-brain vault (Memory-Inbox) ถ้าตั้งไว้',
   inputSchema: z.object({
     fact: z.string().describe('สิ่งที่ต้องจำ — 1 ประโยคกระชับ atomic'),
   }),
