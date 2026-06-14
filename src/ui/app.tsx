@@ -3,6 +3,7 @@ import type { ModelMessage } from 'ai';
 import { Box, Text, Static, useApp, useInput } from 'ink';
 import { parseCommand } from '../commands.js';
 import { runAgent, type AgentEvent } from '../loop.js';
+import { saveSession, newSessionId } from '../session.js';
 import { Banner } from './banner.js';
 
 interface Turn {
@@ -15,11 +16,17 @@ export interface AppProps {
   initialModel: string;
   budgetUsd?: number;
   permissionMode?: 'auto' | 'ask';
+  /** ต่อจาก session ก่อน (sanook -c) — โหลด conversation เดิมเข้า REPL */
+  initialHistory?: ModelMessage[];
 }
 
-export function App({ initialModel, budgetUsd, permissionMode = 'auto' }: AppProps) {
+export function App({ initialModel, budgetUsd, permissionMode = 'auto', initialHistory }: AppProps) {
   const { exit } = useApp();
-  const [history, setHistory] = useState<Turn[]>([]);
+  const [history, setHistory] = useState<Turn[]>(
+    initialHistory?.length
+      ? [{ id: -1, role: 'system', text: `↻ ต่อจาก session ก่อน (${initialHistory.length} ข้อความ)` }]
+      : [],
+  );
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,7 +34,9 @@ export function App({ initialModel, budgetUsd, permissionMode = 'auto' }: AppPro
   const [approvalReq, setApprovalReq] = useState<{ tool: string; summary: string } | null>(null);
   const idRef = useRef(0);
   const lastCost = useRef<string>('');
-  const msgsRef = useRef<ModelMessage[]>([]); // conversation จริงสำหรับ LLM (สะสมข้ามรอบ)
+  const msgsRef = useRef<ModelMessage[]>(initialHistory ?? []); // conversation จริงสำหรับ LLM (สะสมข้ามรอบ)
+  const sessionId = useRef(newSessionId());
+  const sessionCreated = useRef(new Date().toISOString());
   const approvalResolve = useRef<((ok: boolean) => void) | null>(null);
 
   const addTurn = (role: Turn['role'], text: string): void =>
@@ -111,6 +120,15 @@ export function App({ initialModel, budgetUsd, permissionMode = 'auto' }: AppPro
       msgsRef.current = messages;
       lastCost.current = cost.summary();
       addTurn('assistant', buf.trim());
+      // เซฟ session ทุกรอบ → resume ได้ด้วย sanook -c (เดิม REPL ไม่เคยเซฟ)
+      void saveSession({
+        id: sessionId.current,
+        created: sessionCreated.current,
+        updated: new Date().toISOString(),
+        model,
+        cwd: process.cwd(),
+        messages,
+      });
     } catch (err) {
       addTurn('system', `ERROR: ${(err as Error).message}`);
     } finally {

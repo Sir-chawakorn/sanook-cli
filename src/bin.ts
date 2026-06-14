@@ -337,6 +337,13 @@ async function runBrain(args: string[]): Promise<void> {
   }
 }
 
+/** อ่าน stdin จนจบ (เมื่อถูก pipe เข้ามา เช่น `git diff | sanook "review"`) */
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const c of process.stdin) chunks.push(c as Buffer);
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv.includes('-v') || argv.includes('--version')) {
@@ -365,8 +372,11 @@ async function main(): Promise<void> {
   if (argv[0] === 'models') return runModels(argv.slice(1));
   if (argv[0] === 'brain' && ['init', undefined].includes(argv[1])) return runBrain(argv.slice(1));
 
-  const { model, budget, json, prompt, planMode, yes } = parseArgs(argv);
+  const { model, budget, json, prompt: argPrompt, planMode, yes } = parseArgs(argv);
   const budgetUsd = Number.isFinite(budget) ? budget : undefined;
+  // stdin piping: `git diff | sanook "review this"` → ผนวก stdin เข้า prompt (headless/CI)
+  const piped = process.stdin.isTTY ? '' : (await readStdin()).trim();
+  const prompt = piped ? `${argPrompt}\n\n<stdin>\n${piped}\n</stdin>`.trim() : argPrompt;
 
   if (prompt) {
     const config = await loadConfig({ model, budgetUsd });
@@ -392,11 +402,15 @@ async function main(): Promise<void> {
     await startSetup();
   }
   const config = await loadConfig({ model, budgetUsd });
+  // --continue / -c → โหลด conversation ล่าสุดเข้า REPL (เดิม resume ได้แค่ headless)
+  const initialHistory =
+    argv.includes('--continue') || argv.includes('-c') ? (await latestSession())?.messages : undefined;
   const { startRepl } = await import('./ui/render.js');
   startRepl({
     initialModel: config.model,
     budgetUsd: config.budgetUsd,
     permissionMode: yes ? 'auto' : config.permissionMode,
+    initialHistory,
   });
 }
 

@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import type { ModelMessage } from 'ai';
 import { listTasks, enqueueTask } from './ledger.js';
 import { parseSchedule } from './schedule.js';
 import { tokenMatches } from './auth.js';
@@ -66,12 +67,19 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
 
   if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
     const body = await readBody(req);
-    const messages = Array.isArray(body.messages) ? (body.messages as { role: string; content: unknown }[]) : [];
-    const lastUser = messages.filter((m) => m.role === 'user').pop();
-    const prompt = typeof lastUser?.content === 'string' ? lastUser.content : '';
-    if (!prompt) return send(res, 400, { error: 'ต้องมี user message' });
+    const raw = Array.isArray(body.messages) ? (body.messages as { role: string; content: unknown }[]) : [];
+    const msgs = raw.filter(
+      (m) => typeof m.content === 'string' && ['user', 'assistant', 'system'].includes(m.role),
+    );
+    const lastUserIdx = msgs.map((m) => m.role).lastIndexOf('user');
+    if (lastUserIdx === -1) return send(res, 400, { error: 'ต้องมี user message' });
+    const prompt = msgs[lastUserIdx].content as string;
+    // turn ก่อน user ตัวสุดท้าย = history (multi-turn) — เดิม endpoint ทิ้งหมด (stateless = ลืม context)
+    const history = msgs
+      .slice(0, lastUserIdx)
+      .map((m) => ({ role: m.role, content: m.content as string })) as ModelMessage[];
     const model = typeof body.model === 'string' && body.model ? body.model : opts.defaultModel;
-    const { text } = await runAgent({ model, prompt, maxSteps: 20, budgetUsd: opts.budgetUsd });
+    const { text } = await runAgent({ model, prompt, history, maxSteps: 20, budgetUsd: opts.budgetUsd });
     return send(res, 200, {
       object: 'chat.completion',
       model,
