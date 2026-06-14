@@ -6,6 +6,7 @@ import { loadMemory, loadAutoMemory } from './memory.js';
 import { loadSkills, renderAvailableSkills } from './skills.js';
 import { maybeWrapHooks } from './hooks.js';
 import { agentContext } from './agentContext.js';
+import { approvalContext, wrapToolsWithApproval, type ApprovalFn } from './approval.js';
 import { getMcpTools } from './mcp.js';
 import { gitContext } from './git.js';
 import { pruneToolResults } from './compaction.js';
@@ -40,6 +41,10 @@ export interface RunAgentOptions {
   planMode?: boolean;
   /** ความลึก sub-agent (main = 0) — thread ผ่าน context กัน recursion ไม่จบ */
   subagentDepth?: number;
+  /** permission: 'auto' รันเลย · 'ask' ขออนุมัติก่อน mutate tools */
+  permissionMode?: 'auto' | 'ask';
+  /** callback ขออนุมัติ (REPL render y/n) — ใช้เมื่อ permissionMode='ask' */
+  approve?: ApprovalFn;
 }
 
 export interface RunAgentResult {
@@ -84,6 +89,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   // context ผ่าน AsyncLocalStorage (ไม่ใช่ process.env global) → parallel sub-agent ไม่ชนกัน
   // sub-agent (task tool) อ่าน model/budget/depth จาก context นี้
   agentContext.enterWith({ model: opts.model, budgetUsd: opts.budgetUsd, depth: opts.subagentDepth ?? 0 });
+  approvalContext.enterWith({ mode: opts.permissionMode ?? 'auto', approve: opts.approve });
   // codex (delegate) → ข้าม SDK loop, ส่ง task ให้ official codex CLI (ChatGPT quota)
   if (PROVIDERS[parseSpec(opts.model).provider]?.kind === 'delegate') {
     return runDelegate(opts);
@@ -119,8 +125,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   if (opts.planMode) {
     baseTools = Object.fromEntries(Object.entries(baseTools).filter(([k]) => PLAN_TOOLS.includes(k))) as ToolSet;
   }
-  // ครอบ tool ด้วย user hooks (PreToolUse block / PostToolUse) ถ้ามี config — ไม่มี = zero overhead
-  const activeTools = await maybeWrapHooks(baseTools);
+  // ครอบ tool: hooks (PreToolUse block) แล้ว approval (ask ก่อน mutate ใน ask-mode)
+  const activeTools = wrapToolsWithApproval(await maybeWrapHooks(baseTools));
   const result = streamText({
     model,
     system,

@@ -14,24 +14,44 @@ interface Turn {
 export interface AppProps {
   initialModel: string;
   budgetUsd?: number;
+  permissionMode?: 'auto' | 'ask';
 }
 
-export function App({ initialModel, budgetUsd }: AppProps) {
+export function App({ initialModel, budgetUsd, permissionMode = 'auto' }: AppProps) {
   const { exit } = useApp();
   const [history, setHistory] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState('');
   const [busy, setBusy] = useState(false);
   const [model, setModel] = useState(initialModel);
+  const [approvalReq, setApprovalReq] = useState<{ tool: string; summary: string } | null>(null);
   const idRef = useRef(0);
   const lastCost = useRef<string>('');
-  // conversation จริงสำหรับ LLM (สะสมข้ามรอบ) — แยกจาก history ที่ใช้ display
-  const msgsRef = useRef<ModelMessage[]>([]);
+  const msgsRef = useRef<ModelMessage[]>([]); // conversation จริงสำหรับ LLM (สะสมข้ามรอบ)
+  const approvalResolve = useRef<((ok: boolean) => void) | null>(null);
 
   const addTurn = (role: Turn['role'], text: string): void =>
     setHistory((h) => [...h, { id: idRef.current++, role, text }]);
 
+  // ask-mode: tool ขออนุมัติ → คืน Promise ที่ resolve เมื่อ user กด y/n
+  const requestApproval = (tool: string, summary: string): Promise<boolean> =>
+    new Promise((resolve) => {
+      approvalResolve.current = resolve;
+      setApprovalReq({ tool, summary });
+    });
+
   useInput((char, key) => {
+    // มี approval ค้าง → จับ y/n ก่อน (แม้ agent กำลังรัน/busy)
+    if (approvalReq) {
+      if (char === 'y' || char === 'Y' || key.return) {
+        approvalResolve.current?.(true);
+        setApprovalReq(null);
+      } else if (char === 'n' || char === 'N' || key.escape) {
+        approvalResolve.current?.(false);
+        setApprovalReq(null);
+      }
+      return;
+    }
     if (busy) return;
     if (key.return) {
       void submit();
@@ -54,7 +74,7 @@ export function App({ initialModel, budgetUsd }: AppProps) {
       addTurn('user', text);
       if (cmd.action === 'quit') return exit();
       if (cmd.action === 'clear') {
-        msgsRef.current = []; // ล้าง conversation ที่ LLM เห็นด้วย ไม่ใช่แค่จอ
+        msgsRef.current = [];
         return setHistory([]);
       }
       if (cmd.modelChange) setModel(cmd.modelChange);
@@ -70,8 +90,10 @@ export function App({ initialModel, budgetUsd }: AppProps) {
       const { cost, messages } = await runAgent({
         model,
         prompt: text,
-        history: msgsRef.current, // ส่ง conversation เดิมไปด้วย → จำว่าคุยอะไรมา
+        history: msgsRef.current,
         budgetUsd,
+        permissionMode,
+        approve: requestApproval,
         onEvent: (e: AgentEvent) => {
           if (e.type === 'text') {
             buf += e.text ?? '';
@@ -86,7 +108,7 @@ export function App({ initialModel, budgetUsd }: AppProps) {
           }
         },
       });
-      msgsRef.current = messages; // สะสม conversation เต็มไว้ใช้รอบถัดไป
+      msgsRef.current = messages;
       lastCost.current = cost.summary();
       addTurn('assistant', buf.trim());
     } catch (err) {
@@ -104,12 +126,21 @@ export function App({ initialModel, budgetUsd }: AppProps) {
       {banner}
       <Static items={history}>{(turn) => <TurnView key={turn.id} turn={turn} />}</Static>
       {streaming ? <Text>{streaming}</Text> : null}
-      <Box borderStyle="round" borderColor="gray" paddingX={1}>
-        <Text color={busy ? 'gray' : 'cyan'}>{busy ? '… ' : '› '}</Text>
-        <Text>{input || (busy ? '' : 'พิมพ์คำสั่ง หรือ /help')}</Text>
-      </Box>
+      {approvalReq ? (
+        <Box borderStyle="round" borderColor="yellow" paddingX={1} flexDirection="column">
+          <Text color="yellow">⚠ ขออนุมัติรัน {approvalReq.tool}</Text>
+          <Text>{approvalReq.summary}</Text>
+          <Text color="gray">อนุมัติ? (y = รัน · n = ปฏิเสธ)</Text>
+        </Box>
+      ) : (
+        <Box borderStyle="round" borderColor="gray" paddingX={1}>
+          <Text color={busy ? 'gray' : 'cyan'}>{busy ? '… ' : '› '}</Text>
+          <Text>{input || (busy ? '' : 'พิมพ์คำสั่ง หรือ /help')}</Text>
+        </Box>
+      )}
       <Text color="gray" dimColor>
         {'  '}? for shortcuts · /help · model: {model}
+        {permissionMode === 'ask' ? ' · 🔒 ask-mode' : ''}
       </Text>
     </Box>
   );

@@ -11,6 +11,8 @@ export const ConfigSchema = z.object({
   model: z.string().default('sonnet'),
   budgetUsd: z.number().positive().optional(),
   maxSteps: z.number().int().positive().default(20),
+  // auto = รัน tool เลย (act-first) · ask = ขออนุมัติก่อน write/bash/commit
+  permissionMode: z.enum(['auto', 'ask']).default('auto'),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

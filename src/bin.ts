@@ -15,6 +15,7 @@ interface Args {
   json: boolean;
   prompt: string;
   planMode: boolean;
+  yes: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -22,6 +23,7 @@ function parseArgs(argv: string[]): Args {
   let budget: number | undefined;
   let json = false;
   let planMode = false;
+  let yes = false;
   const rest: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -29,11 +31,12 @@ function parseArgs(argv: string[]): Args {
     else if (a === '--budget' || a === '-b') budget = Number.parseFloat(argv[++i] ?? '');
     else if (a === '--json') json = true;
     else if (a === '--plan') planMode = true;
+    else if (a === '--yes' || a === '-y') yes = true;
     else if (a === '-p' || a === '--print' || a === '-c' || a === '--continue') {
       /* -p headless flag · -c/--continue resume (handled in main) */
     } else rest.push(a);
   }
-  return { model, budget, json, prompt: rest.join(' ').trim(), planMode };
+  return { model, budget, json, prompt: rest.join(' ').trim(), planMode, yes };
 }
 
 async function runHeadless(
@@ -44,6 +47,7 @@ async function runHeadless(
   json: boolean,
   history?: ModelMessage[],
   planMode = false,
+  permissionMode: 'auto' | 'ask' = 'auto',
 ): Promise<void> {
   const controller = new AbortController();
   process.on('SIGINT', () => {
@@ -58,6 +62,7 @@ async function runHeadless(
       budgetUsd,
       maxSteps,
       planMode,
+      permissionMode, // headless ไม่มี approve → ask-mode = ปฏิเสธ mutate (ต้อง --yes)
       signal: controller.signal,
       onEvent: (e: AgentEvent) => {
         if (json) {
@@ -105,6 +110,7 @@ flags:
   -b, --budget <usd>   stop when estimated cost exceeds this
   -c, --continue       resume the latest session (จำว่าทำถึงไหน → ทำต่อ)
       --plan           plan mode — สำรวจ+วางแผนเท่านั้น ไม่แก้ไฟล์ (read-only)
+  -y, --yes            อนุมัติ tool อัตโนมัติ (ข้าม ask-mode permission)
       --json           machine-readable JSONL output
   -v, --version
   -h, --help
@@ -269,7 +275,7 @@ async function main(): Promise<void> {
     return runSkill(argv.slice(1));
   }
 
-  const { model, budget, json, prompt, planMode } = parseArgs(argv);
+  const { model, budget, json, prompt, planMode, yes } = parseArgs(argv);
   const budgetUsd = Number.isFinite(budget) ? budget : undefined;
 
   if (prompt) {
@@ -277,7 +283,16 @@ async function main(): Promise<void> {
     // --continue / -c → โหลด session ล่าสุดมาต่อ (จำว่าทำถึงไหน)
     const history =
       argv.includes('--continue') || argv.includes('-c') ? (await latestSession())?.messages : undefined;
-    await runHeadless(config.model, prompt, config.budgetUsd, config.maxSteps, json, history, planMode);
+    await runHeadless(
+      config.model,
+      prompt,
+      config.budgetUsd,
+      config.maxSteps,
+      json,
+      history,
+      planMode,
+      yes ? 'auto' : config.permissionMode,
+    );
     return;
   }
 
@@ -288,7 +303,11 @@ async function main(): Promise<void> {
   }
   const config = await loadConfig({ model, budgetUsd });
   const { startRepl } = await import('./ui/render.js');
-  startRepl({ initialModel: config.model, budgetUsd: config.budgetUsd });
+  startRepl({
+    initialModel: config.model,
+    budgetUsd: config.budgetUsd,
+    permissionMode: yes ? 'auto' : config.permissionMode,
+  });
 }
 
 main().catch((err) => {
