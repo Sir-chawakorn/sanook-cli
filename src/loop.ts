@@ -29,6 +29,26 @@ export interface AgentEvent {
   detail?: unknown;
 }
 
+/**
+ * ดึงข้อความ error ที่อ่านรู้เรื่องจาก provider error (AI SDK APICallError / RetryError)
+ * — provider error จริง (เช่น "Insufficient balance", rate limit, auth) มักฝังใน lastError.responseBody
+ * ไม่งั้นจะได้ "No output generated" กำกวม + stack dump ยาว
+ */
+function cleanProviderError(err: unknown): string {
+  const e = err as { message?: string; lastError?: unknown };
+  const api = (e?.lastError ?? e) as { message?: string; statusCode?: number; responseBody?: unknown };
+  let detail = api?.message;
+  try {
+    const body = typeof api?.responseBody === 'string' ? JSON.parse(api.responseBody) : api?.responseBody;
+    const m = (body as { error?: { message?: string } })?.error?.message;
+    if (m) detail = m;
+  } catch {
+    /* responseBody ไม่ใช่ JSON — ใช้ message เดิม */
+  }
+  detail = detail ?? e?.message ?? String(err);
+  return api?.statusCode ? `${detail} (HTTP ${api.statusCode})` : detail;
+}
+
 export interface RunAgentOptions {
   /** model spec: alias ("sonnet"), "provider:model", หรือ "model" (default anthropic) */
   model: string;
@@ -130,11 +150,16 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   }
   // ครอบ tool: hooks (PreToolUse block) แล้ว approval (ask ก่อน mutate ใน ask-mode)
   const activeTools = wrapToolsWithApproval(await maybeWrapHooks(baseTools));
+  // capture stream error (billing/rate-limit/auth กลางสตรีม) — กัน unhandled rejection + ข้อความกำกวม
+  let streamError: unknown;
   const result = streamText({
     model,
     system,
     messages,
     tools: activeTools, // sub-agent override + hooks wrap
+    onError: ({ error }) => {
+      streamError = error;
+    },
     // หยุดเมื่อชน max steps หรือ ชน budget cap (เช็คหลังแต่ละ step)
     stopWhen: [stepCountIs(opts.maxSteps ?? 20), () => meter.overBudget],
     abortSignal: opts.signal,
@@ -175,6 +200,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
         break;
     }
   }
+
+  // stream ล้มกลางทาง (provider error) → โยน error ที่อ่านรู้เรื่อง แทน "No output generated" + stack dump
+  if (streamError) throw new Error(cleanProviderError(streamError));
 
   const response = await result.response;
   return { messages: response.messages, text, cost: meter };

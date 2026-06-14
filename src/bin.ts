@@ -5,6 +5,7 @@ import type { ModelMessage } from 'ai';
 import { loadConfig, isFirstRun, loadKeysIntoEnv } from './config.js';
 import { saveSession, latestSession, newSessionId } from './session.js';
 import { closeMcp } from './mcp.js';
+import { readFileSync } from 'node:fs';
 
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
@@ -85,7 +86,10 @@ async function runHeadless(
   }
 }
 
-const VERSION = '0.2.0';
+// อ่านจาก package.json (single source of truth) — กัน version constant drift
+const VERSION = (
+  JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
+).version;
 const HELP = `Sanook — a terminal AI coding agent (BYOK)
 
 usage:
