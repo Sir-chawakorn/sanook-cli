@@ -198,15 +198,28 @@ function rpcError(code: number, message: string): { code: number; message: strin
   return { code, message };
 }
 
+const MAX_LINE = 16 * 1024 * 1024; // cap an un-terminated stdin line so a runaway host can't grow memory unbounded
+
 /** start the stdio MCP server loop. Resolves when stdin closes. */
 export function runMcpServer(): Promise<void> {
   return new Promise((resolve) => {
     let buf = '';
-    const write = (obj: unknown): void => void process.stdout.write(`${JSON.stringify(obj)}\n`);
+    const write = (obj: unknown): void => {
+      try {
+        process.stdout.write(`${JSON.stringify(obj)}\n`);
+      } catch (e) {
+        log(`stdout write failed: ${(e as Error).message}`); // never let a write fault escape the handler
+      }
+    };
 
     process.stdin.setEncoding('utf8');
     process.stdin.on('data', (chunk: string) => {
       buf += chunk;
+      if (buf.length > MAX_LINE && !buf.includes('\n')) {
+        log(`stdin line exceeded ${MAX_LINE} bytes with no newline — dropping`);
+        buf = '';
+        return;
+      }
       let idx: number;
       while ((idx = buf.indexOf('\n')) !== -1) {
         const line = buf.slice(0, idx).trim();
@@ -226,14 +239,23 @@ export function runMcpServer(): Promise<void> {
             write({ jsonrpc: '2.0', id, result });
           })
           .catch((err: unknown) => {
-            const e = err as { code?: number; message?: string };
             if (id == null) return;
-            write({ jsonrpc: '2.0', id, error: { code: e.code ?? -32603, message: e.message ?? 'internal error' } });
+            const e = (err ?? {}) as { code?: unknown; message?: unknown };
+            const code = typeof e.code === 'number' ? e.code : -32603;
+            const message = err instanceof Error ? err.message : typeof e.message === 'string' ? e.message : 'internal error';
+            write({ jsonrpc: '2.0', id, error: { code, message } });
           });
       }
     });
-    process.stdin.on('end', () => resolve());
-    process.stdin.on('close', () => resolve());
+    // resolve (and stop the server) on stream end/close OR error — an unhandled stdin
+    // 'error' would otherwise crash the process AND leave this promise pending forever.
+    const done = (): void => resolve();
+    process.stdin.on('end', done);
+    process.stdin.on('close', done);
+    process.stdin.on('error', (e: Error) => {
+      log(`stdin error: ${e.message}`);
+      resolve();
+    });
     log(`ready · ${TOOLS.length} tools · protocol ${PROTOCOL_VERSION}`);
   });
 }

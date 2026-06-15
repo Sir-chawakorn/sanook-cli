@@ -75,6 +75,13 @@ describe('serialize round-trip', () => {
     expect(deserializeVectors(null).ids).toEqual([]);
   });
 
+  it('dim=0 with non-empty ids is rejected (boundary invariant: dim=0 ⇔ ids=[])', () => {
+    const bad = deserializeVectors({ v: 1, tag: 'fake:model', dim: 0, ids: ['a', 'b'], b64: '' });
+    expect(bad.dim).toBe(0);
+    expect(bad.ids).toEqual([]);
+    expect(bad.data.length).toBe(0);
+  });
+
   it('corrupt vector payloads degrade to empty instead of throwing', () => {
     const corrupt = { v: 1, tag: 'fake:model', dim: 2, ids: ['a'], b64: Buffer.from([1, 2, 3]).toString('base64') };
     expect(deserializeVectors(corrupt).ids).toEqual([]);

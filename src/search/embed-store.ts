@@ -125,12 +125,15 @@ export function deserializeVectors(raw: unknown): VectorIndex {
   ) {
     return emptyVectors();
   }
+  // dim=0 is only valid for an empty index — normalize to emptyVectors so the invariant
+  // (dim===0 ⇔ ids=[] ⇔ data empty) holds at the deserializer boundary, not just downstream.
+  if (o.dim === 0) return emptyVectors(o.tag);
   const buf = Buffer.from(o.b64, 'base64');
   if (buf.byteLength % 4 !== 0) return emptyVectors(o.tag);
   const arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   const data = new Float32Array(arrayBuffer);
   // defensive: row count must match ids*dim, else treat as corrupt
-  if (o.dim > 0 && data.length !== o.ids.length * o.dim) return emptyVectors(o.tag);
+  if (data.length !== o.ids.length * o.dim) return emptyVectors(o.tag);
   return { tag: o.tag ?? '', dim: o.dim, ids: o.ids, data: Float32Array.from(data) };
 }
 

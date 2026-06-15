@@ -222,6 +222,22 @@ It creates a full folder taxonomy (`Projects/`, `Sessions/`, `Shared/` memory la
 
 Everything is **create-if-missing** — re-running never overwrites your notes. Point an Obsidian or filesystem MCP server at the workspace to let the agent read and write it.
 
+### Brain search
+
+Ranked search over the vault **and** the agent's memory, past sessions, and skills — one surface, no native binaries:
+
+```bash
+sanook index                       # incremental index of vault + memory + sessions + skills (O(delta))
+sanook search "vercel edge deploy" # ranked hits with snippets
+sanook search "race condition" --mode hybrid --source vault,memory --limit 5
+```
+
+- **Zero-config floor** — a pure-TypeScript BM25 inverted index (genuine corpus-stat IDF, title boost, `Intl.Segmenter` word breaks for Thai). No SQLite, no Bun, no native binary, no API key, no network.
+- **Optional semantic** — `--mode hybrid|semantic` embeds through your *existing* provider key (OpenAI / Mistral / Google / …), stores compact Float32 vectors locally, and fuses with BM25 via Reciprocal Rank Fusion. Activates only when a key resolves; degrades silently to BM25 otherwise. Configure with `sanook config set embeddingModel openai:text-embedding-3-small` (or `SANOOK_EMBEDDING_MODEL`).
+- **Incremental** — only changed files are re-read (mtime+sha manifest); deleted files are evicted. Run after editing the vault, or wire it into a hook/cron.
+
+The agent's `recall` tool uses the same engine, so remembered facts and vault notes are searchable the moment they exist.
+
 ## MCP
 
 Connect Model Context Protocol servers over **stdio or remote Streamable-HTTP** with the same config shape you already use elsewhere:
@@ -240,6 +256,13 @@ Add servers from the CLI too: `sanook mcp add fs npx -y @modelcontextprotocol/se
 
 Their tools are merged into the agent's toolset automatically. `/tools` in the REPL lists everything currently available.
 
+sanook is also an MCP **server**: `sanook mcp serve` exposes your brain (`sanook_search` / `sanook_recall` / `sanook_remember` / `sanook_index` / `sanook_stats`) over stdio, so Claude Desktop, Cursor, or any MCP host can query it:
+
+```jsonc
+// in another host's MCP config
+{ "mcpServers": { "sanook-brain": { "command": "sanook", "args": ["mcp", "serve"] } } }
+```
+
 Project-local `.sanook/mcp.json`, `.sanook/hooks.json`, `.sanook/skills/`, and `.sanook/commands/` are ignored until the project is trusted:
 
 ```bash
@@ -255,6 +278,7 @@ Everything lives under `~/.sanook/` (with per-project `.sanook/` overrides where
 ```
 ~/.sanook/auth.json          API keys (chmod 600)
 ~/.sanook/memory/            auto-memory the agent writes
+~/.sanook/search/            brain-search index + optional embedding vectors (regenerable via `sanook index`)
 ~/.sanook/sessions/          saved conversations (for --continue)
 ~/.sanook/skills/<name>/     installed SKILL.md files
 ~/.sanook/mcp.json           MCP servers  { "mcpServers": { … } }
