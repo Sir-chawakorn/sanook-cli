@@ -59,8 +59,9 @@ export async function loadSkills(cwd: string = process.cwd()): Promise<Skill[]> 
       const p = join(dir, e.name, 'SKILL.md');
       try {
         const { meta } = parseFrontmatter(await readFile(p, 'utf8'));
-        out.set(meta.name || e.name, {
-          name: meta.name || e.name,
+        const name = meta.name && isValidSkillName(meta.name) ? meta.name : e.name;
+        out.set(name, {
+          name,
           description: meta.description ?? '',
           whenToUse: meta.when_to_use,
           path: p,

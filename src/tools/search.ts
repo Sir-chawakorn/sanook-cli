@@ -2,12 +2,17 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { glob } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
+import { isAbsolute } from 'node:path';
 import { promisify } from 'node:util';
 import { clamp } from './util.js';
 import { checkReadPath } from './permission.js';
 
 const execFileAsync = promisify(execFile);
 const MAX_RESULTS = 200;
+
+function unsafeGlobPattern(pattern: string): boolean {
+  return isAbsolute(pattern) || pattern.split(/[\\/]+/).includes('..');
+}
 
 export const globTool = tool({
   description: 'หาไฟล์ด้วย glob pattern (เช่น "src/**/*.ts", "**/*.json")',
@@ -16,6 +21,9 @@ export const globTool = tool({
     cwd: z.string().default('.').describe('directory ที่จะค้นจาก'),
   }),
   execute: async ({ pattern, cwd }) => {
+    if (unsafeGlobPattern(pattern)) {
+      return `BLOCKED: glob pattern ต้องเป็น relative path ภายใน cwd และห้ามมี "..": "${pattern}"`;
+    }
     const guard = await checkReadPath(cwd);
     if (!guard.ok) return `BLOCKED: ${guard.reason}`;
     try {

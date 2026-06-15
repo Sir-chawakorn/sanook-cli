@@ -71,4 +71,15 @@ describe('project skills trust gate', () => {
     expect((await loadSkills(dir)).some((s) => s.name === 'repo-skill')).toBe(true);
     expect(await getSkillBody('repo-skill', dir)).toContain('from project');
   });
+
+  it('ไม่ใช้ frontmatter name ที่ไม่ปลอดภัยเป็น injected skill name', async () => {
+    await writeFile(
+      join(dir, '.sanook', 'skills', 'repo-skill', 'SKILL.md'),
+      '---\nname: ../../bad\ndescription: project-controlled\n---\n\nbody',
+    );
+    vi.stubEnv('SANOOK_TRUST_PROJECT', '1');
+    const skills = await loadSkills(dir);
+    expect(skills.some((s) => s.name === '../../bad')).toBe(false);
+    expect(skills.some((s) => s.name === 'repo-skill')).toBe(true);
+  });
 });

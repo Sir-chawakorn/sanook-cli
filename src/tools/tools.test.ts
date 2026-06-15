@@ -7,6 +7,7 @@ import { checkBash, checkReadPath, checkWritePath } from './permission.js';
 import { readFileTool } from './read.js';
 import { writeFileTool } from './write.js';
 import { listDirTool } from './list.js';
+import { globTool } from './search.js';
 
 // stub ToolCallOptions พอให้ execute ทำงานใน test
 const opts = { toolCallId: 't', messages: [], abortSignal: undefined } as never;
@@ -151,5 +152,9 @@ describe('write / read / list tools', () => {
   it('list คืนชื่อไฟล์ในโฟลเดอร์', async () => {
     await writeFile(join(dir, 'a.txt'), '');
     expect(await listDirTool.execute!({ path: dir }, opts)).toContain('a.txt');
+  });
+  it('glob block traversal/absolute pattern แม้ cwd อยู่ใน workspace', async () => {
+    expect(await globTool.execute!({ pattern: '../*', cwd: '.' }, opts)).toMatch(/BLOCKED/);
+    expect(await globTool.execute!({ pattern: '/tmp/*', cwd: '.' }, opts)).toMatch(/BLOCKED/);
   });
 });
