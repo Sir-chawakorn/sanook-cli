@@ -37,6 +37,7 @@ npm install -g sanook-cli
 > ⚠️ **`'sanook' is not recognized` / command not found?**
 > แปลว่าลงแบบ local — `npm i sanook-cli` (ไม่มี `-g`) มันลงในโฟลเดอร์ปัจจุบัน **ไม่เข้า PATH** คำสั่ง `sanook` เลยหาไม่เจอ
 > แก้: ลงใหม่ด้วย `npm install -g sanook-cli` · หรือเรียกผ่าน **`npx sanook`** (ใช้ตัวที่ลง local ไปแล้วได้เลย)
+> หรือรัน **`npx sanook doctor`** — ตรวจ Node/PATH/สถานะการติดตั้งให้ แล้วบอกคำสั่งแก้ที่ตรงกับ OS (มีบรรทัดแก้ PATH บน Windows แบบปลอดภัยให้ก็อปด้วย)
 
 ตั้ง API key (หรือรัน `sanook` เฉย ๆ ครั้งแรกจะมี setup wizard ให้เลือก provider + วาง key):
 

@@ -140,6 +140,7 @@ usage:
   ${BRAND.cliName}                     interactive REPL
   ${BRAND.cliName} --json "<task>"     headless, JSONL output (for CI/scripts)
   ${BRAND.cliName} update              update ${BRAND.cliName} to the latest npm release
+  ${BRAND.cliName} doctor              ตรวจการติดตั้ง + วิธีแก้ PATH (เมื่อพิมพ์ "${BRAND.cliName}" แล้วไม่เจอ)
 
 gateway (อยู่ยาว 24/7 — HTTP loopback + cron):
   ${BRAND.cliName} serve [--port 8787]            เปิด gateway (OpenAI-compat /v1/chat/completions + scheduler)
@@ -741,6 +742,12 @@ async function main(): Promise<void> {
     return;
   }
   if (argv[0] === 'update') return runUpdate(argv.slice(1));
+  // doctor — ไม่ต้องโหลด key/mcp; ตรวจ Node/PATH/global-bin แล้วบอกวิธีแก้ "sanook ไม่เจอ"
+  if (argv[0] === 'doctor') {
+    const { runDoctor } = await import('./doctor.js');
+    console.log(await runDoctor(PACKAGE_NAME));
+    return;
+  }
 
   // โหลด API key จาก ~/.sanook/auth.json เข้า env (ไม่ override env ที่ตั้งไว้แล้ว)
   await loadKeysIntoEnv();

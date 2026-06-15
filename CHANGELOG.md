@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Install UX — `sanook doctor` + post-install guidance (the "`sanook` is not recognized" fix)
+
+The #1 first-run snag is `npm i sanook-cli` **without `-g`** → a local install that never lands on PATH, so typing `sanook` fails. Two root-cause fixes:
+
+- **`sanook doctor`** — a new diagnose-and-fix command. Checks Node version, the npm global-bin dir, whether the `sanook` shim is installed there, whether that dir is on PATH, and whether a local install exists in the cwd — then prints the **exact, OS-safe remedy**. On Windows it emits the *safe* user-PATH PowerShell one-liner (`[Environment]::SetEnvironmentVariable(... 'User')`), deliberately **not** `setx %PATH%` (which truncates PATH at 1024 chars and duplicates the system PATH — a known corruption footgun). Runnable as `npx sanook doctor` even before a global install.
+- **post-install hint** — right after `npm i`, the installer now prints the working command: local install → `npx sanook` or `npm i -g sanook-cli`; global install → "ready, type `sanook`". Never fails the install (always exits 0); stays quiet during repo-dev self-installs and CI.
+
 ### Cross-platform hardening — Windows / macOS / Linux
 
 Audited the whole codebase (process spawning, paths, external deps, terminal) and fixed the real Windows breakers:
