@@ -8,6 +8,8 @@ parent: "[[Acceptance/_Index]]"
 
 # Golden Case Template
 
+> ใช้สร้าง fixture ที่บอก input→expected output เพื่อพิสูจน์ว่า behavior ใดถือว่า done; ไม่ใช้เป็น checklist หรือ eval report
+
 ## Task Family
 
 _(What behavior this case evaluates.)_

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CostMeter, PRICING } from './cost.js';
+import { CostMeter, PRICING, registerPricing } from './cost.js';
 import { PROVIDERS } from './providers/registry.js';
 
 describe('CostMeter budget cap', () => {
@@ -21,5 +21,16 @@ describe('CostMeter budget cap', () => {
     const m = new CostMeter('anthropic:claude-sonnet-4-6');
     m.add({ inputTokens: 1000, cachedInputTokens: 1000, outputTokens: 0 });
     expect(m.totalUsd).toBeCloseTo((1000 / 1e6) * 0.3, 8); // cacheRead rate เท่านั้น
+  });
+
+  it('registerPricing ข้ามค่าที่ไม่ finite/ติดลบ เพื่อกัน cost NaN', () => {
+    registerPricing({ 'test:bad': { input: Number.NaN, output: 1 } });
+    const m = new CostMeter('test:bad');
+    m.add({ inputTokens: 1000, outputTokens: 1000 });
+    expect(m.hasPricing).toBe(false);
+    expect(m.summary()).not.toContain('NaN');
+
+    registerPricing({ 'test:ok': { input: 1, output: 2 } });
+    expect(new CostMeter('test:ok').hasPricing).toBe(true);
   });
 });

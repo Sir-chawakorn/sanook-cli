@@ -20,12 +20,17 @@ ai_surface: hot
 | log งานที่ทำ | `Sessions/` | `YYYY-MM-DD-<topic>.md` |
 | preference ของเจ้าของ | `Shared/User-Memory/` | |
 | การตัดสินใจสำคัญ | `Shared/Decision-Memory/` | |
+| priority/current focus เปลี่ยน | `Shared/Operating-State/current-state.md` | update existing |
 | ยังไม่ชัด/ขัดกัน | `Shared/Memory-Inbox/` | |
 | content จากเว็บ/paste | `Intake/_Quarantine/` | (scan ก่อน) |
 | ต้นฉบับดิบ read-only | `Intake/Raw Sources/` | |
+| finding ที่มี source | `Research/` | ใส่ `source::` |
+| scratch ชั่วคราวระหว่างงาน | `Shared/Working-Memory/` | ลบทิ้ง/โปรโมทหลังจบ |
 | script ที่ผ่าน test | `Skills/` | |
 | how-to อ่านแล้วทำเอง | `Runbooks/` | |
 | กลยุทธ์ที่ปรับดีขึ้น | `Playbooks/` | |
+| fixture expected output | `Acceptance/` | input→expected |
+| pre/postflight gate | `Checklists/` | ticklist |
 | page ของคน/องค์กร/concept | `Entities/` | |
 | bug | `Bugs/` | `YYYY-MM-DD-<bug>.md` |
 | bug ระบบ/OS/toolchain | `Bugs/System-OS/` | `YYYY-MM-DD-<bug>.md` |
@@ -84,7 +89,7 @@ ai_surface: hot
 | `Shared/Decision-Memory/` | decision ที่ AI บันทึก | decision locked + supersedes | ground truth คน (→Core-Facts) |
 | `Shared/Memory-Inbox/` | candidate ยังไม่ชัด | observation รอ promote (clear weekly) | durable ที่ชัดแล้ว (→ปลายทาง) |
 | `Shared/Rules/` | กฎ operating always-on | memory/frontmatter/context-assembly | how-to ทำงาน (→Runbooks) |
-| `Shared/Tech-Standards/` | มาตรฐานเทคนิค | MCP/stack/DoD/verification | |
+| `Shared/Tech-Standards/` | มาตรฐานเทคนิค | MCP/stack/DoD/verification | กฎ memory/format (→Rules) |
 | `Shared/Core-Facts/` | ground truth คนเขียน (read-only) | invariant ที่ AI ห้ามแก้ | decision ที่ AI ตัด (→Decision-Memory) |
 | `Shared/Coordination/` | live multi-agent baton | NOW.md + task-board + registry | เอกสารส่งมอบ (→Handoffs) |
 | `Shared/Coordination/task-board/` | file-Kanban task cards | task ต่อชิ้นงาน มี `claimed_by`/`status` | session narrative หรือ handoff snapshot |

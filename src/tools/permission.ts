@@ -7,7 +7,7 @@ import { BRAND_ENV, envFlag } from '../brand.js';
 // Permission gate (M1): ก่อนมี interactive ask (M4) — hard-deny อันตราย, allow ที่เหลือ
 // คำสั่ง shell ที่ทำลายล้าง irreversible
 const DESTRUCTIVE_CMD =
-  /(\brm\s+-rf\b|\bgit\s+reset\s+--hard\b|\bgit\s+push\b.*--force|\bmkfs\b|\bdd\s+if=|:\(\)\s*\{|\bchmod\s+-R\s+777\b|>\s*\/dev\/sd|\bsudo\b|\bcrontab\b)/i;
+  /(\bgit\s+reset\s+--hard\b|\bgit\s+push\b.*--force|\bmkfs\b|\bdd\s+if=|:\(\)\s*\{|\bchmod\s+-R\s+777\b|>\s*\/dev\/sd|\bsudo\b|\bcrontab\b)/i;
 const PROTECTED_CMD_PATH =
   /(\$HOME|~)?\/?(\.ssh|\.aws|\.gnupg|\.sanook)(\/|\b)|(^|\s)(cat|less|more|sed|awk|tail|head)\s+[^|;&]*\.env(\.|\b)/i;
 
@@ -22,8 +22,19 @@ const PROTECTED_SEGMENTS = new Set(['.git', 'node_modules', '.ssh', '.aws', '.gn
 
 export type GateResult = { ok: true } | { ok: false; reason: string };
 
+function hasRmRecursiveForce(cmd: string): boolean {
+  for (const match of cmd.matchAll(/\brm\b([^;&|]*)/gi)) {
+    const flags = match[1]
+      .split(/\s+/)
+      .filter((part) => /^-[^-]/.test(part))
+      .join('');
+    if (/r/i.test(flags) && /f/i.test(flags)) return true;
+  }
+  return false;
+}
+
 export function checkBash(cmd: string): GateResult {
-  if (DESTRUCTIVE_CMD.test(cmd)) {
+  if (hasRmRecursiveForce(cmd) || DESTRUCTIVE_CMD.test(cmd)) {
     return { ok: false, reason: `คำสั่งทำลายล้าง/irreversible ถูกปฏิเสธ: "${cmd}"` };
   }
   if (PROTECTED_CMD_PATH.test(cmd)) {

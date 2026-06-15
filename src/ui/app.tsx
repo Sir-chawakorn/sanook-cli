@@ -3,20 +3,37 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ModelMessage } from 'ai';
 import { Box, Text, Static, useApp, useInput } from 'ink';
-
-const execFileP = promisify(execFile);
-import { parseCommand } from '../commands.js';
+import {
+  BUILTIN_COMMANDS,
+  expandCustomCommand,
+  loadCustomCommands,
+  parseCommand,
+  parseSlashInvocation,
+} from '../commands.js';
 import { runAgent, type AgentEvent } from '../loop.js';
 import { saveSession, newSessionId } from '../session.js';
 import { getBrainPath, appendBrainWorklog } from '../memory.js';
 import { autoCompact, estimateTokens } from '../compaction.js';
+import { snapshotWorkTree, restoreWorkTree } from '../checkpoint.js';
+import { useEditor } from './useEditor.js';
+import { loadHistory, appendHistory } from './history.js';
+import { expandMentions } from './mentions.js';
 import { BRAND } from '../brand.js';
 import { Banner } from './banner.js';
+
+const execFileP = promisify(execFile);
 
 interface Turn {
   id: number;
   role: 'user' | 'assistant' | 'system';
   text: string;
+}
+interface Mark {
+  turnId: number;
+  msgLen: number;
+}
+interface Checkpoint extends Mark {
+  ref: string | null; // git snapshot ref (null = ไม่ใช่ git repo → ย้อนแค่บทสนทนา)
 }
 
 export interface AppProps {
@@ -35,7 +52,6 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       ? [{ id: -1, role: 'system', text: `↻ ต่อจาก session ก่อน (${initialHistory.length} ข้อความ)` }]
       : [],
   );
-  const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState('');
   const [busy, setBusy] = useState(false);
   const [model, setModel] = useState(initialModel);
@@ -46,6 +62,9 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const sessionId = useRef(newSessionId());
   const sessionCreated = useRef(new Date().toISOString());
   const approvalResolve = useRef<((ok: boolean) => void) | null>(null);
+  const replHistory = useRef<string[]>(loadHistory()); // prompt เก่า (persist) สำหรับ ↑/↓
+  const checkpoints = useRef<Checkpoint[]>([]);
+  const editor = useEditor(replHistory.current);
 
   const addTurn = (role: Turn['role'], text: string): void =>
     setHistory((h) => [...h, { id: idRef.current++, role, text }]);
@@ -67,34 +86,79 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       setApprovalReq({ tool, summary });
     });
 
-  useInput((char, key) => {
+  useInput((input, key) => {
     // มี approval ค้าง → จับ y/n ก่อน (แม้ agent กำลังรัน/busy)
     if (approvalReq) {
-      if (char === 'y' || char === 'Y' || key.return) {
+      if (input === 'y' || input === 'Y' || key.return) {
         approvalResolve.current?.(true);
         setApprovalReq(null);
-      } else if (char === 'n' || char === 'N' || key.escape) {
+      } else if (input === 'n' || input === 'N' || key.escape) {
         approvalResolve.current?.(false);
         setApprovalReq(null);
       }
       return;
     }
-    if (busy) return;
-    if (key.return) {
-      void submit();
-    } else if (key.backspace || key.delete) {
-      setInput((s) => s.slice(0, -1));
-    } else if (key.ctrl && char === 'c') {
-      exit();
-    } else if (char && !key.ctrl && !key.meta) {
-      setInput((s) => s + char);
+    if (busy) {
+      if (key.ctrl && input === 'c') exit();
+      return;
+    }
+    const action = editor.handleKey(input, key);
+    if (action === 'submit') void submit(editor.value);
+    else if (action === 'interrupt') {
+      if (editor.value) editor.reset(); // Ctrl+C ครั้งแรก = ล้างบรรทัด, ว่างแล้ว = ออก
+      else exit();
     }
   });
 
-  async function submit(): Promise<void> {
-    const text = input.trim();
+  /** ย้อน 1 turn — คืนไฟล์ (git, recoverable) + ตัดบทสนทนากลับ */
+  async function rewind(): Promise<void> {
+    const cp = checkpoints.current.pop();
+    if (!cp) {
+      addTurn('system', 'ไม่มี checkpoint ให้ย้อน');
+      return;
+    }
+    let note = '';
+    if (cp.ref) {
+      const r = await restoreWorkTree(cp.ref);
+      note = r.ok
+        ? r.recovery
+          ? ` · ไฟล์คืนแล้ว (กู้สถานะก่อนหน้า: ${r.recovery})`
+          : ' · ไฟล์คืนแล้ว'
+        : ` · ไฟล์: ${r.reason}`;
+    }
+    msgsRef.current = msgsRef.current.slice(0, cp.msgLen);
+    setHistory((h) => h.filter((t) => t.id < cp.turnId));
+    addTurn('system', `↩ ย้อนกลับ 1 turn${note}`);
+  }
+
+  async function submit(raw: string): Promise<void> {
+    const text = raw.trim();
+    editor.reset();
     if (!text) return;
-    setInput('');
+    appendHistory(text, replHistory.current[replHistory.current.length - 1]);
+    replHistory.current.push(text);
+
+    const slash = parseSlashInvocation(text);
+    if (slash) {
+      if (slash.name === 'rewind') {
+        await rewind();
+        return;
+      }
+      if (!BUILTIN_COMMANDS.has(slash.name)) {
+        const custom = (await loadCustomCommands()).get(slash.name);
+        if (custom) {
+          const expanded = expandCustomCommand(custom, slash.args);
+          const mark = { turnId: idRef.current, msgLen: msgsRef.current.length };
+          addTurn('user', text);
+          if (!expanded.trim()) {
+            addTurn('system', `custom command /${slash.name} ว่าง`);
+            return;
+          }
+          await runAssistantTurn(expanded, [], mark);
+          return;
+        }
+      }
+    }
 
     const cmd = parseCommand(text, { model, costSummary: lastCost.current });
     if (cmd.handled) {
@@ -102,19 +166,16 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       if (cmd.action === 'quit') return exit();
       if (cmd.action === 'clear') {
         msgsRef.current = [];
+        checkpoints.current = [];
         return setHistory([]);
       }
       if (cmd.action === 'compact') {
         const before = estimateTokens(msgsRef.current);
         msgsRef.current = autoCompact(msgsRef.current, 40_000, 20);
-        const after = estimateTokens(msgsRef.current);
-        addTurn('system', `บีบ context แล้ว: ~${before} → ~${after} tokens`);
+        addTurn('system', `บีบ context แล้ว: ~${before} → ~${estimateTokens(msgsRef.current)} tokens`);
         return;
       }
-      if (cmd.action === 'diff') {
-        void runGit(['diff', '--stat'], 'diff');
-        return;
-      }
+      if (cmd.action === 'diff') return void runGit(['diff', '--stat'], 'diff');
       if (cmd.action === 'undo') {
         void runGit(['stash', 'push', '-u', '-m', BRAND.undoStashMessage], 'undo').then(() =>
           addTurn('system', 'กู้คืน: git stash pop'),
@@ -126,7 +187,18 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       return;
     }
 
+    // prompt ปกติ → expand @mentions (inline ไฟล์ text + เก็บ path รูป)
+    const mark = { turnId: idRef.current, msgLen: msgsRef.current.length };
     addTurn('user', text);
+    const { text: expanded, images, errors } = await expandMentions(text);
+    if (errors.length) addTurn('system', `@mention: ${errors.join(' · ')}`);
+    await runAssistantTurn(expanded, images, mark);
+  }
+
+  async function runAssistantTurn(promptText: string, images: string[], mark: Mark): Promise<void> {
+    // checkpoint สถานะก่อนรัน (ไฟล์ git + ขอบเขตบทสนทนา) → /rewind ย้อนได้
+    const ref = await snapshotWorkTree();
+    checkpoints.current.push({ ref, turnId: mark.turnId, msgLen: mark.msgLen });
     setBusy(true);
     let buf = '';
     let lastFlush = 0;
@@ -134,7 +206,8 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       const { cost, messages } = await runAgent({
         model,
         fallbackModel,
-        prompt: text,
+        prompt: promptText,
+        images: images.length ? images : undefined,
         history: msgsRef.current,
         budgetUsd,
         permissionMode,
@@ -156,7 +229,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       msgsRef.current = messages;
       lastCost.current = cost.summary();
       addTurn('assistant', buf.trim());
-      // เซฟ session ทุกรอบ → resume ได้ด้วย sanook -c (เดิม REPL ไม่เคยเซฟ)
+      // เซฟ session ทุกรอบ → resume ได้ด้วย sanook -c
       void saveSession({
         id: sessionId.current,
         created: sessionCreated.current,
@@ -165,12 +238,12 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         cwd: process.cwd(),
         messages,
       });
-      // worklog เข้า second-brain (REPL ก็เขียน ไม่ใช่แค่ headless) — vault จำว่าทำอะไรใน session นี้
+      // worklog เข้า second-brain — vault จำว่าทำอะไรใน session นี้
       void (async () => {
         const brain = await getBrainPath();
         if (brain) {
           await appendBrainWorklog(brain, {
-            prompt: text,
+            prompt: promptText,
             summary: cost.summary(),
             model,
             today: new Date().toISOString().slice(0, 10),
@@ -186,38 +259,66 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   }
 
   const banner = useMemo(() => <Banner model={initialModel} />, [initialModel]);
+  const costHint = lastCost.current.includes('cost ') ? lastCost.current.split('cost ')[1] : '';
 
   return (
     <Box flexDirection="column">
       {banner}
       <Static items={history}>{(turn) => <TurnView key={turn.id} turn={turn} />}</Static>
-      {streaming ? <Text>{streaming}</Text> : null}
+      {streaming ? (
+        <Box marginTop={1}>
+          <Text>{streaming}</Text>
+        </Box>
+      ) : null}
       {approvalReq ? (
-        <Box borderStyle="round" borderColor="yellow" paddingX={1} flexDirection="column">
-          <Text color="yellow">⚠ ขออนุมัติรัน {approvalReq.tool}</Text>
-          <Text>{approvalReq.summary}</Text>
-          <Text color="gray">อนุมัติ? (y = รัน · n = ปฏิเสธ)</Text>
+        <Box marginTop={1} borderStyle="round" borderColor="yellow" paddingX={1} flexDirection="column">
+          <Text color="yellow">อนุมัติรัน {approvalReq.tool}?</Text>
+          <Text dimColor>{approvalReq.summary}</Text>
+          <Text dimColor>y = รัน · n = ปฏิเสธ</Text>
         </Box>
       ) : (
-        <Box borderStyle="round" borderColor="gray" paddingX={1}>
-          <Text color={busy ? 'gray' : 'cyan'}>{busy ? '… ' : '› '}</Text>
-          <Text>{input || (busy ? '' : 'พิมพ์คำสั่ง หรือ /help')}</Text>
+        <Box marginTop={1} borderStyle="round" borderColor={busy ? 'gray' : 'blue'} paddingX={1}>
+          <Text color={busy ? 'gray' : 'cyan'}>{busy ? '· ' : '› '}</Text>
+          <InputView value={editor.value} cursor={editor.cursor} busy={busy} />
         </Box>
       )}
-      <Text color="gray" dimColor>
-        {'  '}? for shortcuts · /help · model: {model}
-        {permissionMode === 'ask' ? ' · 🔒 ask-mode' : ''}
+      <Text dimColor>
+        {'  '}
+        {model} · {permissionMode === 'ask' ? 'ask-mode' : 'auto'} · /help · @file · ↑ history
+        {costHint ? ` · ${costHint}` : ''}
       </Text>
     </Box>
   );
 }
 
-function TurnView({ turn }: { turn: Turn }) {
-  const color = turn.role === 'user' ? 'cyan' : turn.role === 'system' ? 'yellow' : undefined;
+/** input ที่มี cursor (inverse) + placeholder — minimal */
+function InputView({ value, cursor, busy }: { value: string; cursor: number; busy: boolean }) {
+  if (busy) return <Text dimColor>กำลังทำงาน… (Ctrl+C ยกเลิก)</Text>;
+  if (!value) return <Text dimColor>ถามอะไรก็ได้ · /help · @ไฟล์ แนบ context/รูป</Text>;
+  const before = value.slice(0, cursor);
+  const at = value.slice(cursor, cursor + 1) || ' ';
+  const after = value.slice(cursor + 1);
   return (
-    <Text color={color}>
-      {turn.role === 'user' ? '› ' : ''}
-      {turn.text}
+    <Text>
+      {before}
+      <Text inverse>{at}</Text>
+      {after}
     </Text>
+  );
+}
+
+function TurnView({ turn }: { turn: Turn }) {
+  if (turn.role === 'system') return <Text dimColor>{turn.text}</Text>;
+  if (turn.role === 'user')
+    return (
+      <Box marginTop={1}>
+        <Text color="cyan">› </Text>
+        <Text color="cyan">{turn.text}</Text>
+      </Box>
+    );
+  return (
+    <Box marginTop={1}>
+      <Text>{turn.text}</Text>
+    </Box>
   );
 }

@@ -1,5 +1,5 @@
 // cost meter — ติดตาม token + ประเมินค่าใช้จ่าย real-time + budget cap
-// pricing ต่อ 1M tokens (USD), ราคา ณ มิ.ย. 2026 — อัปเดตได้ที่นี่
+// pricing ต่อ 1M tokens (USD) — อัปเดตได้ที่นี่ หรือ override ด้วย config `pricing` (sanook config)
 export interface Pricing {
   input: number;
   output: number;
@@ -7,13 +7,60 @@ export interface Pricing {
   cacheRead: number;
 }
 
-// key = specKey() = "anthropic:<curated model id>" — ต้องตรงกับ id ใน registry (มี test กัน drift)
+// key = specKey() = "<provider>:<model id>" — ต้องตรงกับ id ใน registry (มี test กัน drift)
+// Anthropic = ราคา verified (มิ.ย. 2026). ที่เหลือ = published list price โดยประมาณ — override ได้
 export const PRICING: Record<string, Pricing> = {
+  // ── Anthropic (verified) ────────────────────────────────────────────────
   'anthropic:claude-opus-4-8': { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
   'anthropic:claude-sonnet-4-6': { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 },
   'anthropic:claude-haiku-4-5': { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
   'anthropic:claude-fable-5': { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 },
+
+  // ── ราคาประมาณ (published list price ต่อ 1M tokens) — อาจคลาดเคลื่อน, override ได้ด้วย
+  //    `sanook config set pricing '{"openai:gpt-5.5":{"input":1.25,...}}'` หรือ env SANOOK_PRICING
+  // OpenAI
+  'openai:gpt-5.5': { input: 1.25, output: 10, cacheWrite: 1.25, cacheRead: 0.125 },
+  'openai:gpt-5.4-mini': { input: 0.25, output: 2, cacheWrite: 0.25, cacheRead: 0.025 },
+  'openai:gpt-5.3-codex': { input: 1.25, output: 10, cacheWrite: 1.25, cacheRead: 0.125 },
+  // Google Gemini (≤200k context tier)
+  'google:gemini-2.5-pro': { input: 1.25, output: 10, cacheWrite: 1.25, cacheRead: 0.31 },
+  'google:gemini-2.5-flash': { input: 0.3, output: 2.5, cacheWrite: 0.3, cacheRead: 0.075 },
+  // DeepSeek V4
+  'deepseek:deepseek-v4-flash': { input: 0.28, output: 0.42, cacheWrite: 0.28, cacheRead: 0.028 },
+  'deepseek:deepseek-v4-pro': { input: 0.55, output: 2.19, cacheWrite: 0.55, cacheRead: 0.055 },
+  // xAI Grok
+  'xai:grok-4.3': { input: 3, output: 15, cacheWrite: 3, cacheRead: 0.75 },
+  // Mistral
+  'mistral:mistral-large-latest': { input: 2, output: 6, cacheWrite: 2, cacheRead: 0.2 },
+  'mistral:mistral-small-latest': { input: 0.2, output: 0.6, cacheWrite: 0.2, cacheRead: 0.02 },
+  // Groq
+  'groq:llama-3.3-70b-versatile': { input: 0.59, output: 0.79, cacheWrite: 0.59, cacheRead: 0.059 },
 };
+
+/** true ถ้ามี pricing สำหรับ specKey นี้ (ใช้เตือนตอน budget cap ตั้งไว้แต่คิดเงินไม่ได้) */
+export function hasPricingForKey(specKey: string): boolean {
+  return specKey in PRICING;
+}
+
+/**
+ * merge pricing เพิ่ม/override (จาก config `pricing` หรือ env SANOOK_PRICING)
+ * — ให้ budget cap ใช้ได้กับ provider ที่ยังไม่มีในตาราง โดยไม่ต้องแก้โค้ด
+ */
+export function registerPricing(extra: Record<string, Partial<Pricing>> | undefined): void {
+  if (!extra) return;
+  for (const [key, p] of Object.entries(extra)) {
+    if (p == null || typeof p !== 'object') continue;
+    const base = PRICING[key] ?? { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+    const next = {
+      input: Number(p.input ?? base.input),
+      output: Number(p.output ?? base.output),
+      cacheWrite: Number(p.cacheWrite ?? p.input ?? base.cacheWrite),
+      cacheRead: Number(p.cacheRead ?? base.cacheRead),
+    };
+    if (Object.values(next).some((n) => !Number.isFinite(n) || n < 0)) continue;
+    PRICING[key] = next;
+  }
+}
 
 // usage ที่ AI SDK 6 คืน — inputTokens = TOTAL (รวม cacheRead + cacheWrite แล้ว),
 // cachedInputTokens = cacheRead เท่านั้น (cacheWrite อยู่ใน providerMetadata แยก)
@@ -69,9 +116,9 @@ export class CostMeter {
     return this.specKey in PRICING;
   }
 
-  /** true เมื่อใช้เกิน budget (เช็คก่อนยิง request ถัดไป) */
+  /** true เมื่อใช้เกิน budget (เช็คก่อนยิง request ถัดไป) — no-op ถ้าไม่มี pricing (เตือนที่ entry point) */
   get overBudget(): boolean {
-    return this.budgetUsd != null && this.spent >= this.budgetUsd;
+    return this.budgetUsd != null && this.hasPricing && this.spent >= this.budgetUsd;
   }
 
   summary(): string {

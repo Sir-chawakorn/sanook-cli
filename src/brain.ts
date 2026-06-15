@@ -41,7 +41,7 @@ export const BRAIN_DEFAULTS: Omit<BrainConfig, 'today'> = {
  * top-level parent = Home · Shared/<x> parent = Shared/_Index (Shared เองชี้ Home)
  */
 // ⚠ sync กับ second-brain/Vault Structure Map.md — แก้ role/โฟลเดอร์ ต้องแก้ทั้งสองที่ (มี test กัน drift)
-// full parity กับ GEMINI.md §B (vault-builder) — ทุกโฟลเดอร์มี _Index ที่บอก role + ใส่อะไร + ไม่ใส่อะไร
+// portable scaffold parity กับ GEMINI.md §B (vault-builder) — ทุกโฟลเดอร์มี _Index ที่บอก role + ใส่อะไร + ไม่ใส่อะไร
 interface Folder {
   dir: string;
   role: string;
@@ -132,6 +132,7 @@ function renderIndex(f: Folder, cfg: BrainConfig): string {
   const name = f.dir.split('/').pop() ?? f.dir;
   // parent = _Index ของโฟลเดอร์แม่ (nested) หรือ Home (top-level)
   const parent = f.dir.includes('/') ? `${f.dir.split('/').slice(0, -1).join('/')}/_Index` : 'Home';
+  const selfIndex = `${f.dir}/_Index`;
   const tag = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   return `---
 tags: [index, moc, ${tag}]
@@ -150,6 +151,13 @@ ${f.put ?? '_(ดู role ด้านบน)_'}
 
 ## ไม่ใส่ที่นี่
 ${f.avoid ?? '_(—)_'}
+
+## AI Routing Contract
+
+- ก่อนเขียน: เช็กว่าเนื้อหาตรง "ใส่ที่นี่" และไม่เข้า "ไม่ใส่ที่นี่"; ถ้าก้ำกึ่งอ่าน [[Vault Structure Map]] ก่อน
+- ก่อนสร้างไฟล์ใหม่: ค้นหาโน้ตเดิมในโฟลเดอร์นี้และโฟลเดอร์ใกล้เคียงก่อน เพื่อ merge/update แทน append ซ้ำ
+- เมื่อสร้างโน้ตในโฟลเดอร์นี้: ตั้ง \`parent: "[[${selfIndex}]]"\` และท้ายไฟล์ \`up:: [[${selfIndex}]]\`
+- หลังเขียน: เชื่อม link ไป source/project/session/decision ที่เกี่ยวข้อง และอัปเดต hub/index ถ้าโน้ตนี้ควรถูกค้นเจอในอนาคต
 
 > รายละเอียดทุกโฟลเดอร์ + decision rules → [[Vault Structure Map]]
 

@@ -1,4 +1,5 @@
 import { streamText, stepCountIs, type ModelMessage, type ToolSet } from 'ai';
+import { readFile } from 'node:fs/promises';
 import { resolveModel, specKey, parseSpec, PROVIDERS } from './providers/registry.js';
 import { CostMeter, type Usage } from './cost.js';
 import { tools } from './tools/index.js';
@@ -7,8 +8,10 @@ import { loadSkills, renderAvailableSkills } from './skills.js';
 import { maybeWrapHooks } from './hooks.js';
 import { agentContext } from './agentContext.js';
 import { approvalContext, isMutatingTool, wrapToolsWithApproval, type ApprovalFn } from './approval.js';
+import { wrapToolsWithTimeout } from './tools/timeout.js';
 import { getMcpTools } from './mcp.js';
 import { gitContext } from './git.js';
+import { loadRepoMap } from './repomap.js';
 import { autoCompact } from './compaction.js';
 import { BRAND } from './brand.js';
 
@@ -50,6 +53,28 @@ export function cleanProviderError(err: unknown): string {
   return api?.statusCode ? `${detail} (HTTP ${api.statusCode})` : detail;
 }
 
+function errStatus(err: unknown): number | undefined {
+  const e = err as { statusCode?: number; lastError?: { statusCode?: number } };
+  return e?.statusCode ?? e?.lastError?.statusCode;
+}
+
+/** rate-limit / overloaded (429/503) → retry-able ด้วย backoff (ต่างจาก auth ที่ retry ไปก็ไม่ผ่าน) */
+export function isRateLimit(err: unknown): boolean {
+  const code = errStatus(err);
+  if (code === 429 || code === 503) return true;
+  const msg = ((err as { message?: string })?.message ?? '').toLowerCase();
+  return /rate.?limit|too many requests|overloaded|429|503/.test(msg);
+}
+
+/** auth/billing (401/403/402) → fail fast ไม่ retry (key ผิด/หมดเครดิต retry ไม่ช่วย) */
+export function isAuthError(err: unknown): boolean {
+  const code = errStatus(err);
+  return code === 401 || code === 403 || code === 402;
+}
+
+const RATE_LIMIT_RETRIES = 2;
+const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
 export interface RunAgentOptions {
   /** model spec: alias ("sonnet"), "provider:model", หรือ "model" (default anthropic) */
   model: string;
@@ -71,6 +96,8 @@ export interface RunAgentOptions {
   permissionMode?: 'auto' | 'ask';
   /** callback ขออนุมัติ (REPL render y/n) — ใช้เมื่อ permissionMode='ask' */
   approve?: ApprovalFn;
+  /** path ของรูป (vision input) — แนบเป็น image part ใน user message; history เก็บแค่ placeholder */
+  images?: string[];
 }
 
 export interface RunAgentResult {
@@ -124,15 +151,17 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     return runDelegate(opts);
   }
   const model = resolveModel(opts.model); // throws ถ้าไม่มี key / provider ผิด
-  const meter = new CostMeter(specKey(opts.model), opts.budgetUsd);
+  let meter = new CostMeter(specKey(opts.model), opts.budgetUsd);
 
-  // โหลด context: auto-memory + skills + git state + project SANOOK.md → system prompt
-  const [memory, autoMemory, skills, git, brain] = await Promise.all([
+  // โหลด context: auto-memory + skills + git state + repo map + project SANOOK.md → system prompt
+  // sub-agent (opts.tools) ข้าม repo map (มี subset tool + prompt เฉพาะอยู่แล้ว — ประหยัด context)
+  const [memory, autoMemory, skills, git, brain, repoMap] = await Promise.all([
     loadMemory(),
     loadAutoMemory(),
     loadSkills(),
     gitContext(),
     loadBrainContext(),
+    opts.tools ? Promise.resolve('') : loadRepoMap(),
   ]);
   const planSuffix = opts.planMode
     ? '\n\nPLAN MODE: สำรวจและวางแผนเท่านั้น — ห้ามแก้ไฟล์หรือรันคำสั่งที่เปลี่ยน state. จบด้วยแผนเป็นขั้นตอนให้ user อนุมัติก่อนลงมือ.'
@@ -142,14 +171,41 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const brainNudge = brain
     ? '\n- second-brain vault โหลดอยู่ (ดู <brain_vault>) — อ่าน current-state + โน้ตที่เกี่ยวก่อนงานไม่ trivial · เจอ preference/decision สำคัญ → remember (เข้า vault) · งานเสร็จควร route/บันทึกตาม Vault Structure Map ของ vault'
     : '';
-  const system = [SYSTEM + planSuffix + brainNudge, autoMemory, renderAvailableSkills(skills), brain, memory, git]
+  // static preamble (SYSTEM + memory + skills + brain) = เหมือนกันทุก step/turn → cache ได้ (ประหยัด ~10-20%)
+  // git แยกออก (volatile — เปลี่ยนทุก commit) ไม่ให้ invalidate cache ของ static prefix
+  const staticSystem = [SYSTEM + planSuffix + brainNudge, autoMemory, renderAvailableSkills(skills), brain, memory, repoMap]
     .filter(Boolean)
     .join('\n\n');
 
-  const messages: ModelMessage[] = [
-    ...(opts.history ?? []),
-    { role: 'user', content: opts.prompt },
+  // vision: อ่านรูปเป็น image part สำหรับ model. history เก็บแค่ placeholder (กัน session bloat / binary ใน JSON)
+  const imageParts: { type: 'image'; image: Uint8Array }[] = [];
+  for (const p of opts.images ?? []) {
+    try {
+      imageParts.push({ type: 'image', image: new Uint8Array(await readFile(p)) });
+    } catch {
+      /* อ่านรูปไม่ได้ = ข้าม */
+    }
+  }
+  const userForModel: ModelMessage = imageParts.length
+    ? { role: 'user', content: [{ type: 'text', text: opts.prompt }, ...imageParts] }
+    : { role: 'user', content: opts.prompt };
+  const userForHistory: ModelMessage = imageParts.length
+    ? { role: 'user', content: `${opts.prompt}\n${opts.images!.map((p) => `[image: ${p}]`).join('\n')}` }
+    : { role: 'user', content: opts.prompt };
+
+  // conversation (ไม่รวม system, ไม่รวม binary รูป) = สิ่งที่ persist/return เป็น history ข้ามรอบ
+  const conversation: ModelMessage[] = [...(opts.history ?? []), userForHistory];
+  // system เป็น message: static (cache breakpoint, Anthropic ephemeral) + git (ไม่ cache).
+  // provider อื่น = providerOptions.anthropic ถูกข้ามอย่างปลอดภัย (no-op)
+  const systemMessages: ModelMessage[] = [
+    {
+      role: 'system',
+      content: staticSystem,
+      providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } },
+    },
   ];
+  if (git) systemMessages.push({ role: 'system', content: git });
+  const messages: ModelMessage[] = [...systemMessages, ...(opts.history ?? []), userForModel];
 
   // plan mode → เหลือเฉพาะ tool ที่ไม่เปลี่ยน state (read/search)
   const PLAN_TOOLS = ['read_file', 'list_dir', 'glob', 'grep', 'recall', 'skill', 'find_skills', 'list_scheduled', 'git_status', 'git_diff', 'git_log'];
@@ -159,8 +215,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   if (opts.planMode) {
     baseTools = Object.fromEntries(Object.entries(baseTools).filter(([k]) => PLAN_TOOLS.includes(k))) as ToolSet;
   }
-  // ครอบ tool: hooks (PreToolUse block) แล้ว approval (ask ก่อน mutate ใน ask-mode)
-  const activeTools = wrapToolsWithApproval(await maybeWrapHooks(baseTools));
+  // ครอบ tool: timeout (กันค้าง) → hooks (PreToolUse block) → approval (ask ก่อน mutate ใน ask-mode, outer สุด)
+  const activeTools = wrapToolsWithApproval(await maybeWrapHooks(wrapToolsWithTimeout(baseTools)));
   // stream attempt — แยกออกมาเพื่อ retry ด้วย fallback model ได้ (capture stream error กัน unhandled rejection)
   let sideEffectToolSeen = false;
   const runStream = async (
@@ -169,8 +225,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     let err: unknown;
     const r = streamText({
       model: m,
-      system,
-      messages,
+      messages, // system อยู่ใน messages (cache breakpoint) แล้ว — ไม่ใช้ system param
       tools: activeTools, // sub-agent override + hooks wrap
       onError: ({ error }) => {
         err = error;
@@ -218,11 +273,27 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     return { text: t, result: r, err };
   };
 
-  let { text, result, err: streamError } = await runStream(model);
-  // model หลักล้มกลางทาง → ลอง fallback model ครั้งเดียว (reliability)
+  // รัน stream + retry เฉพาะ rate-limit/overloaded ด้วย exponential backoff (auth/billing = fail fast)
+  // retry ได้ก็ต่อเมื่อยังไม่มี text ออก + ยังไม่มี side-effect tool (กัน output ซ้ำ / side-effect ซ้ำ)
+  const runWithRetry = async (m: typeof model): Promise<ReturnType<typeof runStream>> => {
+    for (let attempt = 0; ; attempt++) {
+      const res = await runStream(m);
+      if (res.err && isRateLimit(res.err) && attempt < RATE_LIMIT_RETRIES && !sideEffectToolSeen && res.text === '') {
+        const backoff = 500 * 2 ** attempt; // 500ms, 1000ms
+        opts.onEvent?.({ type: 'text', text: `\n[rate limit → รอ ${backoff}ms ลองใหม่ (${attempt + 1}/${RATE_LIMIT_RETRIES})]\n` });
+        await delay(backoff);
+        continue;
+      }
+      return res;
+    }
+  };
+
+  let { text, result, err: streamError } = await runWithRetry(model);
+  // model หลักล้มกลางทาง (ไม่ใช่ rate-limit ที่ retry หมดแล้ว) → ลอง fallback model
   if (streamError && opts.fallbackModel && opts.fallbackModel !== opts.model && !sideEffectToolSeen) {
     opts.onEvent?.({ type: 'text', text: `\n[model หลักล้ม → fallback: ${opts.fallbackModel}]\n` });
-    ({ text, result, err: streamError } = await runStream(resolveModel(opts.fallbackModel)));
+    meter = new CostMeter(specKey(opts.fallbackModel), opts.budgetUsd);
+    ({ text, result, err: streamError } = await runWithRetry(resolveModel(opts.fallbackModel)));
   } else if (streamError && sideEffectToolSeen) {
     throw new Error(`${cleanProviderError(streamError)} (ไม่ retry fallback เพราะมี tool ที่อาจเปลี่ยน state แล้ว)`);
   }
@@ -231,5 +302,6 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   if (streamError) throw new Error(cleanProviderError(streamError));
 
   const response = await result.response;
-  return { messages: response.messages, text, cost: meter };
+  // คืน history เต็ม (conversation + response messages) — ไม่รวม system (กัน user turn เก่าหาย + ไม่ save system ซ้ำ)
+  return { messages: [...conversation, ...response.messages], text, cost: meter };
 }

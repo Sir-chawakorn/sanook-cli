@@ -11,6 +11,8 @@ priority: medium
 
 # Task Template
 
+> ใช้เป็นการ์ดงานที่ claim ได้สำหรับหลาย session/หลาย agent โดยเก็บ objective, scope, owner ปัจจุบัน และ progress สั้น ๆ; narrative ยาวให้ไป Sessions/Handoffs
+
 ## Objective
 
 _(What needs to be true when this task is done.)_

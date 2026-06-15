@@ -9,6 +9,8 @@ ai_surface: history
 
 # YYYY-MM-DD — <topic>
 
+> ใช้เมื่อจบงานหรือ checkpoint สำคัญ เพื่อบันทึกสิ่งที่ทำจริง หลักฐานที่ verify แล้ว decision และ next step; ไม่ใช้แทน project overview หรือ handoff
+
 ## Summary
 
 ## What Was Tried

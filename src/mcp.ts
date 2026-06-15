@@ -10,11 +10,14 @@ const VERSION = (
   JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
 ).version;
 
-// MCP client (stdio JSON-RPC) เขียนเอง zero-dep — ต่อ MCP server (filesystem/github/postgres/ฯลฯ)
-// ทำให้ Sanook extensible เหมือน Claude Code/Codex. config: ~/.sanook/mcp.json + project .sanook/mcp.json
-// { "mcpServers": { "fs": { "command": "npx", "args": ["-y","@modelcontextprotocol/server-filesystem","/path"] } } }
+// MCP client เขียนเอง zero-dep — ต่อ MCP server (filesystem/github/postgres/ฯลฯ)
+// 2 transport: stdio (command) + Streamable-HTTP (url) → ต่อทั้ง local และ remote/hosted MCP ได้
+// config: ~/.sanook/mcp.json + project .sanook/mcp.json
+//   stdio:  { "fs":  { "command": "npx", "args": ["-y","@modelcontextprotocol/server-filesystem","/path"] } }
+//   remote: { "gh":  { "url": "https://api.example.com/mcp", "headers": { "Authorization": "Bearer …" } } }
 const PROTOCOL_VERSION = '2024-11-05';
 const MAX_BUF = 16 * 1024 * 1024; // กัน server ส่ง byte ยาวไม่มี newline → memory โต unbounded
+const REQUEST_TIMEOUT = 20_000;
 
 // env ปลอดภัยที่ส่งให้ MCP child (ไม่มี secret) — server ที่ต้อง token ให้ตั้งใน cfg.env เอง
 const SAFE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR', 'APPDATA'];
@@ -28,9 +31,12 @@ function safeEnv(): Record<string, string> {
 }
 
 interface McpServerConfig {
-  command: string;
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
+  /** remote MCP (Streamable-HTTP) — มี url = ใช้ http transport, ไม่งั้น stdio */
+  url?: string;
+  headers?: Record<string, string>;
 }
 interface McpConfig {
   mcpServers?: Record<string, McpServerConfig>;
@@ -41,10 +47,17 @@ interface McpToolDef {
   inputSchema?: Record<string, unknown>;
 }
 
+/** transport = ส่ง JSON-RPC request/notify ให้ server (stdio หรือ http) */
+interface Transport {
+  request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown>;
+  notify(method: string, params?: unknown): void;
+  close(): void;
+}
+
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
 
-/** MCP stdio client — JSON-RPC 2.0, newline-delimited messages */
-class McpClient {
+/** stdio transport — JSON-RPC 2.0, newline-delimited ผ่าน child process stdin/stdout */
+class StdioTransport implements Transport {
   private proc: ChildProcess;
   private buf = '';
   private nextId = 1;
@@ -52,7 +65,7 @@ class McpClient {
   private dead = false;
 
   constructor(cfg: McpServerConfig) {
-    this.proc = spawn(cfg.command, cfg.args ?? [], {
+    this.proc = spawn(cfg.command!, cfg.args ?? [], {
       // minimal env เท่านั้น (PATH/HOME/locale) + cfg.env ที่ user ตั้งเอง — ไม่ส่ง secret
       // (ANTHROPIC_API_KEY/TELEGRAM_BOT_TOKEN/ฯลฯ) ให้ทุก MCP server (supply chain = npx -y <pkg>)
       env: { ...safeEnv(), ...cfg.env },
@@ -96,7 +109,7 @@ class McpClient {
     }
   }
 
-  private request(method: string, params?: unknown, timeoutMs = 20_000): Promise<unknown> {
+  request(method: string, params?: unknown, timeoutMs = REQUEST_TIMEOUT): Promise<unknown> {
     if (this.dead) return Promise.reject(new Error('mcp: server ตายแล้ว'));
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
@@ -118,26 +131,116 @@ class McpClient {
     });
   }
 
-  private notify(method: string, params?: unknown): void {
+  notify(method: string, params?: unknown): void {
     this.proc.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`);
   }
 
+  close(): void {
+    try {
+      this.proc.kill();
+    } catch {
+      /* ตายแล้ว */
+    }
+  }
+}
+
+/** Streamable-HTTP transport — POST JSON-RPC ต่อ request, รับ application/json หรือ text/event-stream */
+class HttpTransport implements Transport {
+  private nextId = 1;
+  private sessionId?: string;
+  constructor(
+    private readonly url: string,
+    private readonly userHeaders: Record<string, string> = {},
+  ) {}
+
+  private headers(): Record<string, string> {
+    return {
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      ...(this.sessionId ? { 'mcp-session-id': this.sessionId } : {}),
+      ...this.userHeaders,
+    };
+  }
+
+  /** parse SSE body หา JSON-RPC response ที่ id ตรง (Streamable-HTTP คืน response ผ่าน event-stream ได้) */
+  private parseSse(text: string, id: number): unknown {
+    for (const block of text.split(/\n\n/)) {
+      const data = block
+        .split(/\n/)
+        .filter((l) => l.startsWith('data:'))
+        .map((l) => l.slice(5).trim())
+        .join('');
+      if (!data) continue;
+      try {
+        const msg = JSON.parse(data) as { id?: number; result?: unknown; error?: { message?: string } };
+        if (msg.id === id) {
+          if (msg.error) throw new Error(msg.error.message ?? 'mcp error');
+          return msg.result;
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message !== 'Unexpected end of JSON input') throw e;
+      }
+    }
+    throw new Error('mcp http: ไม่พบ response ใน event-stream');
+  }
+
+  async request(method: string, params?: unknown, timeoutMs = REQUEST_TIMEOUT): Promise<unknown> {
+    const id = this.nextId++;
+    const res = await fetch(this.url, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const sid = res.headers.get('mcp-session-id');
+    if (sid) this.sessionId = sid;
+    if (!res.ok) throw new Error(`mcp http ${res.status} ${res.statusText}`);
+    const ctype = res.headers.get('content-type') ?? '';
+    if (ctype.includes('text/event-stream')) return this.parseSse(await res.text(), id);
+    const json = (await res.json()) as { result?: unknown; error?: { message?: string } };
+    if (json.error) throw new Error(json.error.message ?? 'mcp error');
+    return json.result;
+  }
+
+  notify(method: string, params?: unknown): void {
+    void fetch(this.url, {
+      method: 'POST',
+      headers: this.headers(),
+      body: JSON.stringify({ jsonrpc: '2.0', method, params }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+    }).catch(() => {});
+  }
+
+  close(): void {
+    if (!this.sessionId) return;
+    // best-effort terminate session (spec: DELETE) — ไม่รอผล
+    void fetch(this.url, { method: 'DELETE', headers: this.headers() }).catch(() => {});
+  }
+}
+
+/** MCP client — เลือก transport จาก config (url = http, ไม่งั้น stdio) แล้ว handshake + เรียก tool */
+class McpClient {
+  private transport: Transport;
+  constructor(cfg: McpServerConfig) {
+    this.transport = cfg.url ? new HttpTransport(cfg.url, cfg.headers) : new StdioTransport(cfg);
+  }
+
   async initialize(): Promise<void> {
-    await this.request('initialize', {
+    await this.transport.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
       clientInfo: { name: BRAND.mcpClientName, version: VERSION },
     });
-    this.notify('notifications/initialized');
+    this.transport.notify('notifications/initialized');
   }
 
   async listTools(): Promise<McpToolDef[]> {
-    const r = (await this.request('tools/list')) as { tools?: McpToolDef[] };
+    const r = (await this.transport.request('tools/list')) as { tools?: McpToolDef[] };
     return r?.tools ?? [];
   }
 
   async callTool(name: string, args: unknown): Promise<string> {
-    const r = (await this.request('tools/call', { name, arguments: args ?? {} })) as {
+    const r = (await this.transport.request('tools/call', { name, arguments: args ?? {} })) as {
       content?: { type?: string; text?: string }[];
       isError?: boolean;
     };
@@ -149,11 +252,7 @@ class McpClient {
   }
 
   close(): void {
-    try {
-      this.proc.kill();
-    } catch {
-      /* ตายแล้ว */
-    }
+    this.transport.close();
   }
 }
 
@@ -199,9 +298,13 @@ async function buildMcpTools(onLog?: (m: string) => void): Promise<ToolSet> {
   const clients: McpClient[] = [];
   activeClients = clients; // ref เดียวกัน → closeMcp kill client ที่ spawn ระหว่าง build ได้ด้วย
   for (const [serverName, cfg] of Object.entries(config)) {
+    if (!cfg.url && !cfg.command) {
+      onLog?.(`MCP "${serverName}" ข้าม: ต้องมี "command" (stdio) หรือ "url" (remote)`);
+      continue;
+    }
     try {
       const client = new McpClient(cfg);
-      clients.push(client); // push ทันที (constructor spawn แล้ว) ก่อน await → ไม่ leak ถ้า build ค้าง
+      clients.push(client); // push ทันที (อาจ spawn แล้ว) ก่อน await → ไม่ leak ถ้า build ค้าง
       await client.initialize();
       const defs = await client.listTools();
       for (const def of defs) {
@@ -218,7 +321,7 @@ async function buildMcpTools(onLog?: (m: string) => void): Promise<ToolSet> {
           execute: async (args) => client.callTool(def.name, args),
         });
       }
-      onLog?.(`MCP "${serverName}": ${defs.length} tools`);
+      onLog?.(`MCP "${serverName}" (${cfg.url ? 'http' : 'stdio'}): ${defs.length} tools`);
     } catch (e) {
       onLog?.(`MCP "${serverName}" ต่อไม่ได้: ${(e as Error).message}`);
     }

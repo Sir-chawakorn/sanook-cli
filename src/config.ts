@@ -3,10 +3,26 @@ import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { appHomePath, appProjectPath, BRAND } from './brand.js';
 import { projectTrustStatus } from './trust.js';
+import { registerPricing, type Pricing } from './cost.js';
 
 export const CONFIG_DIR = appHomePath();
 const CONFIG_PATH = join(CONFIG_DIR, 'config.json');
 const AUTH_PATH = join(CONFIG_DIR, 'auth.json'); // API keys (chmod 0600)
+
+export const PricingOverrideSchema = z.record(
+  z.string(),
+  z
+    .object({
+      input: z.number().finite().nonnegative().optional(),
+      output: z.number().finite().nonnegative().optional(),
+      cacheWrite: z.number().finite().nonnegative().optional(),
+      cacheRead: z.number().finite().nonnegative().optional(),
+    })
+    .strict()
+    .refine((v) => Object.keys(v).length > 0, 'ต้องใส่ราคาอย่างน้อยหนึ่ง field'),
+);
+
+export type PricingOverride = Record<string, Partial<Pricing>>;
 
 export const ConfigSchema = z.object({
   model: z.string().default('sonnet'),
@@ -18,6 +34,8 @@ export const ConfigSchema = z.object({
   permissionMode: z.enum(['auto', 'ask']).default('ask'),
   // path ของ second-brain workspace ที่ scaffold ไว้ (sanook brain) — optional
   brainPath: z.string().optional(),
+  // pricing override/extension per "provider:model" → ทำให้ budget cap ใช้ได้กับ model ที่ยังไม่มีในตาราง
+  pricing: PricingOverrideSchema.optional(),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -59,7 +77,28 @@ export async function loadConfig(
   }
 
   const merged = { ...global, ...project, ...envConfig, ...cleanOverrides };
-  return ConfigSchema.parse(merged);
+  const config = ConfigSchema.parse(merged);
+  // pricing override: config.pricing + env SANOOK_PRICING (JSON) → ลงทะเบียนเข้า cost table
+  registerPricing(config.pricing);
+  registerPricing(parseEnvPricing());
+  return config;
+}
+
+/** env SANOOK_PRICING = JSON ของ { "provider:model": { input, output, ... } } */
+function parseEnvPricing(): PricingOverride | undefined {
+  const raw = process.env.SANOOK_PRICING;
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const res = PricingOverrideSchema.safeParse(parsed);
+    return res.success ? res.data : undefined;
+  } catch {
+    return undefined; // JSON ไม่ถูก = ข้าม (ไม่ทำให้ boot ล้ม)
+  }
+}
+
+export function parsePricingOverride(raw: string): PricingOverride {
+  return PricingOverrideSchema.parse(JSON.parse(raw));
 }
 
 /** ครั้งแรกที่รัน (ยังไม่มี global config) → ต้องทำ setup wizard */

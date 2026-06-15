@@ -2,10 +2,11 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadSkills } from './skills.js';
 import { appHomePath } from './brand.js';
+import { loadStore, activeFacts } from './memory-store.js';
 
 // recall = ค้น knowledge ที่สะสม (auto-memory + skills + session เก่า) แบบ keyword scoring
 // "second brain ค้นได้" — ให้ agent reuse ของเดิม ไม่เริ่มจากศูนย์/ไม่ลืมว่าเคยทำอะไร
-const AUTO_MEM = appHomePath('memory', 'MEMORY.md');
+// auto-memory อ่านจาก structured store (./memory-store.ts) — writer/reader แชร์ format เดียวกัน
 const SESSIONS = appHomePath('sessions');
 
 interface Hit {
@@ -32,12 +33,11 @@ export async function recall(query: string, limit = 8): Promise<string> {
   if (!terms.length) return 'query สั้นเกินไป — ใส่คำค้นยาวขึ้น';
   const hits: Hit[] = [];
 
-  // 1) auto-memory (ทีละบรรทัด)
+  // 1) auto-memory — structured facts (score f.text เท่านั้น → header/JSON noise หลุดเข้า hits ไม่ได้)
   try {
-    for (const line of (await readFile(AUTO_MEM, 'utf8')).split('\n')) {
-      const t = line.trim();
-      const sc = scoreText(t, terms);
-      if (sc > 0 && t) hits.push({ src: 'memory', text: t, score: sc });
+    for (const f of activeFacts(await loadStore())) {
+      const sc = scoreText(f.text, terms);
+      if (sc > 0) hits.push({ src: 'memory', text: f.text, score: sc });
     }
   } catch {
     /* ยังไม่มี memory */

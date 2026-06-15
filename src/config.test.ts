@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadConfig } from './config.js';
+import { loadConfig, parsePricingOverride } from './config.js';
 
 // ใช้ cwd = temp dir (ไม่แตะ process.env) — test project/CLI layering แบบ relative
 describe('loadConfig layering', () => {
@@ -59,5 +59,14 @@ describe('loadConfig layering', () => {
     vi.stubEnv('SANOOK_TRUST_PROJECT', '1');
     await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ permissionMode: 'auto' }));
     expect((await loadConfig({}, dir)).permissionMode).toBe('auto');
+  });
+
+  it('pricing override ต้องเป็น numeric object ที่ schema รองรับ', () => {
+    expect(parsePricingOverride('{"openai:gpt-x":{"input":1,"output":3}}')).toEqual({
+      'openai:gpt-x': { input: 1, output: 3 },
+    });
+    expect(() => parsePricingOverride('{"openai:gpt-x":{"input":"1"}}')).toThrow();
+    expect(() => parsePricingOverride('{"openai:gpt-x":{"input":-1}}')).toThrow();
+    expect(() => parsePricingOverride('{"openai:gpt-x":{"unknown":1}}')).toThrow();
   });
 });

@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 import { runAgent, type AgentEvent } from './loop.js';
 import { redactKey } from './providers/keys.js';
+import { specKey } from './providers/registry.js';
+import { hasPricingForKey } from './cost.js';
 import type { ModelMessage } from 'ai';
-import { loadConfig, isFirstRun, loadKeysIntoEnv } from './config.js';
+import { loadConfig, isFirstRun, loadKeysIntoEnv, parsePricingOverride } from './config.js';
 import { saveSession, latestSession, newSessionId } from './session.js';
 import { closeMcp } from './mcp.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { chmod, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { createInterface } from 'node:readline/promises';
 import { appHomePath, BRAND, BRAND_ENV, envFlag } from './brand.js';
+import type { UpdateCache } from './update.js';
 
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
@@ -69,6 +73,13 @@ async function runHeadless(
     controller.abort();
     process.exit(130);
   });
+  // budget cap ตั้งไว้แต่ไม่มี pricing สำหรับ model นี้ → cap จะไม่ทำงาน เตือนไม่ให้เงียบ (correctness)
+  if (budgetUsd != null && !hasPricingForKey(specKey(model)) && !json) {
+    process.stderr.write(
+      `${DIM}⚠ budget $${budgetUsd} ตั้งไว้ แต่ไม่มี pricing สำหรับ ${model} → cap จะไม่ทำงาน ` +
+        `(ตั้งราคาเอง: ${BRAND.cliName} config set pricing '{"${specKey(model)}":{"input":1,"output":3}}')${RESET}\n`,
+    );
+  }
   try {
     const { cost, messages } = await runAgent({
       model,
@@ -109,15 +120,19 @@ async function runHeadless(
 }
 
 // อ่านจาก package.json (single source of truth) — กัน version constant drift
-const VERSION = (
-  JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
-).version;
+const PACKAGE = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+  name: string;
+  version: string;
+};
+const VERSION = PACKAGE.version;
+const PACKAGE_NAME = PACKAGE.name;
 const HELP = `${BRAND.productName} — a terminal AI coding agent (BYOK)
 
 usage:
   ${BRAND.cliName} "<task>"            run one task (headless)
   ${BRAND.cliName}                     interactive REPL
   ${BRAND.cliName} --json "<task>"     headless, JSONL output (for CI/scripts)
+  ${BRAND.cliName} update              update ${BRAND.cliName} to the latest npm release
 
 gateway (อยู่ยาว 24/7 — HTTP loopback + cron):
   ${BRAND.cliName} serve [--port 8787]            เปิด gateway (OpenAI-compat /v1/chat/completions + scheduler)
@@ -125,7 +140,7 @@ gateway (อยู่ยาว 24/7 — HTTP loopback + cron):
   ${BRAND.cliName} cron list                      ดู task ทั้งหมด
   ${BRAND.cliName} cron rm <id>                   ลบ task
 
-skills (69 built-in + ติดตั้งเพิ่มได้):
+skills (built-in + ติดตั้งเพิ่มได้):
   ${BRAND.cliName} skill list                     ดู skill ทั้งหมด
   ${BRAND.cliName} skill add <user/repo|url|path> ติดตั้ง skill จาก GitHub / URL / local
   ${BRAND.cliName} skill remove <name>            ลบ skill ที่ติดตั้ง
@@ -152,7 +167,8 @@ flags:
   -h, --help
 
 env (BYOK — direct API key only):
-  ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENAI_API_KEY`;
+  ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENAI_API_KEY
+  ${BRAND_ENV.disableUpdateCheck}=1   disable interactive update prompts`;
 
 /** sanook serve [--port N] [--model spec] — เปิด gateway (HTTP loopback + cron scheduler) อยู่ยาว */
 async function runServe(args: string[]): Promise<void> {
@@ -375,7 +391,7 @@ async function readStdin(): Promise<string> {
 async function runConfig(args: string[]): Promise<void> {
   const { readGlobalConfigRaw, patchGlobalConfig } = await import('./config.js');
   const [action, key, ...rest] = args;
-  const ALLOWED = ['model', 'fallbackModel', 'budgetUsd', 'maxSteps', 'permissionMode', 'brainPath'];
+  const ALLOWED = ['model', 'fallbackModel', 'budgetUsd', 'maxSteps', 'permissionMode', 'brainPath', 'pricing'];
   if (action === 'set') {
     if (!key || rest.length === 0) {
       console.error(`ใช้: ${BRAND.cliName} config set <key> <value>   (key: ${ALLOWED.join(' | ')})`);
@@ -404,6 +420,13 @@ async function runConfig(args: string[]): Promise<void> {
     } else if (key === 'permissionMode' && raw !== 'auto' && raw !== 'ask') {
       console.error('permissionMode ต้องเป็น auto หรือ ask');
       process.exit(1);
+    } else if (key === 'pricing') {
+      try {
+        value = parsePricingOverride(raw); // { "provider:model": { input, output, cacheRead?, cacheWrite? } }
+      } catch (e) {
+        console.error(`pricing ต้องเป็น JSON เช่น '{"openai:gpt-5.5":{"input":1.25,"output":10}}' — ${(e as Error).message}`);
+        process.exit(1);
+      }
     }
     await patchGlobalConfig({ [key]: value });
     console.log(`ตั้ง ${key} = ${raw}`);
@@ -420,7 +443,7 @@ async function runConfig(args: string[]): Promise<void> {
 /** sanook mcp [list | add <name> <command> [args...] | remove <name>] — จัดการ ~/.sanook/mcp.json */
 async function runMcp(args: string[]): Promise<void> {
   const mcpPath = appHomePath('mcp.json');
-  type Server = { command: string; args?: string[] };
+  type Server = { command?: string; args?: string[]; url?: string };
   let cfg: { mcpServers: Record<string, Server> } = { mcpServers: {} };
   try {
     const parsed = JSON.parse(await readFile(mcpPath, 'utf8')) as { mcpServers?: Record<string, Server> };
@@ -438,11 +461,13 @@ async function runMcp(args: string[]): Promise<void> {
   if (action === 'add') {
     if (!name || !command) {
       console.error(`ใช้: ${BRAND.cliName} mcp add <name> <command> [args...]   (เช่น: mcp add fs npx -y @modelcontextprotocol/server-filesystem /path)`);
+      console.error(`     remote: ${BRAND.cliName} mcp add <name> https://host/mcp   (Streamable-HTTP)`);
       process.exit(1);
     }
-    cfg.mcpServers[name] = { command, args: cmdArgs };
+    // command เป็น http(s):// → remote MCP (Streamable-HTTP), ไม่งั้น stdio
+    cfg.mcpServers[name] = /^https?:\/\//.test(command) ? { url: command } : { command, args: cmdArgs };
     await write();
-    console.log(`เพิ่ม MCP server "${name}"`);
+    console.log(`เพิ่ม MCP server "${name}"${/^https?:\/\//.test(command) ? ' (remote http)' : ''}`);
     return;
   }
   if (action === 'remove' || action === 'rm') {
@@ -459,7 +484,10 @@ async function runMcp(args: string[]): Promise<void> {
     return;
   }
   console.log(`${names.length} MCP servers:`);
-  for (const n of names) console.log(`  ${n}  —  ${cfg.mcpServers[n].command} ${(cfg.mcpServers[n].args ?? []).join(' ')}`);
+  for (const n of names) {
+    const s = cfg.mcpServers[n];
+    console.log(`  ${n}  —  ${s.url ? `${s.url} (http)` : `${s.command} ${(s.args ?? []).join(' ')}`}`);
+  }
 }
 
 /** sanook trust [status|add|remove] — trust project config that can execute code (MCP/hooks) */
@@ -485,16 +513,121 @@ async function runTrust(args: string[]): Promise<void> {
   process.exit(1);
 }
 
+/** sanook update — one-command update path for globally installed CLI */
+async function runUpdate(args: string[]): Promise<void> {
+  const checkOnly = args.includes('--check');
+  const unknown = args.filter((a) => a !== '--check');
+  if (unknown.length) {
+    console.error(`ใช้: ${BRAND.cliName} update [--check]`);
+    process.exit(1);
+  }
+
+  const { checkForUpdate, installLatest } = await import('./update.js');
+  try {
+    console.log(`เช็กอัปเดต ${PACKAGE_NAME}...`);
+    const check = await checkForUpdate({ name: PACKAGE_NAME, version: VERSION });
+    if (!check.isOutdated) {
+      console.log(`คุณใช้เวอร์ชันล่าสุดแล้ว (${check.currentVersion})`);
+      return;
+    }
+
+    console.log(`มีเวอร์ชันใหม่: ${check.currentVersion} → ${check.latestVersion}`);
+    console.log(`คำสั่งอัปเดต: ${check.installCommand}`);
+    if (checkOnly) {
+      console.log(`รัน "${BRAND.cliName} update" เพื่ออัปเดต`);
+      return;
+    }
+
+    const code = await installLatest({ name: PACKAGE_NAME, version: VERSION });
+    if (code !== 0) {
+      console.error(`อัปเดตไม่สำเร็จ (npm exit ${code}) — ลองรันเอง: ${check.installCommand}`);
+      process.exit(code);
+    }
+    console.log(`อัปเดตสำเร็จ — ตรวจสอบด้วย: ${BRAND.cliName} --version`);
+  } catch (e) {
+    console.error(`เช็ก/อัปเดตไม่สำเร็จ: ${redactKey((e as Error).message)}`);
+    console.error(`ลองรันเอง: npm install -g ${PACKAGE_NAME}@latest`);
+    process.exit(1);
+  }
+}
+
+const UPDATE_CACHE_PATH = appHomePath('update-check.json');
+
+async function readUpdateCache(): Promise<UpdateCache> {
+  try {
+    const parsed = JSON.parse(await readFile(UPDATE_CACHE_PATH, 'utf8')) as UpdateCache;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeUpdateCache(latestVersion: string): Promise<void> {
+  await mkdir(dirname(UPDATE_CACHE_PATH), { recursive: true });
+  await writeFile(
+    UPDATE_CACHE_PATH,
+    `${JSON.stringify({ checkedAt: new Date().toISOString(), latestVersion }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  await chmod(UPDATE_CACHE_PATH, 0o600).catch(() => {});
+}
+
+async function askYesNo(question: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await rl.question(question)).trim().toLowerCase();
+    return answer === '' || answer === 'y' || answer === 'yes';
+  } finally {
+    rl.close();
+  }
+}
+
+async function maybePromptForInteractiveUpdate(): Promise<void> {
+  if (envFlag(BRAND_ENV.disableUpdateCheck) || process.env.CI) return;
+  if (!process.stdin.isTTY || !process.stdout.isTTY) return;
+
+  const { checkForUpdate, installLatest, shouldCheckForUpdate } = await import('./update.js');
+  const cache = await readUpdateCache();
+  if (!shouldCheckForUpdate(cache)) return;
+
+  try {
+    const check = await checkForUpdate({ name: PACKAGE_NAME, version: VERSION }, { timeoutMs: 2500 });
+    await writeUpdateCache(check.latestVersion).catch(() => {});
+    if (!check.isOutdated) return;
+
+    process.stdout.write(
+      `\nมี ${BRAND.productName} CLI เวอร์ชันใหม่: ${check.currentVersion} → ${check.latestVersion}\n` +
+        `อัปเดตตอนนี้ด้วย "${BRAND.cliName} update" ไหม? [Y/n] `,
+    );
+    const ok = await askYesNo('');
+    if (!ok) {
+      process.stdout.write(`ข้ามอัปเดตตอนนี้ — อัปเดตภายหลังได้ด้วย: ${BRAND.cliName} update\n\n`);
+      return;
+    }
+
+    const code = await installLatest({ name: PACKAGE_NAME, version: VERSION });
+    if (code !== 0) {
+      process.stdout.write(`อัปเดตไม่สำเร็จ (npm exit ${code}) — ลองรันเอง: ${check.installCommand}\n\n`);
+      return;
+    }
+    process.stdout.write(`อัปเดตสำเร็จ — เปิด ${BRAND.cliName} ใหม่เพื่อใช้เวอร์ชันล่าสุด\n\n`);
+    process.exit(0);
+  } catch {
+    // update notifier ต้องไม่ block การเปิด TUI ถ้า offline/registry ล่ม/cache พัง
+  }
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
-  if (argv.includes('-v') || argv.includes('--version')) {
+  if (argv.length === 1 && (argv[0] === '-v' || argv[0] === '--version')) {
     console.log(VERSION);
     return;
   }
-  if (argv.includes('-h') || argv.includes('--help')) {
+  if (argv.length === 1 && (argv[0] === '-h' || argv[0] === '--help')) {
     console.log(HELP);
     return;
   }
+  if (argv[0] === 'update') return runUpdate(argv.slice(1));
 
   // โหลด API key จาก ~/.sanook/auth.json เข้า env (ไม่ override env ที่ตั้งไว้แล้ว)
   await loadKeysIntoEnv();
@@ -543,6 +676,8 @@ async function main(): Promise<void> {
     );
     return;
   }
+
+  await maybePromptForInteractiveUpdate();
 
   // interactive — ครั้งแรก (ยังไม่มี config) → setup wizard ก่อนเข้า REPL
   if (await isFirstRun()) {

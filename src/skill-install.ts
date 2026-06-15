@@ -81,6 +81,7 @@ async function installFromContent(content: string, fallbackName: string): Promis
   const name = meta.name || fallbackName;
   if (!isValidSkillName(name)) throw new Error(`ชื่อ skill ไม่ถูกต้อง: "${name}"`);
   const dest = join(USER_SKILLS, name);
+  await rm(dest, { recursive: true, force: true });
   await mkdir(dest, { recursive: true });
   await writeFile(join(dest, 'SKILL.md'), content);
   return { name, path: dest };
@@ -142,13 +143,12 @@ async function fetchSkillMd(url: string): Promise<string> {
   const u = new URL(url);
   if (u.protocol !== 'https:') throw new Error('รองรับเฉพาะ https สำหรับ URL ของ SKILL.md');
   // resolve hostname → block private/loopback IP (กัน SSRF ยิง internal/cloud-metadata)
-  let ip = u.hostname;
-  if (!isIP(u.hostname)) {
-    const res = await lookup(u.hostname).catch(() => null);
-    ip = res?.address ?? '';
+  const host = u.hostname.replace(/^\[|\]$/g, '');
+  const ips = isIP(host) ? [host] : (await lookup(host, { all: true }).catch(() => [])).map((r) => r.address);
+  if (!ips.length || ips.some((ip) => PRIVATE_IP.test(ip))) {
+    throw new Error(`URL ชี้ไป internal/private address — ปฏิเสธ (${u.hostname})`);
   }
-  if (!ip || PRIVATE_IP.test(ip)) throw new Error(`URL ชี้ไป internal/private address — ปฏิเสธ (${u.hostname})`);
-  const r = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  const r = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(30_000) });
   if (!r.ok) throw new Error(`fetch ไม่สำเร็จ: HTTP ${r.status}`);
   if (Number(r.headers.get('content-length') ?? 0) > MAX_MD) throw new Error('SKILL.md ใหญ่เกิน 2MB');
   const text = await r.text();

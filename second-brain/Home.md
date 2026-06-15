@@ -20,6 +20,13 @@ ai_surface: starter
 | งานทั้งหมด | [[Projects/_Index]] |
 | ประวัติงาน | [[Sessions/_Index]] |
 
+## AI Operating Loop
+
+1. อ่าน [[Shared/AI-Context-Index]] ก่อนตอบหรือเขียนไฟล์
+2. ถ้าต้องสร้าง/ย้ายโน้ต ให้เลือกปลายทางจาก [[Vault Structure Map]]
+3. ก่อนเขียนในโฟลเดอร์ใด ให้เปิด `_Index.md` ของโฟลเดอร์นั้นและทำตาม **AI Routing Contract**
+4. หลังจบงานสำคัญ ให้บันทึก session/decision/memory ตาม routing ไม่ปล่อยความรู้ค้างใน chat
+
 ## Core Hubs
 
 - [[Projects/_Index]] · [[Goals/_Index]] · [[Areas/_Index]]

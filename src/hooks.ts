@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import type { ToolSet } from 'ai';
-import { appHomePath, appProjectPath, BRAND_ENV, envFlag } from './brand.js';
+import { appHomePath, BRAND_ENV, envFlag } from './brand.js';
 import { hasUntrustedProjectConfig, projectConfigPathIfTrusted, projectRoot } from './trust.js';
 
 // hooks = รัน command ของ user ก่อน/หลัง tool (เลียน Claude Code hooks) — บังคับ lint/format/policy

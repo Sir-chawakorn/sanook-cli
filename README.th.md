@@ -50,6 +50,7 @@ sanook --continue-any "ทำต่อจาก session ล่าสุดข้
 - **Tools** — อ่าน/เขียน/แก้ไฟล์ · รัน bash · git · grep/glob พร้อม permission gate
 - **Gateway + cron** — `sanook serve` รันเป็น service 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram
 - **MCP + Skills** — ต่อ MCP server ได้ + skill สำเร็จรูป 69 ตัว
+- **Update ง่าย** — ใช้ `sanook update` เพื่ออัปเดต CLI เป็นเวอร์ชันล่าสุดจาก npm
 
 ## ใช้ provider ไหนก็ได้
 
@@ -67,6 +68,19 @@ sanook config set model sonnet
 # หรือใช้ env
 SANOOK_MODEL=sonnet sanook "..."
 ```
+
+## อัปเดต CLI
+
+เวลามีเวอร์ชันใหม่ ใช้คำสั่งเดียว:
+
+```bash
+sanook update
+sanook update --check   # เช็กอย่างเดียว
+```
+
+คำสั่งนี้จะเช็ก npm `latest` ของ `sanook-cli` แล้วอัปเดตด้วย `npm install -g sanook-cli@latest` เมื่อมีเวอร์ชันใหม่กว่า
+
+ถ้าเปิด TUI ด้วย `sanook` เฉย ๆ CLI จะเช็กอัปเดตอย่างมากวันละครั้ง ถ้ามีเวอร์ชันใหม่จะถาม `Yes/No` ก่อนอัปเดต ปิด prompt ได้ด้วย `SANOOK_DISABLE_UPDATE_CHECK=1`
 
 ## ความปลอดภัย
 
@@ -92,7 +106,7 @@ sanook trust remove
 ```bash
 npm install
 npm run build
-npm test            # vitest — 164 tests
+npm test            # vitest
 npm run typecheck
 ```
 

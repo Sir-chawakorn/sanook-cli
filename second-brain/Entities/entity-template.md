@@ -8,6 +8,8 @@ parent: "[[Entities/_Index]]"
 
 # Entity Template
 
+> ใช้ทำ canonical page ของคน องค์กร product concept หรือ project ที่ถูกอ้างซ้ำ เพื่อเก็บ fact แบบมี validity/source และลดชื่อซ้ำหลายเวอร์ชัน
+
 ## Canonical Name
 
 _(Person, organization, product, concept, or project.)_

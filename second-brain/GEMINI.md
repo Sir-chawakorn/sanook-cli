@@ -7,9 +7,9 @@
 
 ## 🔴 Red Lines
 1. อ่าน `Shared/AI-Context-Index.md` ก่อนตอบ (vault = source of truth)
-2. verify ก่อนอ้าง ไม่แน่ใจบอกตรงๆ ห้ามแต่ง
-3. ถามก่อนรัน destructive (`rm -rf` / `reset --hard` / `push --force` / drop data)
-4. ห้ามเขียน secret ลงไฟล์ → `<secret:VAR>`
-5. ห้ามลบ durable note โดยไม่ถาม
+2. ก่อนสร้าง/ย้ายโน้ต อ่าน `Vault Structure Map.md` + `_Index.md` ของโฟลเดอร์ปลายทาง แล้วทำตาม AI Routing Contract
+3. verify ก่อนอ้าง ไม่แน่ใจบอกตรงๆ ห้ามแต่ง
+4. ถามก่อนรัน destructive (`rm -rf` / `reset --hard` / `push --force` / drop data)
+5. ห้ามเขียน secret ลงไฟล์ → `<secret:VAR>` · ห้ามลบ durable note โดยไม่ถาม
 
 > รายละเอียด §1–§18 → `CLAUDE.md`

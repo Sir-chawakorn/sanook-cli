@@ -28,14 +28,28 @@ ai_surface: hot
 4. [[Shared/Decision-Memory/decision-log]] — ตัดสินใจอะไรไปแล้ว
 5. งาน project → [[Projects/_Index]] → overview → context → current-state
 
+## Default Write Path (ก่อนสร้าง/แก้โน้ต)
+
+1. Classify artifact: project work, session log, decision, preference, source, reusable skill, runbook, or temporary scratch
+2. อ่าน [[Vault Structure Map]] เพื่อเลือก canonical home เพียงที่เดียว
+3. เปิด `_Index.md` ของโฟลเดอร์ปลายทาง แล้วทำตาม **AI Routing Contract**
+4. Search ก่อนเขียน: ถ้า note เดิมมีอยู่แล้วให้ merge/update ไม่ append ซ้ำ
+5. หลังเขียน: ใส่ `parent` + `up::`, link กลับ project/session/source/decision ที่เกี่ยวข้อง, แล้วบันทึก evidence ที่ verify แล้ว
+
 ## Memory Routing (เจออะไร เก็บที่ไหน — §4)
 
 | สิ่งที่พบ | → |
 |---|---|
 | preference ใหม่ | [[Shared/User-Memory/user-preferences]] |
 | decision สำคัญ | [[Shared/Decision-Memory/decision-log]] |
+| priority/current focus เปลี่ยน | [[Shared/Operating-State/current-state]] |
+| session checkpoint / งานจบ | `Sessions/YYYY-MM-DD-<topic>.md` |
 | ยังไม่ชัด/ขัดกัน | [[Shared/Memory-Inbox/memory-inbox]] |
 | invariant truth | [[Shared/Core-Facts/protected-facts]] |
+| finding ที่อิง source ภายนอก | `Research/<topic>.md` + `source::` |
+| scratch ระหว่างงานเดียว | `Shared/Working-Memory/<topic>.md` |
+| expected output fixture | [[Acceptance/golden-case-template]] |
+| pre/postflight gate | [[Checklists/preflight-postflight-template]] |
 | entity/person/org page | `Entities/<name>.md` |
 | อื่นๆ / ไม่แน่ใจว่าโฟลเดอร์ไหน | [[Vault Structure Map]] |
 

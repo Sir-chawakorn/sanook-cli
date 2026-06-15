@@ -8,6 +8,8 @@ parent: "[[Checklists/_Index]]"
 
 # Preflight / Postflight Checklist Template
 
+> ใช้เป็น gate ก่อนและหลังงานที่ทำซ้ำได้ เพื่อกันลืม context, risk, verification, memory routing และ residual risk; ไม่ใช้เก็บ expected output
+
 ## Preflight
 
 - [ ] Read [[Shared/AI-Context-Index]]

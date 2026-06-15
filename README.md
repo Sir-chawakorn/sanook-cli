@@ -77,7 +77,7 @@ sanook --json "..."             # JSONL output for CI / scripts
 | **Tools** | `read_file` · `write_file` · `edit_file` (multi-tier matcher) · `list_dir` · `glob` · `grep` · `run_bash`, plus git tools — gated by a permission layer that denies destructive commands, protected paths, and paths outside the workspace/brain by default. |
 | **Approval** | `ask` mode is the default and prompts `y/n` before any file write or shell command. `--yes` for auto-approve; headless ask-mode safely denies mutations when no approval UI exists. |
 | **Memory** | The agent writes its own notes (`remember`), recalls them across past sessions (`recall`), and `--continue` resumes the latest run for the current project. |
-| **Skills** | 69 built-in skills + install your own from a GitHub repo, URL, or local path. The agent can also author new skills after a repeatable task. |
+| **Skills** | Built-in skills + install your own from a GitHub repo, URL, or local path. The agent can also author new skills after a repeatable task. |
 | **Subagents** | A `task` tool spawns a fresh-context sub-agent for scoped exploration without bloating the main context — read-only by default, depth-guarded. |
 | **Gateway + cron** | `sanook serve` runs a long-lived daemon: a loopback OpenAI-compatible HTTP endpoint plus a cron scheduler. Ask it in plain language and it schedules itself. |
 | **Channels** | A Telegram adapter (long-polling, no public URL) lets you drive the agent from your phone — locked down with a required allowlist and private-chat-only policy. |
@@ -123,6 +123,7 @@ sanook -c "<task>"       resume the latest session for this project
 sanook --continue-any    resume the newest session across all projects
 sanook --plan "<task>"   plan mode (read-only)
 sanook --json "<task>"   JSONL output for scripts / CI
+sanook update            update the CLI to the latest npm release
 
   -m, --model <spec>     model or provider:model-id
   -b, --budget <usd>     stop when estimated cost exceeds this
@@ -132,6 +133,19 @@ sanook --json "<task>"   JSONL output for scripts / CI
 ```
 
 **REPL slash commands:** `/model` · `/tools` · `/skills` · `/cost` · `/clear` · `/compact` · `/help` · `/quit`
+
+## Updating
+
+Use the built-in updater whenever a new CLI version is available:
+
+```bash
+sanook update
+sanook update --check   # check only
+```
+
+It checks the npm `latest` release for `sanook-cli` and, when newer than your installed version, runs `npm install -g sanook-cli@latest`.
+
+When you launch the interactive TUI with plain `sanook`, the CLI checks for updates at most once per day. If a newer version exists, it asks `Yes/No` before running the same updater. Set `SANOOK_DISABLE_UPDATE_CHECK=1` to silence the prompt.
 
 ## Gateway & scheduling
 
@@ -173,7 +187,7 @@ The channel is **fail-closed**: with no allowlist it refuses to start, it accept
 
 ## Skills
 
-A skill is a `SKILL.md` file (front-matter + instructions) the agent loads on demand. Sanook ships with 69 built-in skills and can install more.
+A skill is a `SKILL.md` file (front-matter + instructions) the agent loads on demand. Sanook ships with built-in skills and can install more.
 
 ```bash
 sanook skill list                          # browse all skills
@@ -247,6 +261,7 @@ SANOOK_ALLOW_OUTSIDE_WORKSPACE=1    # allow file tools outside cwd/brain
 SANOOK_GATEWAY_ALLOW_WRITE=1        # let sanook serve run mutating tools unattended
 SANOOK_HOOKS_INHERIT_ENV=1          # pass full env to hooks instead of a minimal safe env
 SANOOK_DISABLE_PERSISTENCE=1        # do not save sessions or memory
+SANOOK_DISABLE_UPDATE_CHECK=1       # do not show interactive update prompts
 SANOOK_DISABLE_WORKLOG=1            # do not append second-brain worklogs
 SANOOK_TRUST_PROJECT=1              # temporary trust override for project MCP/hooks
 ```
@@ -270,7 +285,7 @@ Hardened across several adversarial security reviews covering command injection,
 ```bash
 npm install
 npm run build       # → dist/
-npm test            # vitest — 164 tests
+npm test            # vitest
 npm run typecheck   # tsc --noEmit (strict)
 npm run dev -- "…"  # run from source without building
 ```

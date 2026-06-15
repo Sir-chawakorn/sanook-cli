@@ -1,12 +1,12 @@
-import { chmod, readFile, writeFile, mkdir, stat } from 'node:fs/promises';
+import { readFile, writeFile, stat } from 'node:fs/promises';
 import { join, dirname, resolve } from 'node:path';
 import { appHomePath, BRAND, persistenceEnabled, worklogEnabled } from './brand.js';
 import { redactKey } from './providers/keys.js';
+import { loadStore, saveStore, mergeFact, maybeConsolidate, consolidate, renderPromptBlock } from './memory-store.js';
 
 const MEMORY_FILE = BRAND.memoryFileName;
-// auto-memory: สิ่งที่ agent จำเองข้าม session (เลียน MEMORY.md ของ Claude Code)
-const AUTO_MEMORY_DIR = appHomePath('memory');
-const AUTO_MEMORY_FILE = join(AUTO_MEMORY_DIR, 'MEMORY.md');
+// auto-memory (สิ่งที่ agent จำเองข้าม session) ย้ายไปอยู่ใน ./memory-store.ts —
+// memory.json เป็น source of truth, MEMORY.md เป็น view ที่ render จากมัน
 // เดินขึ้นหยุดที่ project root — ไม่เลยขึ้นไปถึง filesystem root
 // (กัน prompt-injection จาก SANOOK.md ที่ใครก็วางใน parent dir ที่ share กันได้)
 const BOUNDARY_MARKERS = ['.git', 'package.json'];
@@ -60,11 +60,14 @@ export async function loadMemory(cwd: string = process.cwd()): Promise<string> {
   return blocks.join('\n\n');
 }
 
-/** โหลด auto-memory (สิ่งที่ agent จำเองข้าม session) จาก ~/.sanook/memory/MEMORY.md */
+/**
+ * โหลด auto-memory เข้า system prompt — render จาก structured store (./memory-store.ts)
+ * เป็น block ที่ rank + cap แล้ว (top facts ตาม importance·recency, ≤ ~2k token กัน context-rot)
+ * contract เดิม: '' ถ้าว่าง, ไม่งั้นคืน <auto_memory> block เดียวที่ self-contained
+ */
 export async function loadAutoMemory(): Promise<string> {
   try {
-    const content = (await readFile(AUTO_MEMORY_FILE, 'utf8')).trim();
-    return content ? `<auto_memory note="สิ่งที่จำไว้จาก session ก่อน">\n${content}\n</auto_memory>` : '';
+    return renderPromptBlock(await loadStore());
   } catch {
     return '';
   }
@@ -183,24 +186,22 @@ export async function appendBrainWorklog(
   return true;
 }
 
-/** บันทึก fact ลง auto-memory (remember tool เรียก) — dedup + route เข้า vault ถ้ามี brainPath */
+/**
+ * บันทึก fact ลง auto-memory (remember tool เรียก) — "Merge, Don't Append":
+ * โหลด store → mergeFact (ADD/UPDATE/NOOP/SUPERSEDE) → save (ถ้าไม่ใช่ no-write op)
+ * → consolidate เป็นระยะ → route เข้า vault inbox (best-effort) เหมือนเดิม
+ */
 export async function appendMemory(fact: string): Promise<void> {
   if (!persistenceEnabled()) return;
   const safeFact = redactKey(fact);
-  const line = `- ${safeFact.trim().replace(/\s+/g, ' ')}`;
-  await mkdir(AUTO_MEMORY_DIR, { recursive: true });
-  let existing = '';
-  try {
-    existing = await readFile(AUTO_MEMORY_FILE, 'utf8');
-  } catch {
-    /* ยังไม่มีไฟล์ */
+  const store = await loadStore();
+  const { store: next, op } = mergeFact(store, { text: safeFact, trust: 'agent' });
+  // PROTECTED_HALT = ไม่เขียน (ขัดกับ protected fact); op อื่นเขียนหมด (NOOP ก็เขียนเพราะ touch accessCount)
+  if (op !== 'PROTECTED_HALT') {
+    const toSave = maybeConsolidate(next) ? consolidate(next).store : next;
+    await saveStore(toSave);
   }
-  if (!existing.includes(line)) {
-    const header = existing.trim() ? existing.trimEnd() : `# ${BRAND.autoMemoryTitle}`;
-    await writeFile(AUTO_MEMORY_FILE, `${header}\n${line}\n`, { mode: 0o600 });
-    await chmod(AUTO_MEMORY_FILE, 0o600).catch(() => {});
-  }
-  // route เข้า vault second-brain ด้วย (best-effort)
+  // route เข้า vault second-brain ด้วย (best-effort) — ส่ง plain redacted string เหมือนเดิม
   const brain = await getBrainPath();
   if (brain) await appendToVaultInbox(brain, safeFact).catch(() => false);
 }

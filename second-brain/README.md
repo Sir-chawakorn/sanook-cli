@@ -22,7 +22,8 @@
 
 1. เปิดโฟลเดอร์นี้ใน **Obsidian** (Open folder as vault)
 2. ให้ AI agent อ่าน `Shared/AI-Context-Index.md` ก่อนทำงานเสมอ
-3. constitution อยู่ที่ `CLAUDE.md` / `GEMINI.md` / `AGENTS.md` — กฎปฏิบัติของ AI
+3. ก่อนสร้างหรือย้ายโน้ต ให้เลือกปลายทางจาก `Vault Structure Map.md` แล้วอ่าน `_Index.md` ของโฟลเดอร์นั้นเพื่อทำตาม **AI Routing Contract**
+4. constitution อยู่ที่ `CLAUDE.md` / `GEMINI.md` / `AGENTS.md` — กฎปฏิบัติของ AI
 
 ## ปรับให้เป็นของคุณ
 

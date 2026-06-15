@@ -34,4 +34,19 @@ describe('autoCompact', () => {
     expect(out.length).toBeLessThan(msgs.length);
     expect(out.some((m) => typeof m.content === 'string' && m.content.includes('ถูกตัด'))).toBe(true);
   });
+
+  it('เก็บ system preamble ที่นำหน้าไว้เสมอ', () => {
+    const system: ModelMessage[] = [
+      { role: 'system', content: 'SYSTEM A' },
+      { role: 'system', content: 'SYSTEM B' },
+    ];
+    const body: ModelMessage[] = Array.from({ length: 60 }, (_, i) => ({
+      role: i % 2 ? 'assistant' : 'user',
+      content: 'x'.repeat(4000),
+    }));
+    const out = autoCompact([...system, ...body], 10_000, 10);
+    expect(out[0]).toBe(system[0]);
+    expect(out[1]).toBe(system[1]);
+    expect(out.some((m) => typeof m.content === 'string' && m.content.includes('ถูกตัด'))).toBe(true);
+  });
 });

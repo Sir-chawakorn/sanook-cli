@@ -24,6 +24,7 @@ export const BRAND_ENV = {
   gatewayAllowWrite: 'SANOOK_GATEWAY_ALLOW_WRITE',
   hooksInheritEnv: 'SANOOK_HOOKS_INHERIT_ENV',
   disablePersistence: 'SANOOK_DISABLE_PERSISTENCE',
+  disableUpdateCheck: 'SANOOK_DISABLE_UPDATE_CHECK',
   disableWorklog: 'SANOOK_DISABLE_WORKLOG',
   trustProject: 'SANOOK_TRUST_PROJECT',
 };

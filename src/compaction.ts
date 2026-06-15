@@ -73,10 +73,16 @@ export function estimateTokens(messages: ModelMessage[]): number {
 export function autoCompact(messages: ModelMessage[], tokenLimit: number, keepRecent = 20): ModelMessage[] {
   if (estimateTokens(messages) <= tokenLimit) return messages;
 
-  const pruned = pruneToolResults(messages, 2);
-  if (estimateTokens(pruned) <= tokenLimit) return pruned;
+  // เก็บ system message ที่นำหน้า (cached preamble: SYSTEM/skills/brain/git) ไว้เสมอ — ห้ามตัดทิ้ง
+  const firstNon = messages.findIndex((m) => m.role !== 'system');
+  const lead = firstNon > 0 ? messages.slice(0, firstNon) : [];
+  const body = lead.length ? messages.slice(lead.length) : messages;
+  const withLead = (rest: ModelMessage[]): ModelMessage[] => (lead.length ? [...lead, ...rest] : rest);
 
-  if (pruned.length <= keepRecent + 1) return pruned;
+  const pruned = pruneToolResults(body, 2);
+  if (estimateTokens(withLead(pruned)) <= tokenLimit) return withLead(pruned);
+
+  if (pruned.length <= keepRecent + 1) return withLead(pruned);
   const firstUser = pruned.find((m) => m.role === 'user');
   let recent = pruned.slice(-keepRecent);
   // ตัด tool message ที่ค้างหัว — tool-result ที่ tool-call ถูกตัดไปแล้ว = orphan → API reject
@@ -85,5 +91,6 @@ export function autoCompact(messages: ModelMessage[], tokenLimit: number, keepRe
     role: 'user',
     content: '[บทสนทนาเก่าถูกตัดออกเพื่อประหยัด context — รายละเอียดดูได้จาก memory/session]',
   };
-  return firstUser && !recent.includes(firstUser) ? [firstUser, marker, ...recent] : [marker, ...recent];
+  const tail = firstUser && !recent.includes(firstUser) ? [firstUser, marker, ...recent] : [marker, ...recent];
+  return withLead(tail);
 }

@@ -1,5 +1,9 @@
+import { readdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { PROVIDERS, parseSpec } from './providers/registry.js';
 import { appHomePath, BRAND } from './brand.js';
+import { parseFrontmatter } from './skills.js';
+import { projectConfigPathIfTrusted } from './trust.js';
 
 export interface CommandResult {
   /** true = เป็น slash command (ไม่ส่งเข้า agent) */
@@ -18,10 +22,15 @@ const HELP_TEXT = `คำสั่ง:
   /skills          ดูจำนวน skills (จัดการ: ${BRAND.cliName} skill list)
   /diff            ดู git diff (สิ่งที่ agent แก้ในรอบนี้)
   /undo            stash การแก้ไฟล์ล่าสุด (กู้คืนด้วย git stash pop)
+  /rewind          ย้อนกลับ 1 turn (คืนไฟล์ git + ตัดบทสนทนา, recoverable)
   /cost            ดู token + cost รอบล่าสุด
+  ↑/↓ ประวัติ · @ไฟล์ แนบ context/รูป · \\ ลงท้าย = บรรทัดใหม่
   /clear           ล้าง conversation (เริ่มใหม่)
   /compact         บีบ context
-  /quit            ออก`;
+  /quit            ออก
+
+custom commands:
+  ~/.sanook/commands/<name>.md และ .sanook/commands/<name>.md (project ต้อง trust ก่อน)`;
 
 const TOOLS_LIST = [
   'read_file write_file edit_file list_dir glob grep run_bash',
@@ -33,6 +42,19 @@ const TOOLS_LIST = [
 export interface CommandContext {
   model: string;
   costSummary?: string;
+}
+
+export interface SlashInvocation {
+  name: string;
+  args: string;
+}
+
+export function parseSlashInvocation(input: string): SlashInvocation | null {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith('/')) return null;
+  const match = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(trimmed);
+  if (!match) return null;
+  return { name: match[1].toLowerCase(), args: match[2] ?? '' };
 }
 
 /** /model (ไม่มี arg) — โชว์ model ปัจจุบัน + ตัวเลือกของ provider นั้น (alias จาก registry) */
@@ -88,4 +110,59 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
     default:
       return { handled: true, message: `ไม่รู้จักคำสั่ง /${cmd} — พิมพ์ /help` };
   }
+}
+
+// ── custom slash commands: .sanook/commands/<name>.md → /<name> ──────────────
+// ไฟล์ markdown (frontmatter optional) = prompt template ที่ส่งเข้า agent. $ARGUMENTS = ส่วนหลังชื่อคำสั่ง
+// (เลียน Claude Code .claude/commands) — global ~/.sanook/commands + project .sanook/commands (project ทับ)
+export const BUILTIN_COMMANDS = new Set([
+  'help', '?', 'clear', 'compact', 'quit', 'exit', 'model', 'tools', 'skills', 'diff', 'undo', 'rewind', 'cost',
+]);
+
+export interface CustomCommand {
+  name: string;
+  description: string;
+  body: string;
+}
+
+function isValidCommandName(name: string): boolean {
+  return /^[a-z0-9][a-z0-9-]{0,40}$/.test(name);
+}
+
+/** scan custom commands จาก global + project (project override). ข้าม built-in ชื่อซ้ำ */
+export async function loadCustomCommands(cwd: string = process.cwd()): Promise<Map<string, CustomCommand>> {
+  const out = new Map<string, CustomCommand>();
+  const dirs = [appHomePath('commands')];
+  const projectCommands = await projectConfigPathIfTrusted('commands', cwd);
+  if (projectCommands) dirs.push(projectCommands);
+
+  for (const dir of dirs) {
+    let files: string[];
+    try {
+      files = await readdir(dir);
+    } catch {
+      continue; // ไม่มีโฟลเดอร์ = ข้าม
+    }
+    for (const f of files) {
+      if (!f.endsWith('.md')) continue;
+      const name = f.slice(0, -3).toLowerCase();
+      if (!isValidCommandName(name) || BUILTIN_COMMANDS.has(name)) continue;
+      try {
+        const { meta, body } = parseFrontmatter(await readFile(join(dir, f), 'utf8'));
+        out.set(name, { name, description: meta.description ?? '', body: body.trim() });
+      } catch {
+        // อ่านไม่ได้ = ข้าม
+      }
+    }
+  }
+  return out;
+}
+
+/** แทน $ARGUMENTS / {{args}} ด้วย args; ถ้า template ไม่มี placeholder ก็ append args ต่อท้าย */
+export function expandCustomCommand(cmd: CustomCommand, args: string): string {
+  const a = args.trim();
+  if (/\$ARGUMENTS|\{\{\s*args\s*\}\}/.test(cmd.body)) {
+    return cmd.body.replace(/\$ARGUMENTS|\{\{\s*args\s*\}\}/g, a);
+  }
+  return a ? `${cmd.body}\n\n${a}` : cmd.body;
 }

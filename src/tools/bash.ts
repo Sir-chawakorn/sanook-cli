@@ -1,11 +1,13 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { exec } from 'node:child_process';
+import { exec, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { clamp } from './util.js';
 import { checkBash } from './permission.js';
+import { maybeSandbox } from './sandbox.js';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const SAFE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR', 'APPDATA'];
 
 function safeEnv(): Record<string, string> {
@@ -25,13 +27,14 @@ export const bashTool = tool({
   execute: async ({ cmd }) => {
     const guard = checkBash(cmd);
     if (!guard.ok) return `BLOCKED: ${guard.reason}`;
+    const cwd = process.cwd();
+    const opts = { cwd, env: safeEnv(), timeout: 120_000, maxBuffer: 10 * 1024 * 1024 };
     try {
-      const { stdout, stderr } = await execAsync(cmd, {
-        cwd: process.cwd(),
-        env: safeEnv(),
-        timeout: 120_000,
-        maxBuffer: 10 * 1024 * 1024,
-      });
+      // OS sandbox (Seatbelt/bubblewrap) confine write ให้อยู่ใน workspace ถ้ามี — ไม่งั้นรันตรงตามเดิม
+      const sb = await maybeSandbox(cmd, cwd);
+      const { stdout, stderr } = sb
+        ? await execFileAsync(sb.file, sb.args, opts)
+        : await execAsync(cmd, opts);
       const out = (stdout + (stderr ? `\n[stderr]\n${stderr}` : '')).trim();
       return clamp(out) || '(no output)';
     } catch (err) {

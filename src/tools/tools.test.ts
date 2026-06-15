@@ -49,6 +49,10 @@ describe('edit matcher (pure functions)', () => {
 
 describe('permission gate', () => {
   it('block rm -rf', () => expect(checkBash('rm -rf /tmp/x').ok).toBe(false));
+  it('block rm -fr และ rm -r -f', () => {
+    expect(checkBash('rm -fr /tmp/x').ok).toBe(false);
+    expect(checkBash('rm -r -f /tmp/x').ok).toBe(false);
+  });
   it('block git reset --hard', () => expect(checkBash('git reset --hard HEAD~2').ok).toBe(false));
   it('block git push --force', () => expect(checkBash('git push origin main --force').ok).toBe(false));
   it('allow safe cmd', () => expect(checkBash('ls -la && grep foo bar').ok).toBe(true));

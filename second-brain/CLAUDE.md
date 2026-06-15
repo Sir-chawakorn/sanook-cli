@@ -81,7 +81,7 @@ Merge don't append · ลบ fact obsolete · รวม fact ซ้อน · ห
 คำสั่งตรงจากเจ้าของ > ไฟล์นี้ > local config ใน vault > folder `_rules.md` · ขัดกัน → ยึดลำดับบน · ไม่ชัด → ถาม
 
 ## §16-§18 FOLDER RULES · FRONTMATTER
-โฟลเดอร์ที่มี `_rules.md` → อ่านก่อนทำงานในนั้น · ทุกโน้ตต้องมี frontmatter: `tags` `note_type` `created` `updated` `parent` + ท้ายไฟล์ `up:: [[parent/_Index]]` · ห้ามสร้างไฟล์ที่ root (ยกเว้น Home/USER/README, named dashboard เช่น `Vault Structure Map.md`, + agent-config CLAUDE/GEMINI/AGENTS)
+โฟลเดอร์ที่มี `_rules.md` → อ่านก่อนทำงานในนั้น · ก่อนสร้าง/ย้ายโน้ตให้อ่าน `_Index.md` ของโฟลเดอร์ปลายทางและทำตาม **AI Routing Contract** · ทุกโน้ตต้องมี frontmatter: `tags` `note_type` `created` `updated` `parent` + ท้ายไฟล์ `up:: [[parent/_Index]]` · ห้ามสร้างไฟล์ที่ root (ยกเว้น Home/USER/README, named dashboard เช่น `Vault Structure Map.md`, + agent-config CLAUDE/GEMINI/AGENTS)
 
 ## Folder Roles
 **ครบทุกโฟลเดอร์ + ใส่อะไร/ห้ามใส่อะไร → `Vault Structure Map.md`** (เข้าถึงผ่าน AI-Context-Index — อ่านก่อนสร้าง/ย้ายโน้ต)
