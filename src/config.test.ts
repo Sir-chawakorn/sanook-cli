@@ -78,3 +78,34 @@ describe('loadConfig layering', () => {
     expect(() => parsePricingOverride('{"openai:gpt-x":{"unknown":1}}')).toThrow();
   });
 });
+
+import { agentTuning } from './config.js';
+describe('agentTuning (env overrides)', () => {
+  let home: string;
+  let realHome: string | undefined;
+  beforeEach(async () => {
+    realHome = process.env.HOME;
+    home = await mkdtemp(join(tmpdir(), 'sanook-home-'));
+    process.env.HOME = home; // no ~/.sanook/config.json → pure defaults + env
+  });
+  afterEach(async () => {
+    if (realHome !== undefined) process.env.HOME = realHome;
+    for (const k of ['SANOOK_CACHE_TTL', 'SANOOK_COMPACTION', 'SANOOK_THINKING', 'SANOOK_SUMMARY_MODEL']) delete process.env[k];
+    await rm(home, { recursive: true, force: true });
+  });
+
+  it('defaults: 5m cache, truncate, no thinking', async () => {
+    expect(await agentTuning()).toMatchObject({ cacheTtl: '5m', compaction: 'truncate', thinkingBudget: undefined });
+  });
+  it('env overrides apply', async () => {
+    process.env.SANOOK_CACHE_TTL = '1h';
+    process.env.SANOOK_COMPACTION = 'summarize';
+    process.env.SANOOK_THINKING = '2000';
+    process.env.SANOOK_SUMMARY_MODEL = 'haiku';
+    expect(await agentTuning()).toEqual({ cacheTtl: '1h', compaction: 'summarize', thinkingBudget: 2000, summaryModel: 'haiku' });
+  });
+  it('SANOOK_THINKING=on → default budget', async () => {
+    process.env.SANOOK_THINKING = 'on';
+    expect((await agentTuning()).thinkingBudget).toBe(4096);
+  });
+});

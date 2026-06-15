@@ -254,6 +254,18 @@ export function specKey(spec: string): string {
   return `${provider}:${model}`;
 }
 
+/**
+ * model ที่ "ถูก/เร็วกว่า" ในค่ายเดียวกับ spec (สำหรับงานกลไก เช่น summarize/compaction) —
+ * ใช้ key เดียวกัน ไม่ต้องตั้ง key ใหม่. ไม่มี fast tier → คืน spec เดิม (ทำงานได้แต่ไม่ประหยัด)
+ */
+export function fastSibling(spec: string): string {
+  const { provider } = parseSpec(spec);
+  const cfg = PROVIDERS[provider];
+  if (!cfg) return spec;
+  const fast = cfg.models.fast ?? cfg.models.flash ?? cfg.models.haiku ?? cfg.models.air;
+  return fast ? `${provider}:${fast}` : spec;
+}
+
 /** resolve spec → LanguageModel (throw ถ้าไม่มี key / provider ผิด / key เป็น OAuth) */
 export function resolveModel(spec: string): LanguageModel {
   const { provider, model } = parseSpec(spec);

@@ -36,9 +36,54 @@ export const ConfigSchema = z.object({
   brainPath: z.string().optional(),
   // pricing override/extension per "provider:model" → ทำให้ budget cap ใช้ได้กับ model ที่ยังไม่มีในตาราง
   pricing: PricingOverrideSchema.optional(),
+  // ── token/cost tuning (ดู agentTuning) — .catch กันค่า config.json ผิดทำ boot พัง (agentTuning อ่าน raw + coerce เองด้วย) ──
+  // prompt-cache TTL: '5m' (default, ephemeral) · '1h' (จ่าย write 2x แต่ cache อยู่ยาว — คุ้มเมื่อ session หยุดๆทำๆ)
+  cacheTtl: z.enum(['5m', '1h']).catch('5m').default('5m'),
+  // วิธีบีบ context ตอนยาว: 'truncate' (default, zero-LLM) · 'summarize' (ใช้ model ถูกย่อ — จำ context ได้ดีกว่า)
+  compaction: z.enum(['truncate', 'summarize']).catch('truncate').default('truncate'),
+  // extended thinking (Anthropic): false/ไม่ตั้ง = ปิด · true = budget default · number = budget tokens
+  thinking: z.union([z.boolean(), z.number().int().positive()]).optional().catch(undefined),
+  // model สำหรับย่อ (compaction=summarize) — ไม่ตั้ง = ใช้ fast-sibling ของ model หลัก (ค่ายเดียวกัน ถูกกว่า)
+  summaryModel: z.string().optional().catch(undefined),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
+
+const DEFAULT_THINKING_BUDGET = 4096;
+
+/** parse thinking config (config field หรือ env) → budget tokens (undefined = ปิด) */
+function parseThinking(v: unknown): number | undefined {
+  if (typeof v === 'number' && v > 0) return Math.floor(v);
+  if (v === true) return DEFAULT_THINKING_BUDGET;
+  if (typeof v === 'string') {
+    if (/^\d+$/.test(v)) return Number.parseInt(v, 10);
+    if (['on', 'true', '1', 'yes'].includes(v.toLowerCase())) return DEFAULT_THINKING_BUDGET;
+  }
+  return undefined;
+}
+
+export interface AgentTuning {
+  cacheTtl: '5m' | '1h';
+  thinkingBudget?: number;
+  compaction: 'truncate' | 'summarize';
+  summaryModel?: string;
+}
+
+/**
+ * อ่าน tuning knobs (cache TTL / thinking / compaction / summary model) จาก global config.json
+ * + env override (SANOOK_CACHE_TTL / SANOOK_THINKING / SANOOK_COMPACTION / SANOOK_SUMMARY_MODEL).
+ * อ่านตรงจาก config.json (เลี่ยง thread ผ่าน call stack ลึก) — เบา, เรียกครั้งเดียวต่อ turn.
+ */
+export async function agentTuning(): Promise<AgentTuning> {
+  const raw = await readGlobalConfigRaw();
+  const envTtl = process.env.SANOOK_CACHE_TTL;
+  const cacheTtl: '5m' | '1h' = envTtl === '1h' || (envTtl !== '5m' && raw.cacheTtl === '1h') ? '1h' : '5m';
+  const thinkingBudget = parseThinking(process.env.SANOOK_THINKING ?? raw.thinking);
+  const compaction: 'truncate' | 'summarize' =
+    (process.env.SANOOK_COMPACTION ?? raw.compaction) === 'summarize' ? 'summarize' : 'truncate';
+  const summaryModel = process.env.SANOOK_SUMMARY_MODEL ?? (typeof raw.summaryModel === 'string' ? raw.summaryModel : undefined);
+  return { cacheTtl, thinkingBudget, compaction, summaryModel };
+}
 
 async function readJson(path: string): Promise<Record<string, unknown>> {
   try {

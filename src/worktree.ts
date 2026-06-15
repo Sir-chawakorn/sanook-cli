@@ -10,7 +10,7 @@
 // best-effort + defensive: not a git repo → returns null (caller falls back to a
 // shared tree); a failed apply is reported, never thrown past the orchestrator.
 // ============================================================================
-import { mkdtemp, rm, writeFile, realpath } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, readFile, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -77,15 +77,41 @@ export interface ApplyResult {
  */
 export async function applyDiff(diff: string, repoRoot: string): Promise<ApplyResult> {
   if (!diff.trim()) return { ok: true };
+  const files = diffFiles(diff);
+  if (files.length) {
+    try {
+      await runGit(['diff', '--cached', '--quiet', '--', ...files], repoRoot);
+    } catch {
+      return { ok: false, reason: 'touched files have staged changes; refusing to disturb the index' };
+    }
+  }
+  // Snapshot every touched file's exact pre-apply content (or absence). `git apply --3way`
+  // can leave conflict markers + unmerged index entries on failure, and across git versions
+  // `--check` doesn't always foresee a 3-way conflict — so on ANY failure we roll the working
+  // tree back to precisely this snapshot, preserving uncommitted changes that were already there.
+  const before = new Map<string, Buffer | null>();
+  await Promise.all(
+    files.map(async (f) => {
+      before.set(f, await readFile(join(repoRoot, f)).catch(() => null));
+    }),
+  );
+
   const patchFile = join(tmpdir(), `sanook-patch-${randomUUID().slice(0, 8)}.diff`);
   try {
     await writeFile(patchFile, diff, 'utf8');
-    // `git apply --3way` may leave conflict markers / unmerged index entries when it fails.
-    // Check first, then apply only when Git proves the patch can land cleanly.
-    await runGit(['apply', '--check', '--3way', '--whitespace=nowarn', patchFile], repoRoot);
+    await runGit(['apply', '--check', '--3way', '--whitespace=nowarn', patchFile], repoRoot); // fast reject
     await runGit(['apply', '--3way', '--whitespace=nowarn', patchFile], repoRoot);
     return { ok: true };
   } catch (e) {
+    // restore exact pre-apply content + clear any index/unmerged entries --3way may have created
+    await Promise.all(
+      [...before].map(async ([f, content]) => {
+        const abs = join(repoRoot, f);
+        if (content == null) await rm(abs, { force: true }).catch(() => {});
+        else await writeFile(abs, content).catch(() => {});
+      }),
+    );
+    if (files.length) await runGit(['reset', '-q', '--', ...files], repoRoot).catch(() => {});
     return { ok: false, reason: (e as Error).message.split('\n')[0] };
   } finally {
     await rm(patchFile, { force: true }).catch(() => {});

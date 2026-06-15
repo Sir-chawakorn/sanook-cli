@@ -23,3 +23,17 @@ describe('listRemoteModels', () => {
     expect(await listRemoteModels(PROVIDERS.codex, 'whatever')).toEqual([]);
   });
 });
+
+import { fastSibling, parseSpec } from './registry.js';
+describe('fastSibling', () => {
+  it('maps a model to a cheaper sibling in the same provider', () => {
+    // anthropic has a "fast" tier (haiku)
+    expect(fastSibling('opus')).toBe('anthropic:claude-haiku-4-5');
+    // openai fast tier
+    expect(parseSpec(fastSibling('openai:gpt-5.5')).provider).toBe('openai');
+    expect(fastSibling('openai:gpt-5.5')).not.toBe('openai:gpt-5.5');
+  });
+  it('returns the spec unchanged when the provider is unknown', () => {
+    expect(fastSibling('madeupprovider:x')).toBe('madeupprovider:x');
+  });
+});

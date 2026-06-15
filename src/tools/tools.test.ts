@@ -170,6 +170,20 @@ describe('write / read / list tools', () => {
   it('read คืน ERROR (ไม่ throw) เมื่อไฟล์ไม่มี', async () => {
     expect(await readFileTool.execute!({ path: join(dir, 'nope.txt') }, opts)).toMatch(/ERROR/);
   });
+  it('read offset/limit อ่านเฉพาะช่วงบรรทัด (ประหยัด token)', async () => {
+    const f = join(dir, 'big.txt');
+    await writeFile(f, 'L1\nL2\nL3\nL4\nL5\n');
+    const out = String(await readFileTool.execute!({ path: f, offset: 2, limit: 2 }, opts));
+    expect(out).toContain('[บรรทัด 2-3'); // header กำกับช่วง
+    expect(out).toContain('L2\nL3');
+    expect(out).not.toContain('L1');
+    expect(out).not.toContain('L5');
+  });
+  it('read offset เกินช่วง → บอกชัด ไม่ throw', async () => {
+    const f = join(dir, 'small.txt');
+    await writeFile(f, 'only\n');
+    expect(String(await readFileTool.execute!({ path: f, offset: 99 }, opts))).toContain('เกินช่วง');
+  });
   it('list คืนชื่อไฟล์ในโฟลเดอร์', async () => {
     await writeFile(join(dir, 'a.txt'), '');
     expect(await listDirTool.execute!({ path: dir }, opts)).toContain('a.txt');

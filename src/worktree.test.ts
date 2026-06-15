@@ -121,12 +121,31 @@ describe('worktree isolation round-trip', () => {
     const diff = await captureDiff(wt);
     // …meanwhile the main tree changes the same line differently
     await writeFile(join(repo, 'base.txt'), 'hello\nMAIN change\n');
+    const statusBefore = await runGit(['status', '--porcelain'], repo);
     const res = await applyDiff(diff, repo);
     expect(res.ok).toBe(false);
     expect(typeof res.reason).toBe('string');
     // Failed 3-way applies must not dirty the main tree with conflict markers.
     expect(await readFile(join(repo, 'base.txt'), 'utf8')).toBe('hello\nMAIN change\n');
-    expect(await runGit(['status', '--porcelain'], repo)).toBe('');
+    expect(await runGit(['status', '--porcelain'], repo)).toBe(statusBefore);
+    await removeWorktree(wt);
+  });
+
+  it('refuses to apply over staged changes in touched files (preserves the index)', async () => {
+    const wt = await createWorktree(repo);
+    if (!wt) return;
+    await writeFile(join(wt.path, 'base.txt'), 'hello\nWT change\n');
+    const diff = await captureDiff(wt);
+
+    await writeFile(join(repo, 'base.txt'), 'hello\nSTAGED change\n');
+    await runGit(['add', 'base.txt'], repo);
+    const statusBefore = await runGit(['status', '--porcelain'], repo);
+
+    const res = await applyDiff(diff, repo);
+    expect(res.ok).toBe(false);
+    expect(res.reason).toContain('staged changes');
+    expect(await runGit(['status', '--porcelain'], repo)).toBe(statusBefore);
+    expect(await readFile(join(repo, 'base.txt'), 'utf8')).toBe('hello\nSTAGED change\n');
     await removeWorktree(wt);
   });
 });

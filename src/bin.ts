@@ -159,7 +159,7 @@ search (BM25 + optional BYOK semantic เหนือ vault + memory + sessions 
   ${BRAND.cliName} mcp serve                       expose brain เป็น MCP server (stdio) ให้ Claude Desktop/Cursor
 
 config & mcp:
-  ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/budgetUsd/permissionMode)
+  ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/budgetUsd/permissionMode/cacheTtl/compaction/thinking)
   ${BRAND.cliName} mcp [list|add <name> <cmd> …|remove <name>]   จัดการ MCP servers
   ${BRAND.cliName} trust [status|add|remove]      อนุญาต/ยกเลิก project .sanook mcp/hooks/skills/commands
 
@@ -400,7 +400,7 @@ async function readStdin(): Promise<string> {
 async function runConfig(args: string[]): Promise<void> {
   const { readGlobalConfigRaw, patchGlobalConfig } = await import('./config.js');
   const [action, key, ...rest] = args;
-  const ALLOWED = ['model', 'fallbackModel', 'budgetUsd', 'maxSteps', 'permissionMode', 'brainPath', 'pricing'];
+  const ALLOWED = ['model', 'fallbackModel', 'budgetUsd', 'maxSteps', 'permissionMode', 'brainPath', 'pricing', 'cacheTtl', 'compaction', 'thinking', 'summaryModel'];
   if (action === 'set') {
     if (!key || rest.length === 0) {
       console.error(`ใช้: ${BRAND.cliName} config set <key> <value>   (key: ${ALLOWED.join(' | ')})`);
@@ -429,6 +429,24 @@ async function runConfig(args: string[]): Promise<void> {
     } else if (key === 'permissionMode' && raw !== 'auto' && raw !== 'ask') {
       console.error('permissionMode ต้องเป็น auto หรือ ask');
       process.exit(1);
+    } else if (key === 'cacheTtl' && raw !== '5m' && raw !== '1h') {
+      console.error('cacheTtl ต้องเป็น 5m หรือ 1h');
+      process.exit(1);
+    } else if (key === 'compaction' && raw !== 'truncate' && raw !== 'summarize') {
+      console.error('compaction ต้องเป็น truncate หรือ summarize');
+      process.exit(1);
+    } else if (key === 'thinking') {
+      // เก็บเป็น number (budget) หรือ boolean ให้ตรง ConfigSchema (ไม่เก็บ string)
+      if (raw === 'on' || raw === 'true') value = true;
+      else if (raw === 'off' || raw === 'false') value = false;
+      else {
+        const n = Number(raw);
+        if (!Number.isInteger(n) || n <= 0) {
+          console.error('thinking ต้องเป็น on/off หรือ budget tokens (integer บวก เช่น 4000)');
+          process.exit(1);
+        }
+        value = n;
+      }
     } else if (key === 'pricing') {
       try {
         value = parsePricingOverride(raw); // { "provider:model": { input, output, cacheRead?, cacheWrite? } }

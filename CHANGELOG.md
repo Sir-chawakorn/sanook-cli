@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+### Token/cost tuning knobs — 1h cache, summarize-compaction, sub-agent routing, thinking budget
+
+New `config.json` fields (and `SANOOK_*` env overrides) that trade tokens/cost without hurting quality — read once per turn via `agentTuning()`:
+
+- **`cacheTtl: "5m" | "1h"`** (env `SANOOK_CACHE_TTL`): the Anthropic prompt-cache lifetime. `"1h"` keeps the cached preamble alive across pauses (lunch, a meeting) so resuming doesn't re-pay full price for it. Default `"5m"` (unchanged).
+- **`compaction: "truncate" | "summarize"`** (env `SANOOK_COMPACTION`): when the conversation gets long, `"summarize"` condenses the dropped middle with a **cheap model** (the fast sibling of your main model, same key — `fastSibling()`) instead of truncating it — better recall at the same token budget. Used by `/compact` and proactively before very long turns; falls back to truncation if the summarizer fails (never blocks a turn). Default `"truncate"` (zero-LLM, unchanged). `src/compaction.ts` `summarizeCompact()` is pure (injected summarizer) and unit-tested with no network.
+- **`SANOOK_SUBAGENT_MODEL`**: route all sub-agent work to a cheaper model (e.g. `haiku`) while the main agent keeps the strong one — big savings for exploration-heavy runs. Default: inherit the parent model.
+- **`thinking: true | <budget>`** (env `SANOOK_THINKING`): opt-in Anthropic extended thinking on the **main** agent only (never sub-agents), with a hard `budgetTokens` cap so reasoning can't run away. Default off (no change).
+
+### Token efficiency — line-range reads + targeted edits
+
+Two quality-neutral cuts to per-turn token cost (the model asks for exactly what it needs):
+
+- **`read_file` line ranges**: `read_file({ path, offset?, limit? })` returns just lines `offset..offset+limit` (with a `[lines A–B of N]` header) instead of the whole file. Paired with `grep` (which already returns line numbers), the model reads a small window around a symbol rather than an entire large file — large input-token savings, identical result. Default (no offset/limit) is unchanged. The system prompt now nudges grep→read-range over whole-file reads.
+- **`edit_file` `replace_all`**: rename/repeated edits use a short `old_string` with `replace_all: true` instead of padding it with surrounding context for uniqueness (which the model otherwise sends twice, old + new). The ambiguous-match error now suggests `replace_all` rather than "add more context".
+- **Terser replies**: the system prompt tells the agent not to paste back file contents / large code blocks it just read or edited (the user already sees the diff) — cuts output tokens with no loss.
+- **Sub-agent model routing** (`SANOOK_SUBAGENT_MODEL`): opt-in env that routes all sub-agent work to a cheaper model (e.g. `haiku`) while the main agent keeps the strong model — big cost savings for exploration-heavy runs, default unchanged (inherit the parent model).
+
 ### LSP diagnostics — `diagnostics` tool (type errors without a full build)
 
 A Node-native, zero-dependency Language Server Protocol client (`src/lsp/`) gives the agent a tight edit→check feedback loop: after editing a file it can pull the language server's diagnostics (type errors / lint) for that one file, no project-wide compile.

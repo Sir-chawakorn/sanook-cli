@@ -52,7 +52,9 @@ function makeRunner(parent: ParentCtx): SubagentRunner {
     const picked = readonly
       ? entries.filter(([k]) => READ_TOOLS.includes(k))
       : entries.filter(([k]) => !SUBAGENT_EXCLUDE.includes(k));
-    const model = spec.model ?? parent.model ?? 'sonnet';
+    // model: explicit spec ก่อน → SANOOK_SUBAGENT_MODEL (opt-in: route งาน subagent ไป model ถูกกว่า เช่น haiku
+    // สำหรับ exploration/search ที่เป็นงานกลไก — ประหยัด cost มาก โดย quality หลักไม่กระทบ) → inherit จาก parent
+    const model = spec.model ?? process.env.SANOOK_SUBAGENT_MODEL ?? parent.model ?? 'sonnet';
     const depth = parent.depth + 1;
     const cwd = spec.cwd ?? parent.cwd; // worktree ของ subagent นี้ (ถ้า isolate) ไม่งั้น inherit
     const childStore = { model, budgetUsd: parent.budgetUsd, depth, cwd };

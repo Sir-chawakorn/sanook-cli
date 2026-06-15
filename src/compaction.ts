@@ -94,3 +94,71 @@ export function autoCompact(messages: ModelMessage[], tokenLimit: number, keepRe
   const tail = firstUser && !recent.includes(firstUser) ? [firstUser, marker, ...recent] : [marker, ...recent];
   return withLead(tail);
 }
+
+/** flatten messages → readable transcript (สำหรับให้ model ย่อ) — ตัด tool-result ยาวกัน prompt บวม */
+export function messagesToText(messages: ModelMessage[]): string {
+  const out: string[] = [];
+  for (const m of messages) {
+    if (typeof m.content === 'string') {
+      if (m.content.trim()) out.push(`${m.role}: ${m.content}`);
+    } else if (Array.isArray(m.content)) {
+      for (const part of m.content as Record<string, unknown>[]) {
+        if (typeof part.text === 'string' && part.text.trim()) out.push(`${m.role}: ${part.text}`);
+        else if (part.type === 'tool-call') out.push(`${m.role}: [call ${String(part.toolName ?? 'tool')}]`);
+        else if (
+          part.type === 'tool-result' &&
+          (part.output as { type?: string; value?: unknown })?.type === 'text' &&
+          typeof (part.output as { value?: unknown }).value === 'string'
+        ) {
+          out.push(`tool: ${truncateText((part.output as { value: string }).value)}`);
+        }
+      }
+    }
+  }
+  return out.join('\n');
+}
+
+/**
+ * compaction แบบ "ย่อ" (quality สูงกว่า truncate): เก็บ system lead + user แรก (intent) + N message ล่าสุด,
+ * ส่วนกลางถูก "ย่อ" ด้วย summarize() (cheap model) แทนการตัดทิ้ง → จำ context ได้ดีกว่าที่ budget เท่าเดิม.
+ * pure orchestration (inject summarize) → test ได้โดยไม่ต้องมี LLM. summarize ล้มเหลว → fallback autoCompact.
+ */
+export async function summarizeCompact(
+  messages: ModelMessage[],
+  tokenLimit: number,
+  summarize: (transcript: string) => Promise<string>,
+  keepRecent = 20,
+): Promise<ModelMessage[]> {
+  if (estimateTokens(messages) <= tokenLimit) return messages;
+
+  const firstNon = messages.findIndex((m) => m.role !== 'system');
+  const lead = firstNon > 0 ? messages.slice(0, firstNon) : [];
+  const body = lead.length ? messages.slice(lead.length) : messages;
+  const withLead = (rest: ModelMessage[]): ModelMessage[] => (lead.length ? [...lead, ...rest] : rest);
+
+  const pruned = pruneToolResults(body, 2);
+  if (estimateTokens(withLead(pruned)) <= tokenLimit) return withLead(pruned);
+  if (pruned.length <= keepRecent + 1) return withLead(pruned);
+
+  const firstUser = pruned.find((m) => m.role === 'user');
+  let recent = pruned.slice(-keepRecent);
+  while (recent.length && recent[0].role === 'tool') recent = recent.slice(1); // กัน orphan tool-result หัว window
+  const recentSet = new Set(recent);
+  const middle = pruned.filter((m) => m !== firstUser && !recentSet.has(m));
+  if (!middle.length) return withLead(firstUser ? [firstUser, ...recent] : recent);
+
+  let summary: string;
+  try {
+    summary = (await summarize(messagesToText(middle))).trim();
+  } catch {
+    return autoCompact(messages, tokenLimit, keepRecent); // ย่อไม่ได้ → กลับไป truncate (ไม่บล็อกงาน)
+  }
+  if (!summary) return autoCompact(messages, tokenLimit, keepRecent);
+
+  const summaryMsg: ModelMessage = {
+    role: 'user',
+    content: `[สรุปบทสนทนาก่อนหน้า (ย่อเพื่อประหยัด context)]\n${summary}`,
+  };
+  const tail = firstUser ? [firstUser, summaryMsg, ...recent] : [summaryMsg, ...recent];
+  return withLead(tail);
+}

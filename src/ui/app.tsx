@@ -13,7 +13,9 @@ import {
 import { runAgent, type AgentEvent } from '../loop.js';
 import { saveSession, newSessionId } from '../session.js';
 import { getBrainPath, appendBrainWorklog } from '../memory.js';
-import { autoCompact, estimateTokens } from '../compaction.js';
+import { autoCompact, estimateTokens, summarizeCompact } from '../compaction.js';
+import { makeSummarizer } from '../summarize.js';
+import { agentTuning } from '../config.js';
 import { snapshotWorkTree, restoreWorkTree } from '../checkpoint.js';
 import { useEditor } from './useEditor.js';
 import { loadHistory, appendHistory } from './history.js';
@@ -22,6 +24,7 @@ import { BRAND } from '../brand.js';
 import { Banner } from './banner.js';
 
 const execFileP = promisify(execFile);
+const PRE_TURN_COMPACT_TOKENS = 100_000; // session ยาวมากเท่านั้นถึง summarize ก่อน turn (mode summarize)
 
 interface Turn {
   id: number;
@@ -160,6 +163,29 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     addTurn('system', `↩ ย้อนกลับ 1 turn${note}`);
   }
 
+  /** บีบ context: 'summarize' (ใช้ model ถูกย่อ) ถ้าตั้งไว้ ไม่งั้น 'truncate' (zero-LLM) */
+  async function compactHistory(targetTokens: number, label: string): Promise<void> {
+    const before = estimateTokens(msgsRef.current);
+    if (before <= targetTokens) {
+      addTurn('system', `context ~${before} tokens — ยังไม่ต้องบีบ`);
+      return;
+    }
+    const tuning = await agentTuning().catch(() => null);
+    if (tuning?.compaction === 'summarize') {
+      addTurn('system', '⏳ กำลังย่อ context ด้วย model ถูก…');
+      msgsRef.current = await summarizeCompact(
+        msgsRef.current,
+        targetTokens,
+        makeSummarizer(model, tuning.summaryModel),
+        20,
+      ).catch(() => autoCompact(msgsRef.current, targetTokens, 20));
+      addTurn('system', `ย่อ context แล้ว (summarize): ~${before} → ~${estimateTokens(msgsRef.current)} tokens`);
+    } else {
+      msgsRef.current = autoCompact(msgsRef.current, targetTokens, 20);
+      addTurn('system', `บีบ context แล้ว: ~${before} → ~${estimateTokens(msgsRef.current)} tokens`);
+    }
+  }
+
   async function submit(raw: string): Promise<void> {
     const text = raw.trim();
     editor.reset();
@@ -199,9 +225,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         return setHistory([]);
       }
       if (cmd.action === 'compact') {
-        const before = estimateTokens(msgsRef.current);
-        msgsRef.current = autoCompact(msgsRef.current, 40_000, 20);
-        addTurn('system', `บีบ context แล้ว: ~${before} → ~${estimateTokens(msgsRef.current)} tokens`);
+        void compactHistory(40_000, 'บีบ context');
         return;
       }
       if (cmd.action === 'diff') return void runGit(['diff', '--stat'], 'diff');
@@ -225,6 +249,20 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   }
 
   async function runAssistantTurn(promptText: string, images: string[], mark: Mark): Promise<void> {
+    // proactive summarize-compaction สำหรับ session ยาวมาก (เฉพาะ mode summarize) — เริ่ม turn ให้ context lean
+    // (mode truncate: ปล่อยให้ loop.ts ตัดต่อ-step เอา; ไม่บีบที่นี่ กัน latency)
+    if (estimateTokens(msgsRef.current) > PRE_TURN_COMPACT_TOKENS) {
+      const t = await agentTuning().catch(() => null);
+      if (t?.compaction === 'summarize') {
+        addTurn('system', '⏳ context ยาว — ย่ออัตโนมัติก่อนรอบนี้…');
+        msgsRef.current = await summarizeCompact(
+          msgsRef.current,
+          PRE_TURN_COMPACT_TOKENS,
+          makeSummarizer(model, t.summaryModel),
+          20,
+        ).catch(() => msgsRef.current);
+      }
+    }
     // checkpoint สถานะก่อนรัน (ไฟล์ git + ขอบเขตบทสนทนา) → /rewind ย้อนได้
     const ref = await snapshotWorkTree();
     checkpoints.current.push({ ref, turnId: mark.turnId, msgLen: mark.msgLen });
@@ -234,7 +272,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     let buf = '';
     let lastFlush = 0;
     try {
-      const { cost, messages } = await runAgent({
+      const { cost, messages, text } = await runAgent({
         model,
         fallbackModel,
         prompt: promptText,
@@ -260,7 +298,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       });
       msgsRef.current = messages;
       lastCost.current = cost.summary();
-      addTurn('assistant', buf.trim());
+      addTurn('assistant', buf.trim() || text.trim());
       // เซฟ session ทุกรอบ → resume ได้ด้วย sanook -c
       void saveSession({
         id: sessionId.current,
