@@ -19,21 +19,21 @@ NOT this skill:
 - Writing a normal commit message or opening a PR on un-rewritten work → git-commit-pr
 - A rebase/merge that stopped on `CONFLICT` markers → resolve-merge-rebase-conflict
 - Lost a commit/branch after a bad rebase/reset, need it back → recover-git-state
-- Moving plaintext secrets into a vault, rotating, scanning for leaks → secrets-management (run *after* the purge here)
+- Moving plaintext secrets into a vault, rotating, or scanning for leaks → secrets-management (run *after* the purge here)
 
 ## Steps
 
-1. **Apply the golden rule first — is this branch shared?** Rewriting changes every downstream SHA; anyone who pulled the old history gets a divergent tree and re-pushes the secret you deleted.
+1. **Apply the golden rule first — is this branch shared?** Rewriting changes every downstream SHA; anyone who pulled the old history gets a divergent tree and can re-push the secret you deleted.
 
    | Branch state | Rewrite? | How to push |
    |---|---|---|
    | Local-only, never pushed | Yes, freely | normal `git push` (first push) |
    | Pushed, **only you** pull it (personal feature branch) | Yes | `git push --force-with-lease` |
-   | Shared / `main` / release / others have pulled | **No — coordinate first** | announce → everyone stops → rewrite → `--force-with-lease` → everyone re-clones or `reset --hard origin/<b>` |
+   | Shared / `main` / release / others have pulled | **No — coordinate first** | announce → everyone stops → rewrite → `--force-with-lease` → everyone re-clones or `git reset --hard origin/<branch>` |
 
-   Default: rewrite only local/unshared branches. For `main`, the answer is almost always "don't" unless purging a secret, and then only with team sign-off.
+   Default: rewrite only local/unshared branches. For `main`, the answer is almost always "don't" — the only exception is purging a secret, and then only with team sign-off.
 
-2. **Record the safety net before touching anything.** Note the current tip so you can undo: `git rev-parse HEAD` (copy the SHA) and confirm `git status` is clean — stash or commit dirty work first; rebase refuses to start otherwise. The reflog (`git reflog`) keeps the old tip for ~90 days regardless, but a written-down SHA is faster.
+2. **Record the safety net before touching anything.** Copy the current tip so you can undo: `git rev-parse HEAD`, and confirm `git status` is clean — stash or commit dirty work first; rebase refuses to start otherwise. The reflog (`git reflog`) keeps the old tip ~90 days regardless, but a written-down SHA is faster.
 
 3. **Interactive rebase for squash/reword/reorder/drop/edit.** Rebase the commits *since* the base, not your whole history:
 
@@ -55,19 +55,19 @@ NOT this skill:
 
 4. **Split one commit into several.** Mark it `edit` in the rebase todo; when rebase stops on it:
    ```bash
-   git reset HEAD^          # un-commit, keep changes in working tree
+   git reset HEAD^          # un-commit, keep changes in working tree (mixed reset)
    git add -p               # stage hunk-by-hunk for the first piece
    git commit -m "first logical change"
    git add -p && git commit -m "second logical change"   # repeat until clean
    git rebase --continue
    ```
-   `git reset HEAD^` (soft-ish, mixed) keeps your work; never `--hard` here or you lose it.
+   `git reset HEAD^` (mixed) keeps your work in the tree; never `--hard` here or you lose it.
 
-5. **Amend only the last commit** (no rebase needed): `git commit --amend` (edit message + fold staged changes), or `git commit --amend --no-edit` to silently add forgotten files. If already pushed to your own branch, follow with `--force-with-lease`.
+5. **Amend only the last commit** (no rebase needed): `git commit --amend` (edit message + fold staged changes), or `git commit --amend --no-edit` to silently add forgotten files. If already pushed to your own branch, follow with `git push --force-with-lease`.
 
 6. **Purge a file/secret across ALL history — `git filter-repo` (preferred, BFG fallback).** `git filter-branch` is deprecated and slow; do not use it.
    ```bash
-   pip install git-filter-repo        # or brew install git-filter-repo
+   pip install git-filter-repo        # or: brew install git-filter-repo
    # Remove a path everywhere (history rewritten in place):
    git filter-repo --path config/secrets.yml --invert-paths
    # Or redact a literal string/regex from every blob:
@@ -90,18 +90,18 @@ NOT this skill:
 - **Using bare `git push --force`.** Overwrites whatever is on the remote with zero safety check, including a teammate's just-pushed commits. Always `--force-with-lease`.
 - **Thinking the rewrite removed the secret.** It only removed it from *your* refs. Forks, clones, CI caches, and GitHub's cached unreachable commits still expose it — rotate the credential (step 7). This is the single most common and most damaging mistake.
 - **`git reset --hard HEAD^` when splitting a commit.** Discards the very changes you were trying to re-commit. Use `git reset HEAD^` (mixed) to keep them in the working tree.
-- **Rebasing onto the wrong base** (`HEAD~10` swallows commits that are already on `main`). Rebase against the tracking base, e.g. `git rebase -i origin/main`, so you only touch your own commits.
+- **Rebasing onto the wrong base** (`HEAD~10` swallows commits already on `main`). Rebase against the tracking base, e.g. `git rebase -i origin/main`, so you only touch your own commits.
 - **Reordering by editing SHAs or text instead of moving whole lines.** The rebase todo is line-ordered; cut/paste entire lines to reorder. Editing a hash breaks the rebase.
-- **`squash` when you meant `fixup`** (or vice versa) — `squash` opens an editor to combine both messages; `fixup` drops the second message. Picking wrong leaves "WIP"/"typo" text in your final message.
-- **Running `git filter-repo` on a dirty or partial clone.** It refuses non-fresh clones by default for safety; work on a fresh `git clone` (or pass `--force` only when you understand why), and commit/stash everything first.
+- **`squash` when you meant `fixup`** (or vice versa). `squash` opens an editor to combine both messages; `fixup` drops the second message. Picking wrong leaves "WIP"/"typo" text in your final message.
+- **Running `git filter-repo` on a dirty or non-fresh clone.** It refuses non-fresh clones by default for safety; work on a fresh `git clone` (or pass `--force` only when you understand why), and commit/stash everything first.
 - **Forgetting `filter-repo` dropped the remote.** It removes `origin` deliberately so you can't push to the wrong place by reflex. Re-add it (`git remote add origin <url>`) before the force-push.
 - **Letting purged objects linger.** After a manual `filter-branch`/BFG run, the blobs survive in reflog/packs until `git reflog expire --expire=now --all && git gc --prune=now`. Without it, `git cat-file` still serves the secret locally.
 
 ## Verify
 
-1. **Target commits are correct.** `git log --oneline` (and `--stat`/`-p`) shows exactly the intended squash/split/reword/reorder — count of commits and each message match the plan.
+1. **Target commits are correct.** `git log --oneline` (and `--stat`/`-p`) shows exactly the intended squash/split/reword/reorder — commit count and each message match the plan.
 2. **No unintended commits dropped.** Diff the rewritten branch against the saved pre-rewrite SHA from step 2: `git range-diff <old-sha> HEAD` (or `git diff <old-sha> HEAD` to confirm the *tree* is identical when you only re-shaped messages/structure, not content). Cross-check `git reflog` for the old tip.
-3. **Secret is gone from every ref, not just `HEAD`.** `git log --all --source -p -S 'AKIA' -- ` returns nothing; `git grep -I 'AKIA' $(git rev-list --all)` finds no hits across all history. For a removed path: `git log --all --oneline -- config/secrets.yml` is empty.
+3. **Secret is gone from every ref, not just `HEAD`.** `git log --all -p -S 'AKIA'` returns nothing, and `git grep -I 'AKIA' $(git rev-list --all)` finds no hits across all history. For a removed path: `git log --all --oneline -- config/secrets.yml` is empty.
 4. **No dangling reachable copy.** After cleanup, `git rev-list --objects --all | grep <blob-sha>` is empty and `git count-objects -v` shows the pack shrank.
 5. **Credential actually rotated.** The old key returns 401/403 from the provider (not just deleted from git). If it still authenticates, you are not done.
 6. **Remote matches and was pushed safely.** `git push --force-with-lease` succeeded (not refused), and `git log origin/<branch> --oneline` equals local. Teammates on a shared branch confirmed re-sync.

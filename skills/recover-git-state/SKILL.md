@@ -1,7 +1,7 @@
 ---
 name: recover-git-state
-description: Recovers lost or broken git state using reflog (dropped commits/branches), git fsck (orphaned stashes/blobs), and git bisect (pinning a regression), plus safe undo of a bad reset/rebase/merge via revert or reset --soft/--mixed/--hard, without destroying still-recoverable work.
-when_to_use: "I lost my commits", a bad reset --hard, detached HEAD, a dropped stash, or finding which commit introduced a bug. NOT intentional history editing (rewrite-git-history), conflict resolution (resolve-merge-rebase-conflict), or diagnosing a non-git code failure (debug-root-cause).
+description: Recovers lost or broken git state — restores dropped commits/branches/stashes via reflog and fsck, pins a regression with git bisect, and safely undoes a bad reset/rebase/merge with revert or reset --soft/--mixed/--hard — without destroying still-recoverable objects.
+when_to_use: Work appears gone after a reset --hard, bad rebase, deleted branch, dropped stash, or detached HEAD, or you need to pin which commit introduced a bug. NOT intentional history editing (rewrite-git-history), conflict-marker resolution (resolve-merge-rebase-conflict), or diagnosing a non-git code failure (debug-root-cause).
 ---
 
 ## When to Use
@@ -23,7 +23,7 @@ NOT this skill:
 
 ## Steps
 
-1. **STOP and snapshot before touching anything.** Recovery commands can themselves overwrite refs. First freeze the current state so you can't make it worse:
+1. **STOP and snapshot before touching anything.** Recovery commands can themselves overwrite refs. Freeze current state so you can't make it worse:
    ```bash
    git stash list; git status; git log --oneline -5   # what do we actually have?
    git branch _backup_$(date +%s)                       # pin current HEAD as a named ref
@@ -116,4 +116,4 @@ Recovery is complete and correct when:
 5. **Bisect named one culprit and cleaned up.** Output ended with `<sha> is the first bad commit`, `git show <sha>` plausibly explains the regression, and `git bisect reset` returned HEAD to the starting branch (`git status` confirms the original branch, not detached).
 6. **Nothing was pruned mid-recovery.** No `git gc`/`reflog expire` ran before the ref was secured; the `_backup` branch from step 1 still exists as a fallback.
 
-Done = the recovered commits/branch/stash are on a named ref whose tree matches the known-good SHA (`git diff` empty), any undo matched its published-vs-local audience (revert vs reset mode), bisect (if used) named the first bad commit and `git bisect reset` left HEAD on the original branch.
+Done = the recovered commits/branch/stash are on a named ref whose tree matches the known-good SHA (`git diff` empty), any undo matched its published-vs-local audience (revert vs reset mode), and bisect (if used) named the first bad commit with `git bisect reset` leaving HEAD on the original branch.

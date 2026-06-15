@@ -109,7 +109,7 @@ NOT this skill:
 - **Missing `types` on install.** No `"types"` condition in `exports` (or it's listed *after* `import`/`require`) → consumers get `any`/`Could not find a declaration file`. Put `types` first in each `exports` entry; verify with `attw --pack`.
 - **ESM/CJS half-shipped.** Only `.mjs` exists but `require` points at it (or vice versa) → `ERR_REQUIRE_ESM` / `Cannot use import`. Emit both, wire both conditions; `publint` flags the mismatch.
 - **Denylist leak.** `.npmignore` forgot `test/` or a fixture with secrets → it ships. Switch to a `files` allowlist; re-check `npm pack --dry-run`.
-- **`stripped`/oversized tarball.** Shipping `src/`, sourcemaps, `node_modules`, or `.map` blows up install size. Allowlist `dist` only; confirm unpacked size in the pack dry-run.
+- **Oversized tarball.** Shipping `src/`, sourcemaps, `node_modules`, or `.map` blows up install size. Allowlist `dist` only; confirm unpacked size in the pack dry-run.
 - **First public scoped publish fails with 402/403.** Scoped packages default to restricted. Add `--access public` on the first publish.
 - **`id-token: write` missing → provenance silently absent or publish errors.** Provenance and trusted publishing both need that permission on the job; without it `--provenance` fails or no attestation is produced.
 - **Prerelease moved `latest`.** Publishing `2.0.0-beta.1` without `--tag` makes it `latest`, so every fresh install gets the beta. Always tag prereleases `next`/`beta`.

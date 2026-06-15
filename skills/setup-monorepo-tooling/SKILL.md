@@ -1,7 +1,7 @@
 ---
 name: setup-monorepo-tooling
-description: Sets up and tunes a monorepo — pnpm-workspace layout (apps/* packages/*), acyclic internal package graph with workspace: protocol, a cached task pipeline (Turborepo/Nx/Bazel) with dependsOn + inputs/outputs and remote cache, affected/changed-only CI runs, shared extended base configs, and Changesets versioning — so CI rebuilds only what changed.
-when_to_use: Converting to or fixing a monorepo — CI rebuilds everything, circular package deps, drifting per-package tooling, duplicated shared code. NOT the CI runner/workflow file itself (cicd-pipeline-author), single-package bundler/build config (configure-bundler-build), or the npm publish step (publish-package-registry).
+description: Sets up and tunes a monorepo — pnpm-workspace layout, an acyclic internal package graph wired with the workspace: protocol, a cached task pipeline (Turborepo/Nx/Bazel) with dependsOn + inputs/outputs and remote cache, affected/changed-only CI runs, shared extended base configs, and Changesets versioning — so CI rebuilds only what changed.
+when_to_use: Converting to or fixing a monorepo — CI rebuilds everything, circular package deps, drifting per-package tooling, duplicated shared code. NOT the CI workflow file itself (cicd-pipeline-author), one package's bundler/build config (configure-bundler-build), or the npm publish step (publish-package-registry).
 ---
 
 ## When to Use
@@ -19,7 +19,7 @@ NOT this skill:
 - Writing the GitHub Actions / GitLab CI workflow file itself → cicd-pipeline-author (this skill defines the `turbo run` command it calls, not the YAML)
 - One package's bundler/output config (tsup/Vite/esbuild, dual ESM+CJS, externals) → configure-bundler-build
 - Actually publishing a package to npm (auth, provenance, `npm publish`) → publish-package-registry (this skill sets up Changesets version PRs; that skill does the registry push)
-- Repo-wide lint/format/pre-commit hooks → setup-lint-format-precommit
+- Repo-wide lint/format/pre-commit hook *content* → setup-lint-format-precommit
 - Pinning the Node/pnpm/toolchain versions themselves → pin-toolchain-versions
 
 ## Steps

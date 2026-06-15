@@ -1,6 +1,6 @@
 ---
 name: compose-local-dev-stack
-description: Wires a local multi-service development stack with Docker Compose — app plus backing datastores (Postgres/Redis/Kafka), dependency-ordered healthchecks (depends_on condition: service_healthy), pinned images + named volumes, seed/init scripts, hot-reload bind mounts, profiles, and one-command up/down/reset via a Makefile.
+description: Wires a local multi-service development stack with Docker Compose — app plus backing datastores (Postgres/Redis/Kafka), dependency-ordered healthchecks (depends_on condition: service_healthy), pinned images and named volumes, seed/init scripts, hot-reload bind mounts, profiles, and one-command up/down/reset via a Makefile.
 when_to_use: An app needs real local backing services (db, cache, queue) and "start everything" is fragile, slow, or undocumented. Not the dev container the editor runs in (setup-devcontainer-env), not the shippable app image (dockerfile-optimize), not cluster deployment (k8s-manifest-review).
 ---
 
@@ -23,7 +23,7 @@ NOT this skill:
 
 ## Steps
 
-1. **One file, services as the unit. Pin every tag, name every volume.** Floating `:latest` makes the stack non-reproducible and breaks silently on pull; bare anonymous volumes orphan and lose data on `down`. `compose.yaml` (the modern name — drop the `version:` key, it's obsolete):
+1. **One file, services as the unit. Pin every tag, name every volume.** Floating `:latest` makes the stack non-reproducible and breaks silently on pull; bare anonymous volumes orphan and lose data on `down`. Use `compose.yaml` (the modern name — drop the `version:` key, it's obsolete):
 
    ```yaml
    name: myapp
@@ -95,7 +95,7 @@ NOT this skill:
        depends_on: { db: { condition: service_healthy } }
        restart: "no"
    ```
-   Then `app.depends_on.migrate.condition: service_completed_successfully`. Idempotent migration tools make this safe to run on every `up`.
+   Then set `app.depends_on.migrate.condition: service_completed_successfully`. Idempotent migration tools make this safe to run on every `up`.
 
 4. **Hot reload = bind mount source + a dev `command` + a watcher, not a rebuild.** Bind `./src:/app/src` and run the dev server (`npm run dev`/`uvicorn --reload`/`air`/`nodemon`). Mask installed deps with an **anonymous volume** (`- /app/node_modules`) so the host's empty/mismatched dir doesn't shadow the image's. Build the image from a **`dev` stage** (`target: dev`) that includes dev deps and the watcher — keep the lean prod stage for shipping (that's dockerfile-optimize's job). Changing `package.json`/`requirements.txt` still needs a rebuild; code does not.
 
@@ -103,7 +103,7 @@ NOT this skill:
 
 6. **Gate optional services behind `profiles`.** Tag heavy/rarely-needed services (Kafka, a second DB, mailhog, a metrics stack) with `profiles: ["kafka"]` so a plain `docker compose up` starts only the core stack. Opt in with `docker compose --profile kafka up`. Keeps the default path fast; a service with no `profiles` always runs.
 
-7. **Use a fixed internal network + stable host ports, and talk service-to-service by name.** Compose gives you a default bridge network where services resolve each other by **service name** (`db`, `redis`) — the app must use `db:5432`, never `localhost:5432` (localhost inside the app container is the app). Publish stable host ports (`5432:5432`) only for tools you run on the host (psql, a GUI). Collisions with a host Postgres → remap the **host** side (`5433:5432`), never the container side.
+7. **Use the default network and talk service-to-service by name; publish only the host ports you need.** Compose gives you a default bridge network where services resolve each other by **service name** (`db`, `redis`) — the app must use `db:5432`, never `localhost:5432` (localhost inside the app container is the app). Publish stable host ports (`5432:5432`) only for tools you run on the host (psql, a GUI). Collisions with a host Postgres → remap the **host** side (`5433:5432`), never the container side.
 
 8. **Make one-command verbs in a `Makefile` (or `Taskfile.yml`) so nobody memorizes flags.** `up` must block until healthy; `reset` must wipe volumes:
 
