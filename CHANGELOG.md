@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Cross-platform hardening — Windows / macOS / Linux
+
+Audited the whole codebase (process spawning, paths, external deps, terminal) and fixed the real Windows breakers:
+
+- **Child-process spawning on Windows**: `npx`/`npm`/`codex` are `.cmd` shims, so `spawn('npx', …)` failed with ENOENT — breaking **MCP servers** (incl. the second-brain filesystem MCP), **`sanook update`**, and the **Codex provider**. Now spawned with `shell` on `win32`. (`hooks` already used a shell; git/LSP already resolve correctly.)
+- **`grep` works without ripgrep**: if `rg` isn't installed (common on a fresh Windows box) the grep tool now falls back to a pure-Node search (recursive walk, default-ignore set, binary/large-file skip, CRLF-aware) instead of a cryptic `spawn rg ENOENT`. Verified end-to-end with `rg` removed from PATH.
+- **The agent knows its OS**: the system prompt now states the platform + shell, so on Windows it generates `dir`/`type`/`findstr` (or prefers the cross-platform read/list/glob/grep tools) instead of `ls`/`cat`/`grep` into cmd.exe.
+- **CRLF-safe vault indexing**: the markdown chunker normalizes `\r\n` so frontmatter/sections parse identically on Windows.
+- **Terminal**: respects `NO_COLOR` and auto-disables ANSI when output is piped/redirected (no `[2m` garbage on legacy cmd); `FORCE_COLOR` overrides.
+- **Clear "not installed" errors** for `git` (and ripgrep) instead of raw `spawn … ENOENT`.
+- (Prior turn) Node-version guard (≥ 22) with a clear message; install docs clarified for `-g` / `npx` / Windows `setx`.
+
 ### Skills — 16 more real-work skills, author+verify reviewed (130 → 146)
 
 A second, larger batch filling concrete gaps in distributed-systems correctness, testing rigor, frontend, security, and AI — each one **independently verified** (a separate reviewer agent read the written file and judged frontmatter validity, structure, cross-reference resolution, technical accuracy, and *actionability* — would an agent actually be able to follow it; all 16 passed):
@@ -37,7 +49,7 @@ The first-run / no-key experience now guides instead of dumping a raw error, and
 - **Smart first-run**: if an API key is already in the environment (e.g. you `export ANTHROPIC_API_KEY=…` before installing), sanook skips the setup wizard, picks that provider, and confirms `✅ ready` instead of asking you to re-enter everything.
 - **Setup wizard** now shows the **console URL** for the chosen provider at the key step, and the run ends with a clear `✅ ตั้งค่าเสร็จ — พิมพ์งานได้เลย`.
 - **Actionable key errors**: a missing key names the provider + console URL + how to set it; a wrong-format key shows a readable example (`sk-ant-…`, `AIza…`) instead of a raw regex (and the example is kept short so redaction doesn't mangle it).
-- **Discoverability**: `/tools` now lists the orchestration tools (`task_parallel`/`task_spawn`/`task_collect`/`task_status`) and `diagnostics`; `/help` points to the shell-side commands (`search`/`index`/`brain`/`serve`/`mcp serve`/`config set`); the REPL empty-state hints `/help` and `/tools`.
+- **Discoverability**: `/tools` now lists the orchestration tools (`task_parallel`/`task_spawn`/`task_collect`/`task_cancel`/`task_status`) and `diagnostics`; `/help` points to the shell-side commands (`search`/`index`/`brain`/`serve`/`mcp serve`/`config set`); the REPL empty-state hints `/help` and `/tools`.
 
 ### Token/cost tuning knobs — 1h cache, summarize-compaction, sub-agent routing, thinking budget
 
@@ -83,12 +95,12 @@ Parallel subagents that edit files would clobber a shared tree. Now each write s
 - **`task_parallel isolate:true`**: creates a worktree per write subagent, runs them concurrently in isolation, captures each worktree's diff, and applies them back to the main tree **sequentially** with `git apply --3way` — conflicts are reported (with the touched files), never silently overwritten. Worktrees are always cleaned up. Requires a git repo (falls back with a clear message otherwise).
 - **`src/worktree.ts`**: `createWorktree` / `captureDiff` (incl. untracked) / `applyDiff` / `removeWorktree` / `runInWorktrees`, all over the existing `runGit` helper. The create→isolate→merge→cleanup lifecycle is unit-tested against a real throwaway git repo with an injected work callback (no agent/network), covering the round-trip, the parallel different-files case, empty diffs, non-git fallback, and conflict reporting.
 
-### Subagent orchestration — parallel fan-out + background + nested (`task_parallel` / `task_spawn` / `task_collect` / `task_status`)
+### Subagent orchestration — parallel fan-out + background + nested (`task_parallel` / `task_spawn` / `task_collect` / `task_cancel` / `task_status`)
 
 The single one-shot `task` subagent grows into a real orchestration layer (`src/orchestrate.ts`):
 
 - **Parallel fan-out** (`task_parallel`): run up to 16 subagents concurrently with a real concurrency cap and **per-item error isolation** (one failure never sinks the batch); results returned in order. For independent work — explore N modules, review N angles — instead of serial subagents.
-- **Background / async** (`task_spawn` → `task_collect` / `task_status`): spawn a detached subagent, get an id immediately, keep working, and gather the result later in the same session. `task_collect` supports a timeout so the agent can poll instead of block; failures are captured as `error` state (never an unhandled rejection); `cancel` aborts via the subagent's `AbortSignal`.
+- **Background / async** (`task_spawn` → `task_collect` / `task_cancel` / `task_status`): spawn a detached subagent, get an id immediately, keep working, gather the result later in the same session, or cancel it. `task_collect` supports a timeout so the agent can poll instead of block; failures are captured as `error` state (never an unhandled rejection); `task_cancel` aborts via the subagent's `AbortSignal`.
 - **Nested**: subagents may themselves `task` / `task_parallel` (bounded by the depth cap), so the main agent can decompose, then each branch can decompose again.
 - **Parallel-safe context**: each subagent runs inside its own `AsyncLocalStorage.run()` scope, so concurrent/nested agents never bleed model/budget/depth into one another.
 - Orchestration core is pure with an **injected runner** + injectable clock/id-gen, unit-tested with a fake runner (concurrency cap, error isolation, spawn/collect/cancel/timeout) — zero model calls in CI.

@@ -5,8 +5,16 @@ const execFileAsync = promisify(execFile);
 
 // git helper — execFile('git', args[]) ไม่ผ่าน shell (บทเรียนจาก grep RCE: ไม่ interpolate เข้า shell string)
 export async function runGit(args: string[], cwd = process.cwd()): Promise<string> {
-  const { stdout } = await execFileAsync('git', args, { cwd, maxBuffer: 10 * 1024 * 1024 });
-  return stdout;
+  try {
+    const { stdout } = await execFileAsync('git', args, { cwd, maxBuffer: 10 * 1024 * 1024 });
+    return stdout;
+  } catch (e) {
+    // git ไม่ได้ติดตั้ง/ไม่อยู่ใน PATH → ข้อความชัดแทน "spawn git ENOENT" งงๆ (ทุกแพลตฟอร์ม)
+    if ((e as { code?: string }).code === 'ENOENT') {
+      throw new Error('ไม่พบ git ใน PATH — ติดตั้งจาก https://git-scm.com แล้วเปิด terminal ใหม่');
+    }
+    throw e;
+  }
 }
 
 export async function isGitRepo(cwd = process.cwd()): Promise<boolean> {

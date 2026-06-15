@@ -76,6 +76,9 @@ class StdioTransport implements Transport {
       // minimal env เท่านั้น (PATH/HOME/locale) + cfg.env ที่ user ตั้งเอง — ไม่ส่ง secret
       // (ANTHROPIC_API_KEY/TELEGRAM_BOT_TOKEN/ฯลฯ) ให้ทุก MCP server (supply chain = npx -y <pkg>)
       env: { ...safeEnv(), ...cfg.env },
+      // Windows: `npx`/`npm`/JS bins เป็น .cmd shim → spawn ตรงๆ = ENOENT. shell=true ให้ผ่าน PATHEXT.
+      // (config นี้ user เป็นเจ้าของ/trust แล้ว — bare-name resolution เท่านั้น)
+      shell: process.platform === 'win32',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.proc.stdout?.on('data', (d: Buffer) => this.onData(d.toString()));

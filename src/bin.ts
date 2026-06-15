@@ -16,8 +16,10 @@ import { createInterface } from 'node:readline/promises';
 import { appHomePath, BRAND, BRAND_ENV, envFlag } from './brand.js';
 import type { UpdateCache } from './update.js';
 
-const DIM = '\x1b[2m';
-const RESET = '\x1b[0m';
+// สี: เคารพ NO_COLOR + auto-plain เมื่อ pipe/redirect (legacy Windows cmd ก็ไม่เห็น garbage ANSI); FORCE_COLOR บังคับได้
+const useColor = !process.env.NO_COLOR && (Boolean(process.env.FORCE_COLOR) || process.stdout.isTTY === true);
+const DIM = useColor ? '\x1b[2m' : '';
+const RESET = useColor ? '\x1b[0m' : '';
 
 interface Args {
   model?: string;
@@ -720,6 +722,15 @@ function headlessKeyHint(modelSpec: string): string | null {
 }
 
 async function main(): Promise<void> {
+  // Node ≥ 22 required (uses node:fs glob, AbortSignal.timeout, ฯลฯ) — บอกชัดแทนปล่อย crash งงๆ
+  const nodeMajor = Number(process.versions.node.split('.')[0]);
+  if (Number.isFinite(nodeMajor) && nodeMajor < 22) {
+    console.error(
+      `${BRAND.productName} ต้องใช้ Node.js เวอร์ชัน 22 ขึ้นไป — ตอนนี้ใช้ ${process.version}\n` +
+        `อัปเดต Node ที่ https://nodejs.org (หรือ nvm/fnm/volta) แล้วลองใหม่`,
+    );
+    process.exit(1);
+  }
   const argv = process.argv.slice(2);
   if (argv.length === 1 && (argv[0] === '-v' || argv[0] === '--version')) {
     console.log(VERSION);

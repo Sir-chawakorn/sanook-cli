@@ -158,6 +158,8 @@ function packSections(sections: RawSection[]): RawSection[] {
  * Pure and total — any structural weirdness degrades, never throws.
  */
 export function chunkMarkdown(path: string, md: string): ParsedDoc {
+  // normalize CRLF→LF — ไฟล์ vault บน Windows มัก CRLF; ไม่งั้น frontmatter ('\n---') + split พัง+ hash เพี้ยนข้ามแพลตฟอร์ม
+  md = md.replace(/\r\n/g, '\n');
   const { data, body } = parseFrontmatter(md);
   const links = extractWikilinks(body);
   const packed = packSections(splitSections(body));

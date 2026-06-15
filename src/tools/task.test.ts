@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { agentContext } from '../agentContext.js';
-import { taskTool, taskParallelTool, taskSpawnTool, taskStatusTool } from './task.js';
+import { taskTool, taskParallelTool, taskSpawnTool, taskCancelTool, taskStatusTool } from './task.js';
 
 describe('subagent depth guard (กัน spawn ไม่จบ) — return ก่อน import loop (no network)', () => {
   it('task: depth >= MAX_DEPTH (2) → ปฏิเสธ', async () => {
@@ -36,5 +36,12 @@ describe('task_status', () => {
   it('ไม่มี background task → ข้อความว่าง', async () => {
     const r = await taskStatusTool.execute!({}, {} as never);
     expect(String(r)).toContain('ยังไม่มี background task');
+  });
+});
+
+describe('task_cancel', () => {
+  it('unknown id → แจ้งไม่พบ', async () => {
+    const r = await taskCancelTool.execute!({ id: 'task-nope' }, {} as never);
+    expect(String(r)).toContain('ไม่พบ task');
   });
 });

@@ -18,7 +18,7 @@ export interface CodexStatus {
 /** เช็กว่า codex CLI ติดตั้ง + login ChatGPT แล้ว */
 export async function detectCodex(): Promise<CodexStatus> {
   const hasBinary = await new Promise<boolean>((resolve) => {
-    const p = spawn('codex', ['--version']);
+    const p = spawn('codex', ['--version'], { shell: process.platform === 'win32' });
     p.on('error', () => resolve(false));
     p.on('close', (code) => resolve(code === 0));
   });
@@ -66,7 +66,7 @@ export async function runCodex(opts: RunCodexOptions): Promise<{ text: string; t
   return new Promise((resolve, reject) => {
     // OPENAI_API_KEY='' กัน BYOK key ของ Sanook ไป override ChatGPT login ของ codex
     const env = { ...process.env, OPENAI_API_KEY: '' };
-    const p = spawn('codex', args, { env });
+    const p = spawn('codex', args, { env, shell: process.platform === 'win32' }); // Windows: codex.cmd
 
     let finalText = '';
     let threadId: string | undefined;

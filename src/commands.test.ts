@@ -41,6 +41,13 @@ describe('parseCommand', () => {
   it('/cost → คืน cost summary จาก ctx', () => {
     expect(parseCommand('/cost', { model: 'sonnet', costSummary: 'tokens: 100' }).message).toBe('tokens: 100');
   });
+  it('/tools → แสดง orchestration tools ครบ', () => {
+    const msg = parseCommand('/tools', ctx).message ?? '';
+    expect(msg).toContain('task_spawn');
+    expect(msg).toContain('task_collect');
+    expect(msg).toContain('task_cancel');
+    expect(msg).toContain('task_status');
+  });
   it('คำสั่งไม่รู้จัก → แนะนำ /help', () => {
     expect(parseCommand('/wat', ctx).message).toContain('/help');
   });

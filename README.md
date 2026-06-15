@@ -59,10 +59,20 @@ On raw benchmark scores the frontier vendors win — Sanook's bet is **portabili
 
 ## Quickstart
 
+Install **globally** — the `-g` is required (needs **Node ≥ 22**; check with `node -v`):
+
 ```bash
 npm install -g sanook-cli
+```
 
-export ANTHROPIC_API_KEY=sk-ant-...        # or run `sanook` and use the setup wizard
+> ⚠️ **`'sanook' is not recognized` / command not found?** You installed it locally — `npm i sanook-cli` (without `-g`) drops it into the current folder, **not on your PATH**, so the `sanook` command isn't found. Fix: reinstall with `npm install -g sanook-cli`, or just run it via **`npx sanook`** (uses the local copy you already installed).
+
+Set an API key (or run `sanook` with no task for the interactive setup wizard):
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...        # macOS / Linux
+setx ANTHROPIC_API_KEY "sk-ant-..."        # Windows (export won't work in cmd) — then open a NEW terminal
+
 sanook "read package.json and list the dependencies"
 ```
 

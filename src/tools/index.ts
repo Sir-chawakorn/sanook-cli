@@ -8,7 +8,7 @@ import { rememberTool } from './remember.js';
 import { skillTool, createSkillTool, findSkillsTool } from './skill.js';
 import { recallTool } from './recall.js';
 import { scheduleTaskTool, listScheduledTool, cancelScheduledTool } from './schedule.js';
-import { taskTool, taskParallelTool, taskSpawnTool, taskCollectTool, taskStatusTool } from './task.js';
+import { taskTool, taskParallelTool, taskSpawnTool, taskCollectTool, taskCancelTool, taskStatusTool } from './task.js';
 import { diagnosticsTool } from './diagnostics.js';
 import { gitStatusTool, gitDiffTool, gitLogTool, gitCommitTool } from './git.js';
 
@@ -33,6 +33,7 @@ export const tools = {
   task_parallel: taskParallelTool,
   task_spawn: taskSpawnTool,
   task_collect: taskCollectTool,
+  task_cancel: taskCancelTool,
   task_status: taskStatusTool,
   diagnostics: diagnosticsTool,
   git_status: gitStatusTool,

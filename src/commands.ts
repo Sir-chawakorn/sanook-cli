@@ -41,7 +41,7 @@ const TOOLS_LIST = [
   'git_status git_diff git_log git_commit',
   'remember recall · skill find_skills create_skill',
   'schedule_task list_scheduled cancel_scheduled',
-  'task task_parallel task_spawn task_collect task_status   ← sub-agent (ขนาน/background)',
+  'task task_parallel task_spawn task_collect task_cancel task_status   ← sub-agent (ขนาน/background)',
   'diagnostics   ← type error/lint จาก language server (LSP)',
 ].join('\n  ');
 

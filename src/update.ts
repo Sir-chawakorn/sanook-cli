@@ -158,6 +158,7 @@ export function installLatest(meta: PackageMeta, opts: InstallOptions = {}): Pro
     const child = spawnImpl('npm', ['install', '-g', `${meta.name}@latest`], {
       stdio: 'inherit',
       env: process.env,
+      shell: process.platform === 'win32', // Windows: npm = npm.cmd → spawn ตรงๆ ENOENT
     });
     child.once('error', reject);
     child.once('close', (code) => resolve(code ?? 1));

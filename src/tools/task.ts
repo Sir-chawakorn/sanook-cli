@@ -7,7 +7,7 @@ import { runInWorktrees, getRepoRoot } from '../worktree.js';
 
 // task = มอบงานย่อยให้ sub-agent ทำใน context แยก (เลียน Claude Code Task tool)
 // depth/model/budget thread ผ่าน AsyncLocalStorage (parallel-safe, ไม่ใช่ process.env)
-// orchestration: task (single) · task_parallel (fan-out) · task_spawn/collect/status (background)
+// orchestration: task (single) · task_parallel (fan-out) · task_spawn/collect/cancel/status (background)
 const MAX_DEPTH = 2;
 const MAX_FANOUT = 16; // กัน fan-out ระเบิด: 1 task_parallel call สูงสุด 16 subagents
 const DEFAULT_CONCURRENCY = 5; // subagent = API-bound → คุม concurrency กัน rate-limit
@@ -17,7 +17,7 @@ const SUB_MAX_STEPS = 15;
 // 'task'/'task_parallel' อยู่ใน set → nested orchestration ได้ (depth cap กันไม่จบ)
 const READ_TOOLS = ['read_file', 'list_dir', 'glob', 'grep', 'git_status', 'git_diff', 'git_log', 'recall', 'skill', 'find_skills', 'task', 'task_parallel'];
 // sub-agent ห้ามมี: scheduling + background orchestration (เป็น side-effect ของ main agent — detached task ที่ subagent spawn จะ outlive มันงงๆ)
-const SUBAGENT_EXCLUDE = ['schedule_task', 'list_scheduled', 'cancel_scheduled', 'task_spawn', 'task_collect', 'task_status'];
+const SUBAGENT_EXCLUDE = ['schedule_task', 'list_scheduled', 'cancel_scheduled', 'task_spawn', 'task_collect', 'task_cancel', 'task_status'];
 
 // registry ของ background task — อยู่ระดับ process (อยู่ข้าม tool call ใน session เดียว)
 const registry = new TaskRegistry();
@@ -168,14 +168,14 @@ export const taskParallelTool = tool({
 export const taskSpawnTool = tool({
   description:
     'เริ่มงานย่อยแบบ "background" — คืน task id ทันที แล้ว sub-agent ทำต่อเบื้องหลัง ขณะที่ main agent ทำอย่างอื่นต่อได้ ' +
-    'เก็บผลภายหลังด้วย task_collect, ดูสถานะด้วย task_status. เหมาะกับงานยาว (research ลึก, สแกนทั้ง repo) ที่ไม่อยากบล็อก. ' +
+    'เก็บผลภายหลังด้วย task_collect, ดูสถานะด้วย task_status, ยกเลิกด้วย task_cancel. เหมาะกับงานยาว (research ลึก, สแกนทั้ง repo) ที่ไม่อยากบล็อก. ' +
     '(อยู่แค่ใน session นี้ — งานข้าม session ใช้ schedule_task)',
   inputSchema: z.object(taskInput),
   execute: async ({ description, prompt, readonly = true }) => {
     const parent = parentCtx();
     if (atDepthLimit(parent)) return DEPTH_MSG;
     const id = registry.spawn({ description, prompt, readonly }, makeRunner(parent));
-    return `เริ่ม background task "${description}" แล้ว — id: ${id}. เก็บผลด้วย task_collect("${id}") · ดูสถานะ task_status`;
+    return `เริ่ม background task "${description}" แล้ว — id: ${id}. เก็บผลด้วย task_collect("${id}") · ยกเลิกด้วย task_cancel("${id}") · ดูสถานะ task_status`;
   },
 });
 
@@ -200,6 +200,21 @@ export const taskCollectTool = tool({
         return `## ${r.id} ${r.description} (ยังทำงานอยู่ — collect อีกครั้งภายหลัง)`;
       })
       .join('\n\n');
+  },
+});
+
+export const taskCancelTool = tool({
+  description: 'ยกเลิก background task ที่ยัง running อยู่ (จาก task_spawn) ด้วย AbortSignal',
+  inputSchema: z.object({
+    id: z.string().describe('task id จาก task_spawn'),
+  }),
+  execute: async ({ id }) => {
+    const rec = registry.get(id);
+    if (!rec) return `[${id}] ไม่พบ task นี้`;
+    if (rec.state !== 'running') return `[${id}] ยกเลิกไม่ได้ — สถานะปัจจุบัน: ${rec.state}`;
+    const ok = registry.cancel(id);
+    if (ok) return `[${id}] ยกเลิกแล้ว — ${rec.description}`;
+    return `[${id}] ยกเลิกไม่ได้ — สถานะปัจจุบัน: ${registry.get(id)?.state ?? rec.state}`;
   },
 });
 
