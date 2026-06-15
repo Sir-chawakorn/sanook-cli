@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Skills — 16 more real-work skills, author+verify reviewed (130 → 146)
+
+A second, larger batch filling concrete gaps in distributed-systems correctness, testing rigor, frontend, security, and AI — each one **independently verified** (a separate reviewer agent read the written file and judged frontmatter validity, structure, cross-reference resolution, technical accuracy, and *actionability* — would an agent actually be able to follow it; all 16 passed):
+
+- **Backend/distributed**: `design-api-pagination` (cursor/keyset, stable ordering, Relay connections), `distributed-locks-leases` (Redlock caveats + fencing tokens, leader election), `design-state-machine` (explicit FSM/statecharts vs boolean-flag soup), `schema-evolution-compatibility` (backward/forward compat, reserve-don't-reuse, expand-then-contract).
+- **Testing**: `debug-flaky-tests` (taxonomy + root-cause fixes, not retry-masking), `test-data-factories` (factories over fixtures, faker, deterministic seeds), `property-based-testing` (invariants + shrinking), `contract-testing` (consumer-driven Pact + can-i-deploy), `visual-regression-testing` (deterministic screenshots).
+- **Frontend**: `build-data-table` (virtualized sortable/filterable grids), `optimize-react-rerenders` (profiler-driven memoization).
+- **Security**: `configure-security-headers-csp` (strict CSP with nonces, HSTS, CORS done right), `encrypt-sensitive-data` (KMS envelope encryption, AEAD, key rotation).
+- **AI/LLM**: `build-vector-search` (ANN indexes, hybrid + RRF, eval), `structured-output-llm` (json_schema/tool-calling + validate-and-repair).
+- **DevEx**: `debug-ci-pipeline-failure` (reproduce locally, classify, fix root cause).
+
+All load cleanly (catalog now 146), cross-reference only real sibling skills, and follow the When-to-Use + NOT-this-skill + dense Steps structure.
+
 ### Skills — 7 high-value additions, closing reliability/integration gaps (123 → 130)
 
 New bundled skills filling conspicuous holes in the catalog, authored to the existing dense, cross-referenced bar:
