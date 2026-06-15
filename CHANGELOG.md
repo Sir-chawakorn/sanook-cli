@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Skills — 7 high-value additions, closing reliability/integration gaps (123 → 130)
+
+New bundled skills filling conspicuous holes in the catalog, authored to the existing dense, cross-referenced bar:
+
+- **resilience-timeouts-retries** — timeouts on everything, deadline propagation, retry-only-if-idempotent, exponential backoff + full jitter, circuit breakers, bulkheads, load-shedding (the general reliability primitive the catalog was missing alongside `rate-limiting`).
+- **idempotency-keys** — make writes safe to repeat: idempotency by design (PUT/upsert/conditional) vs by key (the `Idempotency-Key` header pattern, dedup table, 409/422, outbox), consumer-side dedup, "effectively-once".
+- **integrate-oauth-oidc** — "Log in with Google/GitHub/…": Authorization Code + PKCE, state/nonce, server-side token exchange, full ID-token validation, safe `email_verified` account linking, refresh rotation, native system-browser-only. Complements `auth-jwt-session` (which owns *your* session).
+- **send-transactional-email** — the deliverability half: SPF/DKIM/DMARC alignment, provider-not-cold-MTA, transactional/marketing stream isolation, bounce/complaint → suppression, idempotent sends, sandbox testing.
+- **design-multi-tenancy** — tenant isolation models (shared+RLS / schema / DB-per-tenant), the #1 cross-tenant-leak bug + defense-in-depth (app scoping + Postgres RLS), tenant context propagation, per-tenant migrations/export/delete.
+- **build-cli-tool** — argument parsing, exit codes, stdout=data/stderr=logs, TTY/NO_COLOR, config precedence (flags>env>file), no-secrets-in-flags, dry-run — the CLI/UX design counterpart to `shell-script-robust`.
+- **deliver-webhooks** — the *producer* side: HMAC signing + rotation, replay tolerance, at-least-once retries + dead-letter + replay, stable event ids for consumer dedup, SSRF defenses — complements `ingest-webhook-secure` (the receiver).
+
+Each loads cleanly (frontmatter `name`/`description`/`when_to_use`), cross-references only real sibling skills, and follows the When-to-Use + NOT-this-skill + Steps structure.
+
 ### Onboarding & ease-of-use — no more dead-ends, clearer guidance
 
 The first-run / no-key experience now guides instead of dumping a raw error, and the REPL surfaces more of what's available:
