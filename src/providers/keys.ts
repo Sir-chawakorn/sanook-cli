@@ -21,6 +21,8 @@ export interface KeyPolicy {
   keyFormat: RegExp | null;
   /** prefix ของ OAuth/subscription token ที่ห้าม reuse (กันโดนแบน) */
   oauthRejectPrefixes?: readonly string[];
+  /** ตัวอย่าง key ที่อ่านง่าย (เช่น "sk-ant-api03-…") — โชว์ใน error แทน regex ดิบ */
+  keyExample?: string;
 }
 
 /**
@@ -39,9 +41,8 @@ export function assertDirectApiKey(policy: KeyPolicy, key: string): void {
     }
   }
   if (policy.keyFormat && !policy.keyFormat.test(k)) {
-    throw new Error(
-      `${policy.label}: format ของ API key ไม่ถูกต้อง — เช็ก/วางใหม่ (คาดว่าขึ้นต้นตาม ${policy.keyFormat.source})`,
-    );
+    const hint = policy.keyExample ? `ขึ้นต้นแบบ ${policy.keyExample}` : `ขึ้นต้นตาม ${policy.keyFormat.source}`;
+    throw new Error(`${policy.label}: format ของ API key ไม่ถูกต้อง — เช็ก/วางใหม่ (${hint})`);
   }
 }
 

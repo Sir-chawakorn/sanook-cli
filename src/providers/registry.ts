@@ -8,6 +8,7 @@ import { createMistral } from '@ai-sdk/mistral';
 import { createGroq } from '@ai-sdk/groq';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { resolveKeyFromEnv, assertDirectApiKey, type KeyPolicy } from './keys.js';
+import { BRAND } from '../brand.js';
 
 export interface ProviderConfig extends KeyPolicy {
   id: string;
@@ -41,6 +42,7 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     baseURL: 'https://api.anthropic.com/v1',
     requiresKey: true,
     keyFormat: /^sk-ant-api\d{2}-/,
+    keyExample: 'sk-ant-…', // สั้นพอไม่โดน redactKey (sk- + ≥6 chars ถึงโดนตัด)
     oauthRejectPrefixes: ['sk-ant-oat'], // Claude.ai subscription OAuth → banned
     models: {
       default: 'claude-opus-4-8',
@@ -60,6 +62,7 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     envFallbacks: ['GOOGLE_API_KEY', 'GEMINI_API_KEY'],
     requiresKey: true,
     keyFormat: /^AIza[0-9A-Za-z_-]{35}$/,
+    keyExample: 'AIza…',
     oauthRejectPrefixes: ['ya29.', 'AQ.'], // Google OAuth / restricted token → banned
     models: {
       default: 'gemini-2.5-pro',
@@ -79,6 +82,7 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     baseURL: 'https://api.openai.com/v1',
     requiresKey: true,
     keyFormat: /^sk-/,
+    keyExample: 'sk-…',
     models: {
       default: 'gpt-5.5',
       smart: 'gpt-5.5',
@@ -105,6 +109,7 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     envVar: 'XAI_API_KEY',
     requiresKey: true,
     keyFormat: /^xai-[A-Za-z0-9]{16,}$/,
+    keyExample: 'xai-…',
     // grok-4 (snapshot grok-4-0709) retired 2026-05-15 → redirect grok-4.3 (doc audit มิ.ย. 2026)
     models: { default: 'grok-4.3', smart: 'grok-4.3', grok: 'grok-4.3' },
     create: (key) => createXai({ apiKey: key }),
@@ -124,6 +129,7 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     envVar: 'GROQ_API_KEY',
     requiresKey: true,
     keyFormat: /^gsk_[A-Za-z0-9]{20,}$/,
+    keyExample: 'gsk_…',
     models: { default: 'llama-3.3-70b-versatile', fast: 'llama-3.3-70b-versatile' },
     create: (key) => createGroq({ apiKey: key }),
   },
@@ -254,6 +260,40 @@ export function specKey(spec: string): string {
   return `${provider}:${model}`;
 }
 
+/** หน้า console ที่ใช้สร้าง API key ต่อ provider — โชว์ในข้อความ error/wizard ("ไปเอา key ที่ไหน") */
+const CONSOLE_URLS: Record<string, string> = {
+  anthropic: 'https://console.anthropic.com/settings/keys',
+  google: 'https://aistudio.google.com/apikey',
+  openai: 'https://platform.openai.com/api-keys',
+  deepseek: 'https://platform.deepseek.com/api_keys',
+  xai: 'https://console.x.ai',
+  mistral: 'https://console.mistral.ai/api-keys',
+  groq: 'https://console.groq.com/keys',
+  minimax: 'https://platform.minimax.io',
+  glm: 'https://z.ai/manage-apikey/apikey-list',
+};
+export function consoleUrl(provider: string): string | undefined {
+  return CONSOLE_URLS[provider];
+}
+
+export interface EnvProvider {
+  provider: string;
+  label: string;
+  envVar: string;
+  model: string; // default model alias-resolved id ของ provider นั้น
+}
+
+/** หา provider ที่ "มี key ใน env แล้ว" (cloud, ตามลำดับนิยม) — ใช้ทำ first-run smart skip + แนะ headless */
+export function detectEnvProvider(): EnvProvider | null {
+  for (const id of ['anthropic', 'openai', 'google', 'deepseek', 'xai', 'mistral', 'groq', 'glm', 'minimax']) {
+    const cfg = PROVIDERS[id];
+    if (cfg?.requiresKey && resolveKeyFromEnv(cfg.envVar, cfg.envFallbacks)) {
+      return { provider: id, label: cfg.label, envVar: cfg.envVar, model: cfg.models.default };
+    }
+  }
+  return null;
+}
+
 /**
  * model ที่ "ถูก/เร็วกว่า" ในค่ายเดียวกับ spec (สำหรับงานกลไก เช่น summarize/compaction) —
  * ใช้ key เดียวกัน ไม่ต้องตั้ง key ใหม่. ไม่มี fast tier → คืน spec เดิม (ทำงานได้แต่ไม่ประหยัด)
@@ -280,7 +320,13 @@ export function resolveModel(spec: string): LanguageModel {
   if (cfg.requiresKey) {
     const found = resolveKeyFromEnv(cfg.envVar, cfg.envFallbacks);
     if (!found) {
-      throw new Error(`ต้องตั้ง ${cfg.envVar} ก่อนใช้ provider "${provider}" (BYOK — API key ตรงจาก console)`);
+      const url = consoleUrl(provider);
+      throw new Error(
+        `ยังไม่มี API key ของ ${cfg.label} (${cfg.envVar})\n` +
+          (url ? `  • เอา key ที่: ${url}\n` : '') +
+          `  • ตั้ง: export ${cfg.envVar}="..."   ` +
+          `หรือรัน \`${BRAND.cliName}\` (ไม่ใส่ task) เพื่อ setup wizard`,
+      );
     }
     assertDirectApiKey(cfg, found); // reject OAuth/subscription token + format ผิด
     key = found;

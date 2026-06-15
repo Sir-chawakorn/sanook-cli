@@ -383,7 +383,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
 /** input ที่มี cursor (inverse) + placeholder — minimal; รับ input ได้แม้ busy (ต่อคิว) */
 function InputView({ value, cursor, busy }: { value: string; cursor: number; busy: boolean }) {
   if (busy && !value) return <Text dimColor>กำลังทำงาน… Esc/Ctrl+C หยุด · พิมพ์เพื่อต่อคิว (⏎)</Text>;
-  if (!busy && !value) return <Text dimColor>ถามอะไรก็ได้ · /help · @ไฟล์ แนบ context/รูป</Text>;
+  if (!busy && !value) return <Text dimColor>ถามอะไรก็ได้ — /help ดูคำสั่ง · /tools ดู tools · @ไฟล์ แนบ context/รูป</Text>;
   const before = value.slice(0, cursor);
   const at = value.slice(cursor, cursor + 1) || ' ';
   const after = value.slice(cursor + 1);

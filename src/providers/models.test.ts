@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { mergeModelOptions, listRemoteModels } from './models.js';
 import { PROVIDERS } from './registry.js';
 
@@ -35,5 +35,29 @@ describe('fastSibling', () => {
   });
   it('returns the spec unchanged when the provider is unknown', () => {
     expect(fastSibling('madeupprovider:x')).toBe('madeupprovider:x');
+  });
+});
+
+import { vi } from 'vitest';
+import { consoleUrl, detectEnvProvider } from './registry.js';
+describe('consoleUrl', () => {
+  it('returns a key-console URL for cloud providers, undefined for local', () => {
+    expect(consoleUrl('anthropic')).toContain('console.anthropic.com');
+    expect(consoleUrl('openai')).toContain('platform.openai.com');
+    expect(consoleUrl('ollama')).toBeUndefined();
+  });
+});
+describe('detectEnvProvider', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it('returns the first provider (priority order) whose key is set', () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-api03-x');
+    expect(detectEnvProvider()?.provider).toBe('anthropic');
+  });
+  it('falls through past providers with no key', () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    vi.stubEnv('OPENAI_API_KEY', 'sk-test');
+    const d = detectEnvProvider();
+    expect(d?.provider).toBe('openai');
+    expect(d?.model).toBeTruthy();
   });
 });

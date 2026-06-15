@@ -26,17 +26,23 @@ const HELP_TEXT = `คำสั่ง:
   /cost            ดู token + cost รอบล่าสุด
   ↑/↓ ประวัติ · @ไฟล์ แนบ context/รูป · \\ ลงท้าย = บรรทัดใหม่
   /clear           ล้าง conversation (เริ่มใหม่)
-  /compact         บีบ context
+  /compact         บีบ context (truncate · หรือ summarize ถ้าตั้ง compaction)
   /quit            ออก
+
+นอก REPL (พิมพ์ใน shell):
+  ${BRAND.cliName} search "<q>" · index · brain init · serve · mcp serve · config set <k> <v>
+  ดูทั้งหมด: ${BRAND.cliName} --help
 
 custom commands:
   ~/.sanook/commands/<name>.md และ .sanook/commands/<name>.md (project ต้อง trust ก่อน)`;
 
 const TOOLS_LIST = [
-  'read_file write_file edit_file list_dir glob grep run_bash',
+  'read_file (offset/limit) write_file edit_file (replace_all) list_dir glob grep run_bash',
   'git_status git_diff git_log git_commit',
   'remember recall · skill find_skills create_skill',
-  'schedule_task list_scheduled cancel_scheduled · task',
+  'schedule_task list_scheduled cancel_scheduled',
+  'task task_parallel task_spawn task_collect task_status   ← sub-agent (ขนาน/background)',
+  'diagnostics   ← type error/lint จาก language server (LSP)',
 ].join('\n  ');
 
 export interface CommandContext {

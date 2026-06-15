@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { Select, PasswordInput } from '@inkjs/ui';
-import { PROVIDERS } from '../providers/registry.js';
+import { PROVIDERS, consoleUrl } from '../providers/registry.js';
 import { listRemoteModels, mergeModelOptions } from '../providers/models.js';
 import { BRAND } from '../brand.js';
 
@@ -63,7 +63,10 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
       {step === 'key' && cfg && (
         <Box flexDirection="column">
           <Text>2. วาง API key ของ {cfg.label}:</Text>
-          <Text color="gray">   (key ตรงจาก console ของค่าย — ห้าม OAuth/subscription token)</Text>
+          {consoleUrl(provider) ? (
+            <Text color="cyan">   → เอา key ที่: {consoleUrl(provider)}</Text>
+          ) : null}
+          <Text color="gray">   (API key ตรงจาก console — ห้าม OAuth/subscription token)</Text>
           <PasswordInput
             placeholder={cfg.envVar}
             onSubmit={(v) => {

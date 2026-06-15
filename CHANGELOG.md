@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Onboarding & ease-of-use — no more dead-ends, clearer guidance
+
+The first-run / no-key experience now guides instead of dumping a raw error, and the REPL surfaces more of what's available:
+
+- **Headless with no key no longer dead-ends**: `sanook "task"` before any key is set now prints an actionable hint — run `sanook` for the wizard, or `export <ENV>=…` with the **provider console URL** to get a key — and, if a *different* provider's key is already in the environment, it suggests `sanook -m <that-provider> "…"`.
+- **Smart first-run**: if an API key is already in the environment (e.g. you `export ANTHROPIC_API_KEY=…` before installing), sanook skips the setup wizard, picks that provider, and confirms `✅ ready` instead of asking you to re-enter everything.
+- **Setup wizard** now shows the **console URL** for the chosen provider at the key step, and the run ends with a clear `✅ ตั้งค่าเสร็จ — พิมพ์งานได้เลย`.
+- **Actionable key errors**: a missing key names the provider + console URL + how to set it; a wrong-format key shows a readable example (`sk-ant-…`, `AIza…`) instead of a raw regex (and the example is kept short so redaction doesn't mangle it).
+- **Discoverability**: `/tools` now lists the orchestration tools (`task_parallel`/`task_spawn`/`task_collect`/`task_status`) and `diagnostics`; `/help` points to the shell-side commands (`search`/`index`/`brain`/`serve`/`mcp serve`/`config set`); the REPL empty-state hints `/help` and `/tools`.
+
 ### Token/cost tuning knobs — 1h cache, summarize-compaction, sub-agent routing, thinking budget
 
 New `config.json` fields (and `SANOOK_*` env overrides) that trade tokens/cost without hurting quality — read once per turn via `agentTuning()`:

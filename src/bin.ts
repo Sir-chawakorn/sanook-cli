@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { runAgent, type AgentEvent } from './loop.js';
 import { redactKey } from './providers/keys.js';
-import { specKey } from './providers/registry.js';
+import { specKey, parseSpec, PROVIDERS, consoleUrl, detectEnvProvider } from './providers/registry.js';
+import { resolveKeyFromEnv } from './providers/keys.js';
 import { hasPricingForKey } from './cost.js';
 import type { ModelMessage } from 'ai';
 import { loadConfig, isFirstRun, loadKeysIntoEnv, parsePricingOverride } from './config.js';
@@ -699,6 +700,25 @@ async function maybePromptForInteractiveUpdate(): Promise<void> {
   }
 }
 
+/** headless: model ต้อง key แต่ env ยังไม่มี → คืนข้อความแนะวิธีเริ่ม (null = พร้อมใช้) */
+function headlessKeyHint(modelSpec: string): string | null {
+  const { provider } = parseSpec(modelSpec);
+  const cfg = PROVIDERS[provider];
+  if (!cfg?.requiresKey || resolveKeyFromEnv(cfg.envVar, cfg.envFallbacks)) return null;
+  const url = consoleUrl(provider);
+  const lines = [
+    `⚠ ยังไม่มี API key สำหรับ ${cfg.label} (${cfg.envVar})`,
+    `เริ่มใช้งาน:`,
+    `  • รัน "${BRAND.cliName}" (ไม่ใส่ task) → setup wizard ทีละขั้น (แนะนำ)`,
+    `  • หรือ: export ${cfg.envVar}="..."${url ? `   ·  เอา key ที่: ${url}` : ''}`,
+  ];
+  const other = detectEnvProvider();
+  if (other && other.provider !== provider) {
+    lines.push(`  • เจอ key ของ ${other.label} อยู่แล้ว → ใช้เลย: ${BRAND.cliName} -m ${other.provider} "<task>"`);
+  }
+  return lines.join('\n');
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   if (argv.length === 1 && (argv[0] === '-v' || argv[0] === '--version')) {
@@ -742,6 +762,12 @@ async function main(): Promise<void> {
 
   if (prompt) {
     const config = await loadConfig({ model, budgetUsd });
+    // headless + ยังไม่มี key → บอกวิธีเริ่มแบบ actionable แทนปล่อยให้ throw error ดิบ (กัน dead-end ของ flow ที่ README แนะนำ)
+    const noKey = headlessKeyHint(config.model);
+    if (noKey) {
+      process.stderr.write(`${noKey}\n`);
+      process.exit(1);
+    }
     // --continue / -c → โหลด session ล่าสุดมาต่อ (จำว่าทำถึงไหน)
     const wantsContinue = argv.includes('--continue') || argv.includes('-c') || argv.includes('--continue-any');
     const history = wantsContinue
@@ -764,10 +790,19 @@ async function main(): Promise<void> {
 
   await maybePromptForInteractiveUpdate();
 
-  // interactive — ครั้งแรก (ยังไม่มี config) → setup wizard ก่อนเข้า REPL
+  // interactive — ครั้งแรก (ยังไม่มี config)
   if (await isFirstRun()) {
-    const { startSetup } = await import('./ui/render.js');
-    await startSetup();
+    const detected = detectEnvProvider();
+    if (detected) {
+      // มี API key ใน env แล้ว → ข้าม wizard, ตั้ง default ให้ตรง provider นั้น, บอกว่าพร้อมใช้
+      const { saveGlobalConfig } = await import('./config.js');
+      await saveGlobalConfig({ model: `${detected.provider}:${detected.model}`, provider: detected.provider });
+      console.log(`✅ เจอ ${detected.label} (${detected.envVar}) — พร้อมใช้เลย (ข้าม setup wizard)\n`);
+    } else {
+      const { startSetup } = await import('./ui/render.js'); // ไม่มี key → wizard ทีละขั้น
+      await startSetup();
+      console.log('✅ ตั้งค่าเสร็จ — พิมพ์งานในช่อง › ได้เลย (/help ดูคำสั่ง)\n');
+    }
   }
   const config = await loadConfig({ model, budgetUsd });
   // --continue / -c → โหลด conversation ล่าสุดเข้า REPL (เดิม resume ได้แค่ headless)
