@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Fix: couldn't type in the REPL after first-run setup
+
+The setup wizard and the REPL were two separate Ink renders (`render(SetupWizard)` → `unmount` → `render(App)`). After the first Ink instance unmounted, stdin raw-mode/keypress handling didn't reattach to the second, so the chat input was dead — you couldn't type anything. Now the wizard, the brain wizard, and the REPL live under **one Ink render** (a `Root` component swaps screens), so stdin stays continuous and input works the moment the REPL appears. (Regression-tested with ink-testing-library: typed characters reach the input box; phase routing verified.)
+
+### Setup wizard — better provider selection + working OpenAI Codex login
+
+- **Provider menu**: each option now shows a one-line hint — `✓ เจอ key ใน env`, `local · ไม่ต้อง key`, `login ChatGPT · ไม่ใช้ API key`, or `ต้องมี API key` — and the list is ordered (popular cloud → others → local → Codex). The API-key step shows the expected key format.
+- **OpenAI Codex (ChatGPT plan)**: picking Codex used to skip straight past auth. It now runs a dedicated step that detects whether the `codex` CLI is installed and logged in (reads `~/.codex/auth.json` — robust inside sandboxes where `codex login status` can panic), and guides you: `npm i -g @openai/codex` → `codex login` → re-check, then continues automatically once you're signed in. No API key required.
+- **Codex runs**: `codex exec` now passes `--ask-for-approval never` (no hang waiting on approvals; safe under the default read-only sandbox) and removes `OPENAI_API_KEY` from the child env so it can't fight the ChatGPT-plan login (codex #2733/#3286). Verified the exact CLI surface against the official OpenAI Codex docs.
+
+## 0.5.0
+
 ### Install UX — `sanook doctor` + post-install guidance (the "`sanook` is not recognized" fix)
 
 The #1 first-run snag is `npm i sanook-cli` **without `-g`** → a local install that never lands on PATH, so typing `sanook` fails. Two root-cause fixes:

@@ -46,15 +46,18 @@ export interface AppProps {
   permissionMode?: 'auto' | 'ask';
   /** ต่อจาก session ก่อน (sanook -c) — โหลด conversation เดิมเข้า REPL */
   initialHistory?: ModelMessage[];
+  /** system note แสดงตอนเปิด (เช่น ผล scaffold second-brain หลัง setup wizard) */
+  initialNote?: string;
 }
 
-export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = 'ask', initialHistory }: AppProps) {
+export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = 'ask', initialHistory, initialNote }: AppProps) {
   const { exit } = useApp();
-  const [history, setHistory] = useState<Turn[]>(
-    initialHistory?.length
-      ? [{ id: -1, role: 'system', text: `↻ ต่อจาก session ก่อน (${initialHistory.length} ข้อความ)` }]
-      : [],
-  );
+  const [history, setHistory] = useState<Turn[]>(() => {
+    const seed: Turn[] = [];
+    if (initialNote) seed.push({ id: -2, role: 'system', text: initialNote });
+    if (initialHistory?.length) seed.push({ id: -1, role: 'system', text: `↻ ต่อจาก session ก่อน (${initialHistory.length} ข้อความ)` });
+    return seed;
+  });
   const [streaming, setStreaming] = useState('');
   const [busy, setBusy] = useState(false);
   const [model, setModel] = useState(initialModel);

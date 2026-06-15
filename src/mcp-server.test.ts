@@ -110,7 +110,16 @@ describe('stdio round-trip (real child, stdout stays protocol-clean)', () => {
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} })}\n`);
     child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' })}\n`);
 
-    await new Promise((resolve) => setTimeout(resolve, 2500));
+    // รอจน response ครบทั้ง id 1 + 2 (event-driven) แทน fixed delay — กัน flaky ตอน child (tsx compile) เริ่มช้าใต้ load
+    await new Promise<void>((resolve) => {
+      const deadline = Date.now() + 12000;
+      const check = (): void => {
+        const ids = new Set(frames.map((f) => (f as { id?: number }).id));
+        if ((ids.has(1) && ids.has(2)) || Date.now() > deadline) resolve();
+        else setTimeout(check, 50);
+      };
+      check();
+    });
     child.stdin.end();
     child.kill();
 

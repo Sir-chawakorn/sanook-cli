@@ -2,20 +2,36 @@ import { useState, useEffect } from 'react';
 import { Box, Text } from 'ink';
 import { Select, PasswordInput } from '@inkjs/ui';
 import { PROVIDERS, consoleUrl } from '../providers/registry.js';
+import { resolveKeyFromEnv } from '../providers/keys.js';
 import { listRemoteModels, mergeModelOptions } from '../providers/models.js';
+import { detectCodex, type CodexStatus } from '../providers/codex.js';
 import { BRAND } from '../brand.js';
 
 export interface SetupResult {
   provider: string;
   model: string; // "provider:modelId"
   envVar: string;
-  key: string; // '' ถ้าเป็น local provider
+  key: string; // '' ถ้าเป็น local/delegate provider
   createBrain?: boolean; // เลือกสร้าง second-brain → ต่อด้วย BrainWizard (เก็บ identity จริง)
 }
 
-type Step = 'provider' | 'key' | 'model' | 'brain-offer';
+type Step = 'provider' | 'codex-auth' | 'key' | 'model' | 'brain-offer';
 
-/** first-run setup wizard: เลือก provider → ใส่ API key → เลือก model → เสนอสร้าง second-brain */
+// จัดลำดับ provider ในเมนู: cloud ยอดนิยม → cloud อื่น → local → ChatGPT-plan (codex) ท้ายสุด
+const PROVIDER_ORDER = ['anthropic', 'openai', 'google', 'deepseek', 'xai', 'mistral', 'groq', 'glm', 'minimax', 'ollama', 'lmstudio', 'codex'];
+
+/** label + hint ต่อ provider: เจอ key ใน env / local / ChatGPT-login / ต้องมี key — ให้เลือกง่ายขึ้น */
+export function providerOption(id: string): { label: string; value: string } {
+  const p = PROVIDERS[id];
+  let hint: string;
+  if (p.kind === 'delegate') hint = 'login ChatGPT · ไม่ใช้ API key';
+  else if (!p.requiresKey) hint = 'local · ไม่ต้อง key';
+  else if (resolveKeyFromEnv(p.envVar, p.envFallbacks)) hint = '✓ เจอ key ใน env';
+  else hint = 'ต้องมี API key';
+  return { label: `${p.label}  —  ${hint}`, value: p.id };
+}
+
+/** first-run setup wizard: เลือก provider → (codex login | API key) → เลือก model → เสนอสร้าง second-brain */
 export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => void }) {
   const [step, setStep] = useState<Step>('provider');
   const [provider, setProvider] = useState('');
@@ -23,10 +39,32 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
   const [model, setModel] = useState('');
   const [remote, setRemote] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [codexStatus, setCodexStatus] = useState<CodexStatus | null>(null);
+  const [recheck, setRecheck] = useState(0);
 
   const cfg = provider ? PROVIDERS[provider] : undefined;
-  const providerOptions = Object.values(PROVIDERS).map((p) => ({ label: p.label, value: p.id }));
+  const providerOptions = PROVIDER_ORDER.filter((id) => PROVIDERS[id]).map(providerOption);
 
+  // codex-auth: เช็ก codex CLI ติดตั้ง + login ChatGPT (re-run เมื่อกด "เช็กใหม่")
+  useEffect(() => {
+    if (step !== 'codex-auth') return;
+    let alive = true;
+    setCodexStatus(null);
+    void detectCodex().then((s) => {
+      if (!alive) return;
+      setCodexStatus(s);
+      if (s.installed && s.loggedIn) {
+        // login แล้ว → ใช้ default model ของ codex (ChatGPT-plan เลือก model เอง) ข้ามขั้นเลือก key/model
+        setModel(`codex:${PROVIDERS.codex.models.default}`);
+        setStep('brain-offer');
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [step, recheck]);
+
+  // ดึงรายชื่อ model จริงจาก provider (เฉพาะ provider แบบ SDK ที่ต้อง/ไม่ต้อง key)
   useEffect(() => {
     if (step !== 'model' || !cfg) return;
     let alive = true;
@@ -43,30 +81,78 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
   const finish = (createBrain?: boolean): void =>
     onComplete({ provider, model, envVar: cfg?.envVar ?? '', key, createBrain });
 
+  const backToProvider = (): void => {
+    setProvider('');
+    setCodexStatus(null);
+    setStep('provider');
+  };
+
   return (
     <Box flexDirection="column" gap={1} marginY={1}>
       <Text bold color="cyan">⚙  ตั้งค่า {BRAND.bannerTitle} (ครั้งแรก)</Text>
 
       {step === 'provider' && (
         <Box flexDirection="column">
-          <Text>1. เลือก AI provider:</Text>
+          <Text>1. เลือก AI provider (↑↓ เลือก · Enter ยืนยัน):</Text>
+          <Text color="gray">   cloud = ใส่ API key · local = ฟรีบนเครื่อง · Codex = login ด้วย ChatGPT</Text>
           <Select
             options={providerOptions}
             onChange={(v) => {
               setProvider(v);
-              setStep(PROVIDERS[v].requiresKey ? 'key' : 'model');
+              const p = PROVIDERS[v];
+              if (p.kind === 'delegate') setStep('codex-auth');
+              else if (p.requiresKey) setStep('key');
+              else setStep('model');
             }}
           />
+        </Box>
+      )}
+
+      {step === 'codex-auth' && (
+        <Box flexDirection="column">
+          <Text>2. เชื่อม OpenAI Codex (ใช้โควต้า ChatGPT plan — ไม่ต้องมี API key):</Text>
+          {codexStatus === null ? (
+            <Text color="gray">   กำลังเช็ก codex CLI + สถานะ login…</Text>
+          ) : !codexStatus.installed ? (
+            <Box flexDirection="column">
+              <Text color="yellow">   ❌ ยังไม่ได้ติดตั้ง codex CLI</Text>
+              <Text>
+                {'   '}ติดตั้งใน terminal อีกหน้าต่าง: <Text color="cyan">npm i -g @openai/codex</Text>
+              </Text>
+              <Select
+                options={[
+                  { label: 'เช็กใหม่ (ติดตั้งเสร็จแล้ว)', value: 'recheck' },
+                  { label: '← กลับไปเลือก provider อื่น', value: 'back' },
+                ]}
+                onChange={(v) => (v === 'recheck' ? setRecheck((n) => n + 1) : backToProvider())}
+              />
+            </Box>
+          ) : !codexStatus.loggedIn ? (
+            <Box flexDirection="column">
+              <Text color="yellow">   ⚠ ติดตั้งแล้ว แต่ยังไม่ได้ login ChatGPT</Text>
+              <Text>
+                {'   '}รันใน terminal อีกหน้าต่าง: <Text color="cyan">codex login</Text> <Text color="gray">(เปิด browser ให้ยืนยันด้วยบัญชี ChatGPT)</Text>
+              </Text>
+              <Select
+                options={[
+                  { label: 'เช็กใหม่ (login เสร็จแล้ว)', value: 'recheck' },
+                  { label: '← กลับไปเลือก provider อื่น', value: 'back' },
+                ]}
+                onChange={(v) => (v === 'recheck' ? setRecheck((n) => n + 1) : backToProvider())}
+              />
+            </Box>
+          ) : (
+            <Text color="green">   ✅ login ChatGPT แล้ว — กำลังไปต่อ…</Text>
+          )}
         </Box>
       )}
 
       {step === 'key' && cfg && (
         <Box flexDirection="column">
           <Text>2. วาง API key ของ {cfg.label}:</Text>
-          {consoleUrl(provider) ? (
-            <Text color="cyan">   → เอา key ที่: {consoleUrl(provider)}</Text>
-          ) : null}
-          <Text color="gray">   (API key ตรงจาก console — ห้าม OAuth/subscription token)</Text>
+          {consoleUrl(provider) ? <Text color="cyan">   → เอา key ที่: {consoleUrl(provider)}</Text> : null}
+          {cfg.keyExample ? <Text color="gray">   รูปแบบ key: {cfg.keyExample}</Text> : null}
+          <Text color="gray">   (API key ตรงจาก console — ห้าม OAuth/subscription token · key จะเก็บแบบเข้ารหัสในเครื่อง)</Text>
           <PasswordInput
             placeholder={cfg.envVar}
             onSubmit={(v) => {

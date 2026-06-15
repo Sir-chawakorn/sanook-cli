@@ -58,15 +58,18 @@ export interface RunCodexOptions {
  * tolerant ต่อ malformed JSONL (codex bug #15451: --json ถูก ignore เมื่อมี tools active)
  */
 export async function runCodex(opts: RunCodexOptions): Promise<{ text: string; threadId?: string }> {
-  const args = ['exec', '--skip-git-repo-check', '--sandbox', opts.sandbox ?? 'read-only', '--json'];
+  // --ask-for-approval never: รัน non-interactive ไม่ค้างรอ approval (ปลอดภัยเพราะ default sandbox = read-only)
+  const args = ['exec', '--skip-git-repo-check', '--sandbox', opts.sandbox ?? 'read-only', '--ask-for-approval', 'never', '--json'];
   if (opts.model) args.push('-m', opts.model);
   if (opts.resumeThreadId) args.push('resume', opts.resumeThreadId);
   args.push('-'); // prompt via stdin
 
   return new Promise((resolve, reject) => {
-    // OPENAI_API_KEY='' กัน BYOK key ของ Sanook ไป override ChatGPT login ของ codex
-    const env = { ...process.env, OPENAI_API_KEY: '' };
-    const p = spawn('codex', args, { env, shell: process.platform === 'win32' }); // Windows: codex.cmd
+    // ลบ OPENAI_API_KEY ออกจาก env ของ child — กัน BYOK key ของ Sanook ไป override/ชนกับ ChatGPT login
+    // (codex bug #2733/#3286: ตั้ง OPENAI_API_KEY ค้าง env ทำให้ ChatGPT-plan auth วน loop sign-in)
+    const env = { ...process.env };
+    delete env.OPENAI_API_KEY;
+    const p = spawn('codex', args, { env, shell: process.platform === 'win32' }); // Windows: codex = JS shim ผ่าน .cmd → ต้อง shell
 
     let finalText = '';
     let threadId: string | undefined;

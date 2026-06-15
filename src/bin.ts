@@ -808,7 +808,8 @@ async function main(): Promise<void> {
 
   await maybePromptForInteractiveUpdate();
 
-  // interactive — ครั้งแรก (ยังไม่มี config)
+  // interactive — ครั้งแรก (ยังไม่มี config): ถ้าไม่มี key ใน env → ต้องโชว์ wizard
+  let needsSetup = false;
   if (await isFirstRun()) {
     const detected = detectEnvProvider();
     if (detected) {
@@ -817,9 +818,7 @@ async function main(): Promise<void> {
       await saveGlobalConfig({ model: `${detected.provider}:${detected.model}`, provider: detected.provider });
       console.log(`✅ เจอ ${detected.label} (${detected.envVar}) — พร้อมใช้เลย (ข้าม setup wizard)\n`);
     } else {
-      const { startSetup } = await import('./ui/render.js'); // ไม่มี key → wizard ทีละขั้น
-      await startSetup();
-      console.log('✅ ตั้งค่าเสร็จ — พิมพ์งานในช่อง › ได้เลย (/help ดูคำสั่ง)\n');
+      needsSetup = true; // wizard จะรันใน Ink เดียวกับ REPL (รวม render กัน stdin หลุด → พิมพ์ไม่ได้)
     }
   }
   const config = await loadConfig({ model, budgetUsd });
@@ -828,13 +827,16 @@ async function main(): Promise<void> {
     argv.includes('--continue') || argv.includes('-c') || argv.includes('--continue-any')
       ? (await latestSession(argv.includes('--continue-any') ? null : process.cwd()))?.messages
       : undefined;
-  const { startRepl } = await import('./ui/render.js');
-  startRepl({
-    initialModel: config.model,
-    fallbackModel: config.fallbackModel,
-    budgetUsd: config.budgetUsd,
-    permissionMode: yes ? 'auto' : config.permissionMode,
-    initialHistory,
+  const { startApp } = await import('./ui/render.js');
+  startApp({
+    needsSetup,
+    appProps: {
+      initialModel: config.model,
+      fallbackModel: config.fallbackModel,
+      budgetUsd: config.budgetUsd,
+      permissionMode: yes ? 'auto' : config.permissionMode,
+      initialHistory,
+    },
   });
 }
 
