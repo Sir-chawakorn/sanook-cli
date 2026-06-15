@@ -28,6 +28,7 @@ export type SearchSource = (typeof SEARCH_SOURCES)[number];
 const K1 = 1.2;
 const B = 0.75;
 const TITLE_BOOST = 2; // a term in a doc's title counts this many times toward tf
+const WORD_SEG = new Intl.Segmenter(undefined, { granularity: 'word' });
 
 /** an input document (one vault chunk, one memory fact, one session turn, one skill). */
 export interface Doc {
@@ -78,13 +79,20 @@ export function emptyIndex(): InvertedIndex {
 
 /**
  * Ordered tokens WITH repeats — BM25 needs term frequencies, so unlike
- * memory-store's tokens() (a deduped Set) we keep counts. Same normalize() and
- * same length>1 filter, so the two tokenizers stay byte-for-byte consistent.
+ * memory-store's tokens() (a deduped Set) we keep counts. Builds on the SAME
+ * canonical normalize() (lowercase, punctuation→space, Thai preserved), then
+ * segments with Intl.Segmenter at word granularity so Thai (which has no spaces)
+ * splits into real words instead of one coarse blob, giving BM25 genuine Thai
+ * term frequencies while preserving repeats.
  */
 export function termList(text: string): string[] {
-  return normalize(text)
-    .split(' ')
-    .filter((t) => t.length > 1);
+  const out: string[] = [];
+  for (const seg of WORD_SEG.segment(normalize(text))) {
+    if (!seg.isWordLike) continue;
+    const token = seg.segment.trim();
+    if (token.length > 1) out.push(token);
+  }
+  return out;
 }
 
 /** combined term-frequency map for a doc, with title terms weighted, + the token length. */
@@ -183,6 +191,14 @@ export function bm25Search(
     .map(([id, score]) => ({ id, score }))
     .sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
     .slice(0, limit);
+}
+
+/** remove every doc of a given source (used to refresh the live memory/session/skill corpora). Returns count removed. */
+export function removeSource(idx: InvertedIndex, source: SearchSource): number {
+  const ids: string[] = [];
+  for (const m of idx.docs.values()) if (m.source === source) ids.push(m.id);
+  for (const id of ids) removeDoc(idx, id);
+  return ids.length;
 }
 
 export interface IndexStats {

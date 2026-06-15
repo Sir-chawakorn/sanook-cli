@@ -6,7 +6,7 @@ import { hasPricingForKey } from './cost.js';
 import type { ModelMessage } from 'ai';
 import { loadConfig, isFirstRun, loadKeysIntoEnv, parsePricingOverride } from './config.js';
 import { saveSession, latestSession, newSessionId } from './session.js';
-import { closeMcp } from './mcp.js';
+import { closeMcp, isValidMcpServerName } from './mcp.js';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -152,6 +152,11 @@ skills (built-in + ติดตั้งเพิ่มได้):
 
 second brain (Obsidian workspace สำหรับจัดเก็บงาน + ความจำ AI):
   ${BRAND.cliName} brain init [path]              สร้างโครงสร้าง second-brain ที่ path (ไม่ใส่ = ถาม)
+
+search (BM25 + optional BYOK semantic เหนือ vault + memory + sessions + skills):
+  ${BRAND.cliName} index                          (re)index vault+memory แบบ incremental (O(delta))
+  ${BRAND.cliName} search "<query>" [--mode auto|fts|semantic|hybrid] [--limit N] [--source vault,memory]
+  ${BRAND.cliName} mcp serve                       expose brain เป็น MCP server (stdio) ให้ Claude Desktop/Cursor
 
 config & mcp:
   ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/budgetUsd/permissionMode)
@@ -444,6 +449,57 @@ async function runConfig(args: string[]): Promise<void> {
   console.log(`${appHomePath('config.json')}:\n${JSON.stringify(await readGlobalConfigRaw(), null, 2)}`);
 }
 
+/** sanook index — incremental (re)index of vault + memory + sessions + skills */
+async function runIndex(_args: string[]): Promise<void> {
+  const { reindex } = await import('./search/indexer.js');
+  console.log('indexing…');
+  const r = await reindex();
+  console.log(
+    `done: +${r.added} ~${r.updated} -${r.removed} (skipped ${r.skipped}) · ` +
+      `memory=${r.memory} sessions=${r.sessions} skills=${r.skills}\nvault: ${r.vaultPath ?? '(not set — `' + BRAND.cliName + ' brain init` or set config.brainPath)'}`,
+  );
+}
+
+/** sanook search "<query>" [--mode ..] [--limit N] [--source a,b] — one-shot ranked search */
+async function runSearch(args: string[]): Promise<void> {
+  const queryParts: string[] = [];
+  let mode = 'auto';
+  let limit = 8;
+  let sources: string[] | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--mode') mode = args[++i] ?? 'auto';
+    else if (a === '--limit') limit = Number.parseInt(args[++i] ?? '8', 10) || 8;
+    else if (a === '--source' || a === '--sources') sources = (args[++i] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    else queryParts.push(a);
+  }
+  const query = queryParts.join(' ').trim();
+  if (!query) {
+    console.error(`ใช้: ${BRAND.cliName} search "<query>" [--mode auto|fts|semantic|hybrid] [--limit N] [--source vault,memory]`);
+    process.exit(1);
+  }
+  const { search } = await import('./search/engine.js');
+  const res = await search(query, { mode: mode as 'auto' | 'fts' | 'semantic' | 'hybrid', limit, sources: sources as ('vault' | 'memory' | 'session' | 'skill')[] | undefined });
+  if (res.degraded) console.log(`${DIM}(mode=${res.mode}, degraded: ${res.degraded})${RESET}`);
+  else console.log(`${DIM}(mode=${res.mode}, ${res.hits.length} hits)${RESET}`);
+  if (!res.hits.length) {
+    console.log(`ไม่เจอ "${query}" — ลองรัน ${BRAND.cliName} index ก่อน (ถ้ายังไม่เคย index vault)`);
+    return;
+  }
+  for (const h of res.hits) {
+    const title = h.title.trim();
+    const head = title ? `${title} — ${h.snippet}` : h.snippet;
+    const where = h.path ? ` ${DIM}(${h.path})${RESET}` : '';
+    console.log(`${DIM}[${h.source}]${RESET} ${head}${where}`);
+  }
+}
+
+/** sanook mcp serve — run the stdio MCP server exposing sanook's brain */
+async function runMcpServe(): Promise<void> {
+  const { runMcpServer } = await import('./mcp-server.js');
+  await runMcpServer();
+}
+
 /** sanook mcp [list | add <name> <command> [args...] | remove <name>] — จัดการ ~/.sanook/mcp.json */
 async function runMcp(args: string[]): Promise<void> {
   const mcpPath = appHomePath('mcp.json');
@@ -466,6 +522,10 @@ async function runMcp(args: string[]): Promise<void> {
     if (!name || !command) {
       console.error(`ใช้: ${BRAND.cliName} mcp add <name> <command> [args...]   (เช่น: mcp add fs npx -y @modelcontextprotocol/server-filesystem /path)`);
       console.error(`     remote: ${BRAND.cliName} mcp add <name> https://host/mcp   (Streamable-HTTP)`);
+      process.exit(1);
+    }
+    if (!isValidMcpServerName(name)) {
+      console.error('ชื่อ MCP server ต้องเป็น a-z/A-Z/0-9/_/- ความยาวไม่เกิน 64 และห้ามใช้ชื่อพิเศษ');
       process.exit(1);
     }
     // command เป็น http(s):// → remote MCP (Streamable-HTTP), ไม่งั้น stdio
@@ -650,6 +710,9 @@ async function main(): Promise<void> {
   if (argv[0] === 'models') return runModels(argv.slice(1));
   if (argv[0] === 'brain' && ['init', undefined].includes(argv[1])) return runBrain(argv.slice(1));
   if (argv[0] === 'config' && ['get', 'set', 'list', undefined].includes(argv[1])) return runConfig(argv.slice(1));
+  if (argv[0] === 'index' && (argv.length === 1 || argv[1].startsWith('--'))) return runIndex(argv.slice(1));
+  if (argv[0] === 'search' && argv.length > 1) return runSearch(argv.slice(1));
+  if (argv[0] === 'mcp' && argv[1] === 'serve') return runMcpServe();
   if (argv[0] === 'mcp' && ['add', 'list', 'remove', 'rm', undefined].includes(argv[1])) return runMcp(argv.slice(1));
   if (argv[0] === 'trust' && ['status', 'add', 'remove', 'rm', undefined].includes(argv[1])) return runTrust(argv.slice(1));
 

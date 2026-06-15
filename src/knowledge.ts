@@ -1,77 +1,73 @@
-import { readFile, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
-import { loadSkills } from './skills.js';
-import { appHomePath } from './brand.js';
 import { loadStore, activeFacts } from './memory-store.js';
+import { loadSkills } from './skills.js';
+import { loadIndex } from './search/store.js';
+import { foldFacts, foldSessions, foldSkills, loadRecentSessions } from './search/indexer.js';
+import { rankSearch, type SearchHit } from './search/engine.js';
+import { termList } from './search/index-core.js';
 
-// recall = ค้น knowledge ที่สะสม (auto-memory + skills + session เก่า) แบบ keyword scoring
-// "second brain ค้นได้" — ให้ agent reuse ของเดิม ไม่เริ่มจากศูนย์/ไม่ลืมว่าเคยทำอะไร
-// auto-memory อ่านจาก structured store (./memory-store.ts) — writer/reader แชร์ format เดียวกัน
-const SESSIONS = appHomePath('sessions');
+// recall = ค้น knowledge ที่สะสม (auto-memory + vault + skills + session เก่า) แบบ BM25
+// เดิมเป็น substring term-count (ไม่มี ranking/IDF) → อัปเกรดเป็น real BM25 inverted index
+// (src/search/) ที่ rank ข้าม corpus เดียวกัน + ตัด snippet ให้
+//
+// freshness: โหลด persisted index (มี vault chunks จาก `sanook index` ล่าสุด) แล้ว
+// fold memory/session/skill "สด" ทุกครั้ง → fact ที่เพิ่ง remember ค้นเจอทันทีโดยไม่ต้อง reindex
+// (vault chunk ต้อง `sanook index` ก่อน · ไม่มี index = ค้นเฉพาะ live corpora ก็ยังได้)
+//
+// semantic/hybrid (BYOK embeddings) เปิดผ่าน `sanook search` / MCP `sanook_search`;
+// recall tool คง default = BM25 (เร็ว ฟรี deterministic) ไม่ยิง network ตอน agent เรียกบ่อยๆ
 
-interface Hit {
-  src: string;
-  text: string;
-  score: number;
-}
-
-/** นับจำนวน term ที่ปรากฏใน text (case-insensitive) */
+/** นับจำนวน term ที่ปรากฏใน text (case-insensitive) — เก็บไว้ใช้/ทดสอบ (legacy scorer) */
 export function scoreText(text: string, terms: string[]): number {
   const l = text.toLowerCase();
   return terms.reduce((s, t) => s + (l.includes(t) ? 1 : 0), 0);
 }
 
-function termsOf(query: string): string[] {
-  return query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((t) => t.length > 1);
+/** label สั้นต่อ hit (memory ไม่มี title → ใช้ snippet; vault มี path ต่อท้าย) */
+function formatHit(h: SearchHit): string {
+  const title = h.title.trim();
+  const snippet = h.snippet.trim();
+  const head = title ? [title, snippet].filter(Boolean).join(' — ') : snippet;
+  const where = h.path ? `  (${h.path})` : '';
+  return `[${h.source}] ${head}${where}`.trim();
 }
 
+/**
+ * ค้น knowledge ข้าม memory + vault + skills + sessions ด้วย BM25 (ranked + snippet).
+ * คืน plain-text สำหรับ agent อ่าน (สัญญาเดิม) — ใช้โดย recall tool.
+ */
 export async function recall(query: string, limit = 8): Promise<string> {
-  const terms = termsOf(query);
-  if (!terms.length) return 'query สั้นเกินไป — ใส่คำค้นยาวขึ้น';
-  const hits: Hit[] = [];
+  if (termList(query).length === 0) {
+    return 'query สั้นเกินไป — ใส่คำค้นยาวขึ้น';
+  }
 
-  // 1) auto-memory — structured facts (score f.text เท่านั้น → header/JSON noise หลุดเข้า hits ไม่ได้)
+  const now = Date.now();
+  const { index } = await loadIndex(); // persisted (vault chunks); empty ok
+
+  // fold live corpora สด — memory/session/skill ล่าสุด (ไม่แตะไฟล์ persisted)
   try {
-    for (const f of activeFacts(await loadStore())) {
-      const sc = scoreText(f.text, terms);
-      if (sc > 0) hits.push({ src: 'memory', text: f.text, score: sc });
-    }
+    foldFacts(index, activeFacts(await loadStore(now)), now);
   } catch {
     /* ยังไม่มี memory */
   }
-
-  // 2) skills (weight สูงขึ้นนิด — เป็น procedure พร้อมใช้)
-  for (const s of await loadSkills()) {
-    const sc = scoreText(`${s.name} ${s.description} ${s.whenToUse ?? ''}`, terms);
-    if (sc > 0) hits.push({ src: 'skill', text: `${s.name}: ${s.description}`, score: sc + 1 });
-  }
-
-  // 3) sessions เก่า (ค้นใน user message แรก — งานที่เคยสั่ง)
   try {
-    const files = (await readdir(SESSIONS)).filter((f) => f.endsWith('.json')).slice(-40);
-    for (const f of files) {
-      try {
-        const s = JSON.parse(await readFile(join(SESSIONS, f), 'utf8')) as {
-          id?: string;
-          messages?: { role: string; content: unknown }[];
-        };
-        const firstUser = (s.messages ?? []).find((m) => m.role === 'user');
-        const text = typeof firstUser?.content === 'string' ? firstUser.content : '';
-        const sc = scoreText(text, terms);
-        if (sc > 0 && text) hits.push({ src: `session:${s.id ?? f}`, text: text.slice(0, 120), score: sc });
-      } catch {
-        /* session พัง = ข้าม */
-      }
-    }
+    foldSessions(index, await loadRecentSessions());
   } catch {
     /* ยังไม่มี session */
   }
+  try {
+    foldSkills(
+      index,
+      (await loadSkills()).map((s) => ({
+        id: `skill:${s.name}`,
+        name: s.name,
+        text: `${s.description} ${s.whenToUse ?? ''}`.trim(),
+      })),
+    );
+  } catch {
+    /* ยังไม่มี skill */
+  }
 
-  hits.sort((a, b) => b.score - a.score);
-  const top = hits.slice(0, limit);
-  if (!top.length) return `ไม่เจอความรู้เกี่ยวกับ "${query}" ใน memory/skills/sessions`;
-  return top.map((h) => `[${h.src}] ${h.text}`).join('\n');
+  const res = rankSearch(index, query, { mode: 'fts', limit });
+  if (!res.hits.length) return `ไม่เจอความรู้เกี่ยวกับ "${query}" ใน memory/vault/skills/sessions`;
+  return res.hits.map(formatHit).join('\n');
 }

@@ -3,6 +3,7 @@ import {
   emptyIndex,
   addDoc,
   removeDoc,
+  removeSource,
   bm25Search,
   termList,
   indexToJSON,
@@ -26,6 +27,9 @@ describe('termList', () => {
   it('is Thai-safe (keeps Thai chars)', () => {
     expect(termList('ปิ๊ก ชอบ dark mode')).toContain('ชอบ');
     expect(termList('ปิ๊ก ชอบ dark mode')).toContain('dark');
+  });
+  it('segments Thai text even when there are no spaces', () => {
+    expect(termList('ไม่ชอบกาแฟ')).toEqual(['ไม่', 'ชอบ', 'กาแฟ']);
   });
 });
 
@@ -65,6 +69,12 @@ describe('bm25Search ranking', () => {
     expect(hits.map((h) => h.id)).toEqual(['m']);
   });
 
+  it('finds Thai terms inside unspaced text', () => {
+    const idx = emptyIndex();
+    addDoc(idx, doc('thai', 'Preference', 'ไม่ชอบกาแฟตอนเช้า'));
+    expect(bm25Search(idx, 'กาแฟ')[0]?.id).toBe('thai');
+  });
+
   it('empty index / empty query → no hits, no throw', () => {
     expect(bm25Search(emptyIndex(), 'deploy')).toEqual([]);
     const idx = addDoc(emptyIndex(), doc('a', 't', 'body'));
@@ -99,6 +109,17 @@ describe('addDoc / removeDoc invariants', () => {
     const before = idx.docs.size;
     removeDoc(idx, 'nope');
     expect(idx.docs.size).toBe(before);
+  });
+
+  it('removeSource evicts only docs from that live corpus', () => {
+    const idx = emptyIndex();
+    addDoc(idx, doc('vault', 'Vault', 'shared vaultterm', { source: 'vault' }));
+    addDoc(idx, doc('mem1', 'Memory', 'shared memoryterm', { source: 'memory' }));
+    addDoc(idx, doc('mem2', 'Memory 2', 'other memoryterm', { source: 'memory' }));
+
+    expect(removeSource(idx, 'memory')).toBe(2);
+    expect(bm25Search(idx, 'memoryterm')).toEqual([]);
+    expect(bm25Search(idx, 'vaultterm')[0]?.id).toBe('vault');
   });
 });
 

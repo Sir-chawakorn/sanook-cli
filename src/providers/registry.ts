@@ -1,4 +1,4 @@
-import type { LanguageModel } from 'ai';
+import type { EmbeddingModel, LanguageModel } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
@@ -281,4 +281,110 @@ export function resolveModel(spec: string): LanguageModel {
     process.env[`${cfg.id.toUpperCase()}_BASE_URL`] ??
     (cfg.requiresKey ? cfg.baseURL : process.env[cfg.envVar] ?? cfg.baseURL);
   return cfg.create(key, baseURL)(model);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// EMBEDDINGS (BYOK) — optional semantic layer for src/search/. Reuses the same
+// keys + factories as the chat providers; resolves to null (no throw) when no key
+// is present, so the search engine degrades silently to its pure-TS BM25 floor.
+// ────────────────────────────────────────────────────────────────────────────
+interface EmbeddingProviderConfig {
+  envVar: string;
+  envFallbacks?: readonly string[];
+  requiresKey: boolean;
+  localPlaceholderKey?: string;
+  defaultModel: string;
+  create: (key: string, baseURL?: string) => (modelId: string) => EmbeddingModel;
+}
+
+export const EMBEDDING_PROVIDERS: Record<string, EmbeddingProviderConfig> = {
+  openai: {
+    envVar: 'OPENAI_API_KEY',
+    requiresKey: true,
+    defaultModel: 'text-embedding-3-small',
+    create: (key, baseURL) => (id) => createOpenAI({ apiKey: key, baseURL }).textEmbeddingModel(id),
+  },
+  mistral: {
+    envVar: 'MISTRAL_API_KEY',
+    requiresKey: true,
+    defaultModel: 'mistral-embed',
+    create: (key) => (id) => createMistral({ apiKey: key }).textEmbeddingModel(id),
+  },
+  google: {
+    envVar: 'GOOGLE_GENERATIVE_AI_API_KEY',
+    envFallbacks: ['GOOGLE_API_KEY', 'GEMINI_API_KEY'],
+    requiresKey: true,
+    defaultModel: 'text-embedding-004',
+    create: (key) => (id) => createGoogleGenerativeAI({ apiKey: key }).textEmbeddingModel(id),
+  },
+  // local — only picked when explicitly requested (auto-detect never assumes a server is up)
+  ollama: {
+    envVar: 'OLLAMA_BASE_URL',
+    requiresKey: false,
+    localPlaceholderKey: 'ollama',
+    defaultModel: 'nomic-embed-text',
+    create: (key, baseURL) => (id) =>
+      createOpenAICompatible({ name: 'ollama', apiKey: key, baseURL: baseURL ?? 'http://localhost:11434/v1' }).textEmbeddingModel(id),
+  },
+};
+
+/** cloud, key-gated providers tried (in order) when no explicit embeddingModel is configured. */
+const EMBED_AUTODETECT = ['openai', 'mistral', 'google'] as const;
+
+export interface ResolvedEmbedder {
+  model: EmbeddingModel;
+  provider: string;
+  modelId: string;
+  /** stable tag recorded in the vector sidecar so a model change self-invalidates the cache. */
+  tag: string;
+}
+
+function buildEmbedder(provider: string, modelId?: string): ResolvedEmbedder | null {
+  const cfg = EMBEDDING_PROVIDERS[provider];
+  if (!cfg) return null;
+  let key: string;
+  if (cfg.requiresKey) {
+    const found = resolveKeyFromEnv(cfg.envVar, cfg.envFallbacks);
+    if (!found) return null;
+    const policy = PROVIDERS[provider];
+    if (policy) {
+      try {
+        assertDirectApiKey(policy, found);
+      } catch {
+        return null;
+      }
+    }
+    key = found;
+  } else {
+    key = resolveKeyFromEnv(cfg.envVar) ?? cfg.localPlaceholderKey ?? 'local';
+  }
+  const baseURL =
+    process.env[`${provider.toUpperCase()}_BASE_URL`] ??
+    (cfg.requiresKey ? undefined : process.env[cfg.envVar] ?? undefined);
+  const id = modelId ?? cfg.defaultModel;
+  try {
+    return { model: cfg.create(key, baseURL)(id), provider, modelId: id, tag: `${provider}:${id}` };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve an embeddings model. `spec` is 'provider' | 'provider:modelId' | undefined.
+ * undefined → auto-detect the first cloud provider whose key is present. Returns null
+ * (never throws) when nothing resolves, so callers degrade to BM25-only.
+ */
+export function resolveEmbedder(spec?: string): ResolvedEmbedder | null {
+  if (spec) {
+    const idx = spec.indexOf(':');
+    const provider = (idx === -1 ? spec : spec.slice(0, idx)).trim();
+    if (!provider) return null;
+    const modelId = idx === -1 ? undefined : spec.slice(idx + 1).trim() || undefined;
+    return buildEmbedder(provider, modelId);
+  }
+  for (const provider of EMBED_AUTODETECT) {
+    const e = buildEmbedder(provider);
+    if (e) return e;
+  }
+  return null;
 }

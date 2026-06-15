@@ -235,7 +235,18 @@ describe('render', () => {
     expect(out.split('\n').filter((l) => l.startsWith('- ')).length).toBeLessThan(31); // cap dropped some
   });
 
-  it('renderView round-trips a store to "# title" + bullets', () => {
+  it('renderPromptBlock/renderView never expose inbox facts', () => {
+    const s = store([
+      mk({ text: 'visible durable fact' }),
+      mk({ text: 'hidden inbox fact', tier: 'inbox', trust: 'untrusted' }),
+    ]);
+
+    expect(M.renderPromptBlock(s, NOW)).toContain('visible durable fact');
+    expect(M.renderPromptBlock(s, NOW)).not.toContain('hidden inbox fact');
+    expect(M.renderView(s, NOW)).not.toContain('hidden inbox fact');
+  });
+
+  it('renderView round-trips durable facts to "# title" + bullets', () => {
     const v = M.renderView(store([mk({ text: 'a fact' }), mk({ text: 'b fact' })]), NOW);
     expect(v.startsWith('# ')).toBe(true);
     expect(v).toContain('- a fact');

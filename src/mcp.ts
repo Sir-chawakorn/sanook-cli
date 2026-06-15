@@ -15,7 +15,7 @@ const VERSION = (
 // config: ~/.sanook/mcp.json + project .sanook/mcp.json
 //   stdio:  { "fs":  { "command": "npx", "args": ["-y","@modelcontextprotocol/server-filesystem","/path"] } }
 //   remote: { "gh":  { "url": "https://api.example.com/mcp", "headers": { "Authorization": "Bearer …" } } }
-const PROTOCOL_VERSION = '2024-11-05';
+export const PROTOCOL_VERSION = '2024-11-05'; // shared by the MCP client (here) and server (mcp-server.ts)
 const MAX_BUF = 16 * 1024 * 1024; // กัน server ส่ง byte ยาวไม่มี newline → memory โต unbounded
 const REQUEST_TIMEOUT = 20_000;
 
@@ -45,6 +45,13 @@ interface McpToolDef {
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
+}
+
+export function isValidMcpServerName(name: string): boolean {
+  return (
+    /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(name) &&
+    !['__proto__', 'prototype', 'constructor'].includes(name)
+  );
 }
 
 /** transport = ส่ง JSON-RPC request/notify ให้ server (stdio หรือ http) */
@@ -258,9 +265,37 @@ class McpClient {
   }
 }
 
+function stringRecord(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (typeof k === 'string' && typeof v === 'string') out[k] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+function sanitizeMcpServerConfig(raw: unknown): McpServerConfig | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const cfg: McpServerConfig = {};
+  if (typeof r.command === 'string' && r.command) cfg.command = r.command;
+  if (Array.isArray(r.args) && r.args.every((a) => typeof a === 'string')) cfg.args = r.args;
+  if (typeof r.url === 'string' && r.url) cfg.url = r.url;
+  const env = stringRecord(r.env);
+  if (env) cfg.env = env;
+  const headers = stringRecord(r.headers);
+  if (headers) cfg.headers = headers;
+  return cfg.command || cfg.url ? cfg : null;
+}
+
 async function readMcpFile(path: string, merged: Record<string, McpServerConfig>): Promise<void> {
   const cfg = JSON.parse(await readFile(path, 'utf8')) as McpConfig;
-  Object.assign(merged, cfg.mcpServers ?? {});
+  if (!cfg.mcpServers || typeof cfg.mcpServers !== 'object') return;
+  for (const [name, raw] of Object.entries(cfg.mcpServers)) {
+    if (!isValidMcpServerName(name)) continue;
+    const server = sanitizeMcpServerConfig(raw);
+    if (server) merged[name] = server;
+  }
 }
 
 export async function loadMcpConfig(onLog?: (m: string) => void, cwd: string = process.cwd()): Promise<Record<string, McpServerConfig>> {

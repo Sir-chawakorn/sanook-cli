@@ -143,18 +143,28 @@ const MEMORY_BAK = join(MEMORY_DIR, 'MEMORY.md.bak');
 // Pure helpers (no FS, clock only via injected `now`)
 // ============================================================================
 
-/** lowercase, punctuation→space, collapse whitespace. Keeps Thai chars intact. */
+/** lowercase, punctuation→space, collapse whitespace. Keeps Thai letters + combining vowel/tone marks (\p{M}). */
 export function normalize(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .replace(/[^\p{L}\p{N}\p{M}\s]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-/** token set (length > 1). Thai (no word breaks) collapses to coarse tokens — accepted no-network tradeoff. */
+// word segmenter (Node ≥22 ships full ICU) — segments space-less scripts like Thai so "ไม่" tokenizes on
+// its own and reaches the merge/contradiction machinery. Built once; pure + deterministic, no network.
+const WORD_SEG = new Intl.Segmenter(undefined, { granularity: 'word' });
+
+/** token set (word-like segments, length > 1). Works for English AND space-less Thai. */
 export function tokens(text: string): Set<string> {
-  return new Set(normalize(text).split(' ').filter((t) => t.length > 1));
+  const out = new Set<string>();
+  for (const seg of WORD_SEG.segment(normalize(text))) {
+    if (!seg.isWordLike) continue;
+    const t = seg.segment.trim();
+    if (t.length > 1) out.add(t);
+  }
+  return out;
 }
 
 /** content tokens that carry meaning (drop stopwords + negation) — used for "shared subject" tests. */
@@ -229,10 +239,23 @@ export function activeFacts(store: MemoryStore): Fact[] {
   return store.facts.filter((f) => f.status === 'active');
 }
 
-function newFact(inc: Required<Pick<Incoming, 'text'>> & Incoming, now: number): Fact {
+/**
+ * a per-record-unique id: deriveId is content-hashed, but a SUPERSEDED fact keeps its id, so re-adding
+ * that text would mint a new active fact colliding with it. Disambiguate with a ~N suffix on collision,
+ * so supersededBy/supersedes edges and id-keyed lookups always resolve to exactly one record.
+ */
+function uniqueId(base: string, facts: Fact[]): string {
+  if (!facts.some((f) => f.id === base)) return base;
+  for (let n = 2; ; n++) {
+    const candidate = `${base}~${n}`;
+    if (!facts.some((f) => f.id === candidate)) return candidate;
+  }
+}
+
+function newFact(inc: Required<Pick<Incoming, 'text'>> & Incoming, now: number, facts: Fact[] = []): Fact {
   const noteType = inc.noteType ?? 'reference';
   return {
-    id: deriveId(inc.text),
+    id: uniqueId(deriveId(inc.text), facts),
     text: inc.text,
     noteType,
     tier: inc.tier ?? 'durable',
@@ -265,7 +288,9 @@ const withFacts = (store: MemoryStore, facts: Fact[]): MemoryStore => ({ ...stor
  */
 export function mergeFact(store: MemoryStore, incoming: Incoming, now: number = Date.now()): MergeResult {
   const text = redactKey(incoming.text).trim().replace(/\s+/g, ' ');
-  if (!text) return { store, op: 'NOOP', fact: null };
+  // reject text whose NORMALIZED form is empty (punctuation/emoji-only) — it would collapse onto the
+  // shared deriveId('') key and let the first such fact silently swallow all later distinct ones.
+  if (!normalize(text)) return { store, op: 'NOOP', fact: null };
   const inc: Incoming = { ...incoming, text };
   const noteType = inc.noteType ?? 'reference';
   const sameCat = CATEGORY.has(noteType);
@@ -281,7 +306,7 @@ export function mergeFact(store: MemoryStore, incoming: Incoming, now: number = 
 
   // 2) PROVENANCE GATE — derived/untrusted text with an unresolved source is quarantined to the inbox tier.
   if ((inc.trust === 'derived' || inc.trust === 'untrusted') && !inc.sourceResolved) {
-    const f = newFact(inc, now);
+    const f = newFact(inc, now, facts);
     f.tier = 'inbox';
     f.reviewAfter = now + INBOX_TTL_MS;
     facts.push(f);
@@ -333,7 +358,7 @@ export function mergeFact(store: MemoryStore, incoming: Incoming, now: number = 
     const c = contradiction(best.text, text, CATEGORY.has(best.noteType) && sameCat);
     if (c === 'yes') {
       // SUPERSEDE — bi-temporal soft-delete: old stays queryable, new points back to it
-      const fresh = newFact(inc, now);
+      const fresh = newFact(inc, now, facts);
       fresh.supersedes = [best.id];
       fresh.related = [best.id];
       fresh.importance = Math.max(0.55, best.importance);
@@ -342,7 +367,7 @@ export function mergeFact(store: MemoryStore, incoming: Incoming, now: number = 
       return { store: withFacts(store, facts), op: 'SUPERSEDE', fact: fresh };
     }
     // related (or ambiguous contradiction) ⇒ ADD but link + flag for review, never silently merge/supersede
-    const fresh = newFact(inc, now);
+    const fresh = newFact(inc, now, facts);
     fresh.related = [best.id];
     if (c === 'ambiguous') fresh.reviewAfter = now + INBOX_TTL_MS;
     facts.push(fresh);
@@ -350,7 +375,7 @@ export function mergeFact(store: MemoryStore, incoming: Incoming, now: number = 
   }
 
   // 4) genuinely new ⇒ ADD
-  const fresh = newFact(inc, now);
+  const fresh = newFact(inc, now, facts);
   facts.push(fresh);
   return { store: withFacts(store, facts), op: 'ADD', fact: fresh };
 }
@@ -417,14 +442,14 @@ export function consolidate(store: MemoryStore, now: number = Date.now()): { sto
       report.promoted.push(f.id);
       return { ...f, tier: 'durable' as const, reviewAfter: null, updated: now };
     }
-    report.needsReview.push(f.id);
+    if (f.reviewAfter !== now) report.needsReview.push(f.id); // only on the actual transition ⇒ report is idempotent
     return { ...f, reviewAfter: now };
   });
 
   // STEP 4 — PROMOTE recurring (accessed ≥ 3) to an importance floor (idempotent: max, not increment)
   facts = facts.map((f) => {
     if (f.status === 'active' && f.tier !== 'protected' && f.accessCount >= 3 && f.importance < 0.8) {
-      report.promoted.push(f.id);
+      if (!report.promoted.includes(f.id)) report.promoted.push(f.id); // don't double-list an inbox-promoted id
       return { ...f, importance: 0.8 };
     }
     return f;
@@ -444,9 +469,14 @@ export function maybeConsolidate(store: MemoryStore, now: number = Date.now()): 
   return now - store.meta.lastConsolidated >= CONSOLIDATE_EVERY_MS || activeN - store.meta.activeAtLastConsolidate >= CONSOLIDATE_EVERY_N;
 }
 
-/** rank active facts: protected first, then effective importance, then recency, then id. */
+/**
+ * rank active facts for retrieval/render: protected first, then effective importance, then recency, then id.
+ * Excludes tier 'inbox' (quarantined/un-vetted) — those must NEVER reach the system prompt or MEMORY.md.
+ */
 function ranked(store: MemoryStore, now: number): Fact[] {
-  return activeFacts(store).sort((a, b) => {
+  return activeFacts(store)
+    .filter((f) => f.tier !== 'inbox')
+    .sort((a, b) => {
     const pa = a.tier === 'protected' ? 1 : 0;
     const pb = b.tier === 'protected' ? 1 : 0;
     return pb - pa || effImportance(b, now) - effImportance(a, now) || b.updated - a.updated || (a.id < b.id ? -1 : 1);
@@ -532,8 +562,17 @@ export async function loadStore(now: number = Date.now()): Promise<MemoryStore> 
 }
 
 async function writeSecure(path: string, content: string): Promise<void> {
-  await writeFile(path, content, { mode: 0o600 });
-  await chmod(path, 0o600).catch(() => {});
+  // write to a fresh tmp inode (so the 0o600 mode is honored even over a pre-existing 0o644 file —
+  // writeFile's mode is ignored when the file already exists) then atomically rename into place.
+  const tmp = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(tmp, content, { mode: 0o600 });
+    await chmod(tmp, 0o600).catch(() => {});
+    await rename(tmp, path);
+  } catch (e) {
+    await rm(tmp, { force: true }).catch(() => {});
+    throw e;
+  }
 }
 
 /**

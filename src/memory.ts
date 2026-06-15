@@ -2,7 +2,7 @@ import { readFile, writeFile, stat } from 'node:fs/promises';
 import { join, dirname, resolve } from 'node:path';
 import { appHomePath, BRAND, persistenceEnabled, worklogEnabled } from './brand.js';
 import { redactKey } from './providers/keys.js';
-import { loadStore, saveStore, mergeFact, maybeConsolidate, consolidate, renderPromptBlock } from './memory-store.js';
+import { loadStore, saveStore, mergeFact, maybeConsolidate, consolidate, renderPromptBlock, type NoteType } from './memory-store.js';
 
 const MEMORY_FILE = BRAND.memoryFileName;
 // auto-memory (สิ่งที่ agent จำเองข้าม session) ย้ายไปอยู่ใน ./memory-store.ts —
@@ -186,22 +186,35 @@ export async function appendBrainWorklog(
   return true;
 }
 
+// in-process write serializer: the AI SDK runs tool calls from one model step concurrently, so two
+// `remember` calls in a turn would otherwise load → mergeFact → save on the SAME baseline and the
+// last save would clobber the first (lost update). Chaining the read-modify-write makes them sequential.
+let memWriteChain: Promise<unknown> = Promise.resolve();
+function withMemLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = memWriteChain.then(fn, fn); // run regardless of the prior task's outcome
+  memWriteChain = run.catch(() => {}); // a rejection must not break the chain for the next writer
+  return run;
+}
+
 /**
  * บันทึก fact ลง auto-memory (remember tool เรียก) — "Merge, Don't Append":
  * โหลด store → mergeFact (ADD/UPDATE/NOOP/SUPERSEDE) → save (ถ้าไม่ใช่ no-write op)
  * → consolidate เป็นระยะ → route เข้า vault inbox (best-effort) เหมือนเดิม
+ * read-modify-write ของ store และ vault inbox ถูก serialize ด้วย withMemLock กัน lost-update ตอน parallel remember
  */
-export async function appendMemory(fact: string): Promise<void> {
+export async function appendMemory(fact: string, noteType?: NoteType): Promise<void> {
   if (!persistenceEnabled()) return;
   const safeFact = redactKey(fact);
-  const store = await loadStore();
-  const { store: next, op } = mergeFact(store, { text: safeFact, trust: 'agent' });
-  // PROTECTED_HALT = ไม่เขียน (ขัดกับ protected fact); op อื่นเขียนหมด (NOOP ก็เขียนเพราะ touch accessCount)
-  if (op !== 'PROTECTED_HALT') {
-    const toSave = maybeConsolidate(next) ? consolidate(next).store : next;
-    await saveStore(toSave);
-  }
-  // route เข้า vault second-brain ด้วย (best-effort) — ส่ง plain redacted string เหมือนเดิม
-  const brain = await getBrainPath();
-  if (brain) await appendToVaultInbox(brain, safeFact).catch(() => false);
+  await withMemLock(async () => {
+    const store = await loadStore();
+    const { store: next, op } = mergeFact(store, { text: safeFact, trust: 'agent', noteType });
+    // PROTECTED_HALT = ไม่เขียน (ขัดกับ protected fact); op อื่นเขียนหมด (NOOP ก็เขียนเพราะ touch accessCount)
+    if (op !== 'PROTECTED_HALT') {
+      const toSave = maybeConsolidate(next) ? consolidate(next).store : next;
+      await saveStore(toSave);
+    }
+    // route เข้า vault second-brain ด้วย (best-effort) — ส่ง plain redacted string เหมือนเดิม
+    const brain = await getBrainPath();
+    if (brain) await appendToVaultInbox(brain, safeFact).catch(() => false);
+  });
 }
