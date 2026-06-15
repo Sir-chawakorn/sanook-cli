@@ -1,8 +1,9 @@
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
-import { agentContext } from '../agentContext.js';
+import { agentContext, agentCwd } from '../agentContext.js';
 import { approvalContext, type ApprovalFn } from '../approval.js';
-import { runParallel, TaskRegistry, type SubagentRunner, type SubagentSpec } from '../orchestrate.js';
+import { runParallel, runThunks, TaskRegistry, type SubagentRunner, type SubagentSpec, type SubagentOutcome } from '../orchestrate.js';
+import { runInWorktrees, getRepoRoot } from '../worktree.js';
 
 // task = มอบงานย่อยให้ sub-agent ทำใน context แยก (เลียน Claude Code Task tool)
 // depth/model/budget thread ผ่าน AsyncLocalStorage (parallel-safe, ไม่ใช่ process.env)
@@ -25,6 +26,7 @@ interface ParentCtx {
   model?: string;
   budgetUsd?: number;
   depth: number;
+  cwd?: string;
   mode: 'auto' | 'ask';
   approve?: ApprovalFn;
 }
@@ -33,7 +35,7 @@ interface ParentCtx {
 function parentCtx(): ParentCtx {
   const ctx = agentContext.getStore();
   const appr = approvalContext.getStore();
-  return { model: ctx?.model, budgetUsd: ctx?.budgetUsd, depth: ctx?.depth ?? 0, mode: appr?.mode ?? 'ask', approve: appr?.approve };
+  return { model: ctx?.model, budgetUsd: ctx?.budgetUsd, depth: ctx?.depth ?? 0, cwd: ctx?.cwd, mode: appr?.mode ?? 'ask', approve: appr?.approve };
 }
 
 /**
@@ -52,12 +54,14 @@ function makeRunner(parent: ParentCtx): SubagentRunner {
       : entries.filter(([k]) => !SUBAGENT_EXCLUDE.includes(k));
     const model = spec.model ?? parent.model ?? 'sonnet';
     const depth = parent.depth + 1;
-    const childStore = { model, budgetUsd: parent.budgetUsd, depth };
+    const cwd = spec.cwd ?? parent.cwd; // worktree ของ subagent นี้ (ถ้า isolate) ไม่งั้น inherit
+    const childStore = { model, budgetUsd: parent.budgetUsd, depth, cwd };
     const { text } = await agentContext.run(childStore, () =>
       runAgent({
         model,
         budgetUsd: parent.budgetUsd, // cap เดียวกับ main (กัน subagent วิ่ง uncapped)
         subagentDepth: depth,
+        cwd, // file ops ของ subagent ผูกกับ worktree นี้ (isolation)
         permissionMode: parent.mode, // inherit ask-mode (กัน subagent เลี่ยง approval)
         approve: parent.approve,
         prompt: spec.prompt,
@@ -104,20 +108,57 @@ function formatOutcomes(outcomes: { ok: boolean; description: string; text: stri
   return `${head}\n${body}`;
 }
 
+/**
+ * isolate mode — subagent ที่ "เขียนไฟล์" รันใน git worktree ของตัวเอง (จาก HEAD) ไม่ชนกัน
+ * แล้ว capture diff แต่ละ worktree → apply กลับ main tree แบบ sequential (ชน = รายงาน ไม่ทับเงียบ).
+ * worktree lifecycle อยู่ใน worktree.ts (testable); ตรงนี้แค่ผูก subagent runner เข้าไป
+ */
+async function runIsolated(specs: SubagentSpec[], parent: ParentCtx, concurrency: number): Promise<string> {
+  const root = await getRepoRoot(parent.cwd ?? agentCwd());
+  if (!root) return 'isolate=worktree ต้องอยู่ใน git repo — ใช้ task_parallel แบบปกติแทน (ไม่มี worktree)';
+  const runner = makeRunner(parent);
+
+  const runs = await runInWorktrees<SubagentSpec, SubagentOutcome>(
+    specs,
+    root,
+    // งานต่อ subagent: รันใน worktree (cwd) ของมัน, readonly=false (isolate มีไว้ให้แก้ไฟล์)
+    (spec, cwd) =>
+      runner({ ...spec, cwd, readonly: spec.readonly ?? false }, undefined)
+        .then((text) => ({ ok: true, description: spec.description, text }))
+        .catch((e: unknown) => ({ ok: false, description: spec.description, text: '', error: (e as Error).message })),
+    (thunks) => runThunks(thunks, concurrency),
+  );
+  if (!runs) return 'สร้าง git worktree ไม่สำเร็จ (หรือไม่ใช่ git repo) — ยกเลิก isolate';
+
+  const outcomes = runs.map((r) => r.result);
+  const mergeNotes = runs.map((r, i) => {
+    const m = r.merge;
+    if (!m.changed.length) return `[${i + 1}] ${m.description}: ไม่มีการแก้ไฟล์`;
+    return m.applied
+      ? `[${i + 1}] ${m.description}: merge แล้ว — ${m.changed.length} ไฟล์ (${m.changed.slice(0, 8).join(', ')})`
+      : `[${i + 1}] ${m.description}: ⚠ merge ชน — ${m.reason}; ไฟล์: ${m.changed.join(', ')} (แก้ conflict เอง)`;
+  });
+  return `${formatOutcomes(outcomes)}\n\n--- worktree merge → main tree ---\n${mergeNotes.join('\n')}`;
+}
+
 export const taskParallelTool = tool({
   description:
     'มอบงานย่อยหลายชิ้นให้ sub-agent ทำ "พร้อมกัน" (fan-out) — ใช้เมื่องานแตกเป็นส่วนๆ ที่ไม่ขึ้นต่อกัน ' +
     '(เช่น สำรวจหลายโมดูล / review หลายมิติ / ค้นหลายมุม). คืนผลรวมทุกตัว (ตัวล้มไม่ทำให้ทั้ง batch ล้ม). ' +
-    `สูงสุด ${MAX_FANOUT} ชิ้น/ครั้ง. แต่ละชิ้นเขียน prompt ให้ครบในตัว (subagent ไม่เห็น context นี้)`,
+    `สูงสุด ${MAX_FANOUT} ชิ้น/ครั้ง. แต่ละชิ้นเขียน prompt ให้ครบในตัว (subagent ไม่เห็น context นี้). ` +
+    'isolate=true → subagent ที่แก้ไฟล์รันใน git worktree แยกกัน (ไม่ชนไฟล์) แล้ว merge กลับให้',
   inputSchema: z.object({
     tasks: z.array(z.object(taskInput)).min(1).max(MAX_FANOUT).describe('รายการงานย่อยที่จะรันพร้อมกัน'),
     concurrency: z.number().int().min(1).max(MAX_FANOUT).optional().describe(`จำนวนที่รันพร้อมกันสูงสุด (default ${DEFAULT_CONCURRENCY})`),
+    isolate: z.boolean().optional().describe('true = รัน subagent ที่เขียนไฟล์ใน git worktree แยก (กันชนไฟล์) แล้ว merge กลับ — ต้องอยู่ใน git repo'),
   }),
-  execute: async ({ tasks, concurrency }) => {
+  execute: async ({ tasks, concurrency, isolate }) => {
     const parent = parentCtx();
     if (atDepthLimit(parent)) return DEPTH_MSG;
     const specs: SubagentSpec[] = tasks.map((t) => ({ description: t.description, prompt: t.prompt, readonly: t.readonly ?? true }));
-    const outcomes = await runParallel(specs, makeRunner(parent), { concurrency: concurrency ?? DEFAULT_CONCURRENCY });
+    const cc = concurrency ?? DEFAULT_CONCURRENCY;
+    if (isolate) return runIsolated(specs, parent, cc);
+    const outcomes = await runParallel(specs, makeRunner(parent), { concurrency: cc });
     return formatOutcomes(outcomes);
   },
 });

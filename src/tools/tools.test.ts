@@ -124,6 +124,27 @@ describe('editFileTool (integration)', () => {
     expect(out).toMatch(/OK/);
     expect(await readFile(f, 'utf8')).toBe('a();\r\nB();\r\nc();\r\n');
   });
+
+  it('replace_all: แทนที่ทุกที่ด้วย old_string สั้นๆ (rename) — ไม่ต้อง unique, ประหยัด token', async () => {
+    await writeFile(file, 'let total = 0;\ntotal = total + 1;\nreturn total;\n');
+    const out = await editFileTool.execute!({ path: file, old_string: 'total', new_string: 'sum', replace_all: true }, opts);
+    expect(out).toMatch(/OK/);
+    expect(out).toMatch(/4 ที่/); // 4 occurrences replaced
+    expect(await readFile(file, 'utf8')).toBe('let sum = 0;\nsum = sum + 1;\nreturn sum;\n');
+  });
+
+  it('replace_all: ไม่เจอ → ERROR (match ตรงเป๊ะเท่านั้น)', async () => {
+    await writeFile(file, 'const a = 1;\n');
+    const out = await editFileTool.execute!({ path: file, old_string: 'zzz', new_string: 'y', replace_all: true }, opts);
+    expect(out).toMatch(/ERROR.*ไม่พบ/);
+  });
+
+  it('ambiguous (ไม่มี replace_all) → ERROR แนะนำ replace_all', async () => {
+    await writeFile(file, 'x();\nx();\n');
+    const out = await editFileTool.execute!({ path: file, old_string: 'x();', new_string: 'y();' }, opts);
+    expect(out).toMatch(/พบ 2/);
+    expect(out).toMatch(/replace_all/); // suggest the token-cheap path instead of padding context
+  });
 });
 
 describe('write / read / list tools', () => {

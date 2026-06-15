@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### LSP diagnostics — `diagnostics` tool (type errors without a full build)
+
+A Node-native, zero-dependency Language Server Protocol client (`src/lsp/`) gives the agent a tight edit→check feedback loop: after editing a file it can pull the language server's diagnostics (type errors / lint) for that one file, no project-wide compile.
+
+- **`diagnostics` tool**: `diagnostics({ path, content? })` → ranked errors/warnings as `✗ path:line:col message [code]`. Pass `content` to check an unsaved buffer. Respects worktree scoping (`agentCwd`) and the read-path guard.
+- **Real LSP client** over Content-Length framing (distinct from MCP's newline framing): initialize handshake, `didOpen`/`didChange`, diagnostics that **settle** (a quiet period after the last publish so we return the final set, not an early empty one), and it answers server→client requests so a server can't stall. Positions convert from LSP 0-based to human 1-based.
+- **Server pool**: servers are spawned once per (binary, workspace) and reused — re-checking a file becomes a `didChange`, so the slow project-load cost is paid once, not per call.
+- **Zero-config floor**: sanook bundles no language servers (like ripgrep). It maps extension → conventional server (typescript-language-server, pyright, gopls, rust-analyzer, vscode-json-language-server, bash-language-server), detects whether it's installed (node_modules/.bin or PATH), and when it isn't, returns a clear install hint instead of crashing.
+- Tests: the framing codec (split frames, multibyte, malformed-recovery), the client handshake + diagnostics-settle + server-request handling against a **fake server** (no real LSP needed), the server registry + binary detection, and the tool's graceful degradation. Verified end-to-end against a real `typescript-language-server` (caught TS2322 at the right position; pooled `didChange` cleared it after a fix).
+
+### Real-time steering — interrupt a running turn + queue follow-ups (REPL)
+
+The interactive REPL was input-locked while the agent worked, and Ctrl+C quit the whole app. Now a turn is steerable:
+
+- **Interrupt mid-turn**: the running turn gets a real `AbortController` (wired into `runAgent`'s `signal`). Press **Esc** (or Ctrl+C) to stop the stream/tool loop right away and return to the prompt — without exiting the app. Partial output is kept for reference, the turn is dropped from the model history, and any files a tool already changed are recoverable via `/rewind`.
+- **Type-ahead queue**: you can type while the agent is busy; pressing Enter **queues** the message (shown as `⏳ คิว …`) and it runs automatically as the next turn when the current one finishes. Interrupting clears the queue.
+- Covered by an Ink integration test (mocked agent) asserting the signal is passed, input queues while busy, and Esc both aborts and clears the queue.
+
+### Worktree isolation — safe parallel WRITE subagents (`task_parallel isolate:true`)
+
+Parallel subagents that edit files would clobber a shared tree. Now each write subagent can run in its own throwaway **git worktree** (`src/worktree.ts`), branched from the current HEAD, and its changes are merged back afterward:
+
+- **Per-agent working directory**: `AgentContext` gains a `cwd`, and every file tool (read/write/edit/list/glob/grep/bash) plus the write-confinement guard (`permission.allowedRoots`) now resolve through `agentCwd()`. A subagent's relative path (`src/foo.ts`) lands in ITS worktree, not the main tree — so isolation can't leak. The main agent is unchanged (no `cwd` ⇒ `process.cwd()`); the OS sandbox already confines writes to the active cwd, so a worktree is automatically sandboxed.
+- **`task_parallel isolate:true`**: creates a worktree per write subagent, runs them concurrently in isolation, captures each worktree's diff, and applies them back to the main tree **sequentially** with `git apply --3way` — conflicts are reported (with the touched files), never silently overwritten. Worktrees are always cleaned up. Requires a git repo (falls back with a clear message otherwise).
+- **`src/worktree.ts`**: `createWorktree` / `captureDiff` (incl. untracked) / `applyDiff` / `removeWorktree` / `runInWorktrees`, all over the existing `runGit` helper. The create→isolate→merge→cleanup lifecycle is unit-tested against a real throwaway git repo with an injected work callback (no agent/network), covering the round-trip, the parallel different-files case, empty diffs, non-git fallback, and conflict reporting.
+
 ### Subagent orchestration — parallel fan-out + background + nested (`task_parallel` / `task_spawn` / `task_collect` / `task_status`)
 
 The single one-shot `task` subagent grows into a real orchestration layer (`src/orchestrate.ts`):

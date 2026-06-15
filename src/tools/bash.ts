@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { clamp } from './util.js';
 import { checkBash } from './permission.js';
 import { maybeSandbox } from './sandbox.js';
+import { agentCwd } from '../agentContext.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -27,7 +28,7 @@ export const bashTool = tool({
   execute: async ({ cmd }) => {
     const guard = checkBash(cmd);
     if (!guard.ok) return `BLOCKED: ${guard.reason}`;
-    const cwd = process.cwd();
+    const cwd = agentCwd(); // worktree ของ sub-agent ถ้ามี (sandbox confine write ตาม cwd นี้)
     const opts = { cwd, env: safeEnv(), timeout: 120_000, maxBuffer: 10 * 1024 * 1024 };
     try {
       // OS sandbox (Seatbelt/bubblewrap) confine write ให้อยู่ใน workspace ถ้ามี — ไม่งั้นรันตรงตามเดิม

@@ -9,6 +9,7 @@ import { skillTool, createSkillTool, findSkillsTool } from './skill.js';
 import { recallTool } from './recall.js';
 import { scheduleTaskTool, listScheduledTool, cancelScheduledTool } from './schedule.js';
 import { taskTool, taskParallelTool, taskSpawnTool, taskCollectTool, taskStatusTool } from './task.js';
+import { diagnosticsTool } from './diagnostics.js';
 import { gitStatusTool, gitDiffTool, gitLogTool, gitCommitTool } from './git.js';
 
 /** tool registry ที่ส่งให้ agent loop */
@@ -33,6 +34,7 @@ export const tools = {
   task_spawn: taskSpawnTool,
   task_collect: taskCollectTool,
   task_status: taskStatusTool,
+  diagnostics: diagnosticsTool,
   git_status: gitStatusTool,
   git_diff: gitDiffTool,
   git_log: gitLogTool,

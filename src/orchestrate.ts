@@ -21,6 +21,7 @@ export interface SubagentSpec {
   prompt: string; // self-contained instruction
   readonly?: boolean; // true = read/search only; false = may edit files / run bash
   model?: string; // optional model override (else inherit)
+  cwd?: string; // optional working dir — set to an isolated git worktree to sandbox this subagent's file ops
 }
 
 export interface SubagentOutcome {
@@ -39,6 +40,25 @@ export interface ParallelOptions {
 }
 
 const DEFAULT_CONCURRENCY = 5;
+
+/**
+ * Run thunks concurrently, capped at `concurrency`, results in input order.
+ * The generic concurrency primitive both runParallel and worktree isolation use.
+ */
+export async function runThunks<R>(thunks: (() => Promise<R>)[], concurrency = DEFAULT_CONCURRENCY): Promise<R[]> {
+  const cap = Math.max(1, Math.floor(concurrency));
+  const results: R[] = new Array(thunks.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = next++;
+      if (i >= thunks.length) return;
+      results[i] = await thunks[i]();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(cap, thunks.length) }, worker));
+  return results;
+}
 
 async function runOne(spec: SubagentSpec, runner: SubagentRunner, signal?: AbortSignal): Promise<SubagentOutcome> {
   try {
@@ -59,18 +79,10 @@ export async function runParallel(
   runner: SubagentRunner,
   opts: ParallelOptions = {},
 ): Promise<SubagentOutcome[]> {
-  const concurrency = Math.max(1, Math.floor(opts.concurrency ?? DEFAULT_CONCURRENCY));
-  const results: SubagentOutcome[] = new Array(specs.length);
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    for (;;) {
-      const i = next++;
-      if (i >= specs.length) return;
-      results[i] = await runOne(specs[i], runner, opts.signal);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(concurrency, specs.length) }, worker));
-  return results;
+  return runThunks(
+    specs.map((s) => () => runOne(s, runner, opts.signal)),
+    opts.concurrency ?? DEFAULT_CONCURRENCY,
+  );
 }
 
 export type TaskState = 'running' | 'done' | 'error' | 'canceled';

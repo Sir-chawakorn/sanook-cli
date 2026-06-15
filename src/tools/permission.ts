@@ -3,6 +3,7 @@ import { realpath, stat } from 'node:fs/promises';
 import { basename, dirname, resolve, join, sep } from 'node:path';
 import { getBrainPath } from '../memory.js';
 import { BRAND_ENV, envFlag } from '../brand.js';
+import { agentCwd } from '../agentContext.js';
 
 // Permission gate (M1): ก่อนมี interactive ask (M4) — hard-deny อันตราย, allow ที่เหลือ
 // คำสั่ง shell ที่ทำลายล้าง irreversible
@@ -67,7 +68,9 @@ async function existingAncestor(path: string): Promise<string> {
 
 async function allowedRoots(): Promise<string[]> {
   if (envFlag(BRAND_ENV.allowOutsideWorkspace)) return ['/'];
-  const roots = [await canonicalExisting(process.cwd())];
+  // agentCwd() = worktree ของ sub-agent ที่ถูก isolate (ถ้ามี) ไม่งั้น = process.cwd().
+  // ผล: sub-agent ใน worktree เขียนได้เฉพาะใน worktree ตัวเอง (isolation) ส่วน main agent เขียนใน workspace ปกติ
+  const roots = [await canonicalExisting(agentCwd())];
   const brain = await getBrainPath();
   if (brain) roots.push(await canonicalExisting(brain));
   return roots;

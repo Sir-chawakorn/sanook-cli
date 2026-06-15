@@ -4,8 +4,9 @@ import { glob } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { isAbsolute } from 'node:path';
 import { promisify } from 'node:util';
-import { clamp } from './util.js';
+import { clamp, resolveAgentPath } from './util.js';
 import { checkReadPath } from './permission.js';
+import { agentCwd } from '../agentContext.js';
 
 const execFileAsync = promisify(execFile);
 const MAX_RESULTS = 200;
@@ -24,11 +25,12 @@ export const globTool = tool({
     if (unsafeGlobPattern(pattern)) {
       return `BLOCKED: glob pattern ต้องเป็น relative path ภายใน cwd และห้ามมี "..": "${pattern}"`;
     }
-    const guard = await checkReadPath(cwd);
+    const base = resolveAgentPath(cwd); // '.' → agentCwd (worktree ของ sub-agent ถ้ามี)
+    const guard = await checkReadPath(base);
     if (!guard.ok) return `BLOCKED: ${guard.reason}`;
     try {
       const out: string[] = [];
-      for await (const f of glob(pattern, { cwd })) {
+      for await (const f of glob(pattern, { cwd: base })) {
         out.push(f);
         if (out.length >= MAX_RESULTS) {
           out.push(`... [>${MAX_RESULTS} matches, truncated]`);
@@ -49,7 +51,8 @@ export const grepTool = tool({
     path: z.string().default('.').describe('directory หรือไฟล์ที่จะค้น'),
   }),
   execute: async ({ pattern, path }) => {
-    const guard = await checkReadPath(path);
+    const base = agentCwd(); // รัน rg ใน worktree ของ sub-agent ถ้ามี → path relative ผูกถูก tree
+    const guard = await checkReadPath(resolveAgentPath(path));
     if (!guard.ok) return `BLOCKED: ${guard.reason}`;
     try {
       // execFile (args array, ไม่ผ่าน shell) → $(...)/backtick/$VAR ใน pattern/path เป็น inert
@@ -57,7 +60,7 @@ export const grepTool = tool({
       const { stdout } = await execFileAsync(
         'rg',
         ['--line-number', '--no-heading', '--max-count', '50', '-e', pattern, '--', path],
-        { maxBuffer: 10 * 1024 * 1024 },
+        { cwd: base, maxBuffer: 10 * 1024 * 1024 },
       );
       const lines = stdout.trim().split('\n').slice(0, MAX_RESULTS);
       return clamp(lines.join('\n')) || '(no matches)';

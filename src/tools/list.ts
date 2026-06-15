@@ -1,7 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { readdir } from 'node:fs/promises';
-import { clamp } from './util.js';
+import { clamp, resolveAgentPath } from './util.js';
 import { checkReadPath } from './permission.js';
 
 export const listDirTool = tool({
@@ -10,10 +10,11 @@ export const listDirTool = tool({
     path: z.string().default('.').describe('directory ที่จะ list (default: current dir)'),
   }),
   execute: async ({ path }) => {
-    const guard = await checkReadPath(path);
+    const full = resolveAgentPath(path); // relative ผูกกับ agentCwd (worktree ของ sub-agent ถ้ามี)
+    const guard = await checkReadPath(full);
     if (!guard.ok) return `BLOCKED: ${guard.reason}`;
     try {
-      const entries = await readdir(path, { withFileTypes: true });
+      const entries = await readdir(full, { withFileTypes: true });
       const out = entries
         .filter((e) => !e.name.startsWith('.') || e.name === '.env.example' || e.name === '.gitignore')
         .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))

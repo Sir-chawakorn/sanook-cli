@@ -65,6 +65,23 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const replHistory = useRef<string[]>(loadHistory()); // prompt เก่า (persist) สำหรับ ↑/↓
   const checkpoints = useRef<Checkpoint[]>([]);
   const editor = useEditor(replHistory.current);
+  // real-time steering: หยุด turn ที่กำลังรัน (abort) + คิวข้อความที่พิมพ์ระหว่าง busy
+  const abortRef = useRef<AbortController | null>(null);
+  const queueRef = useRef<string[]>([]);
+  const [queued, setQueued] = useState<string[]>([]);
+  const enqueue = (msg: string): void => {
+    queueRef.current.push(msg);
+    setQueued([...queueRef.current]);
+  };
+  const dequeue = (): string | undefined => {
+    const m = queueRef.current.shift();
+    setQueued([...queueRef.current]);
+    return m;
+  };
+  const clearQueue = (): void => {
+    queueRef.current = [];
+    setQueued([]);
+  };
 
   const addTurn = (role: Turn['role'], text: string): void =>
     setHistory((h) => [...h, { id: idRef.current++, role, text }]);
@@ -99,7 +116,19 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       return;
     }
     if (busy) {
-      if (key.ctrl && input === 'c') exit();
+      // steering ระหว่าง turn: Esc / Ctrl+C = หยุด turn นี้ (ไม่ออกจากแอป) + ล้างคิว
+      if (key.escape || (key.ctrl && input === 'c')) {
+        abortRef.current?.abort();
+        clearQueue();
+        return;
+      }
+      // พิมพ์ระหว่าง busy ได้ — Enter = ต่อคิว (รันอัตโนมัติหลัง turn นี้จบ)
+      const a = editor.handleKey(input, key);
+      if (a === 'submit') {
+        const v = editor.value.trim();
+        editor.reset();
+        if (v) enqueue(v);
+      }
       return;
     }
     const action = editor.handleKey(input, key);
@@ -199,6 +228,8 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     // checkpoint สถานะก่อนรัน (ไฟล์ git + ขอบเขตบทสนทนา) → /rewind ย้อนได้
     const ref = await snapshotWorkTree();
     checkpoints.current.push({ ref, turnId: mark.turnId, msgLen: mark.msgLen });
+    const ac = new AbortController(); // steering: ให้ Esc/Ctrl+C หยุด stream กลางทางได้
+    abortRef.current = ac;
     setBusy(true);
     let buf = '';
     let lastFlush = 0;
@@ -212,6 +243,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         budgetUsd,
         permissionMode,
         approve: requestApproval,
+        signal: ac.signal,
         onEvent: (e: AgentEvent) => {
           if (e.type === 'text') {
             buf += e.text ?? '';
@@ -251,11 +283,21 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         }
       })();
     } catch (err) {
-      addTurn('system', `ERROR: ${(err as Error).message}`);
+      if (ac.signal.aborted) {
+        // หยุดเอง — เก็บ partial output ไว้ดู, ทิ้ง turn นี้ออกจาก LLM history (msgsRef ไม่อัปเดต)
+        if (buf.trim()) addTurn('assistant', buf.trim());
+        addTurn('system', '⊘ หยุด turn แล้ว (ไฟล์ที่ tool แก้ไปแล้วคืนด้วย /rewind ได้)');
+      } else {
+        addTurn('system', `ERROR: ${(err as Error).message}`);
+      }
     } finally {
       setStreaming('');
       setBusy(false);
+      abortRef.current = null;
     }
+    // steering: ข้อความที่พิมพ์ค้างคิวระหว่าง turn → รันต่อทันที (ถ้าไม่ได้ถูกหยุด)
+    const next = ac.signal.aborted ? undefined : dequeue();
+    if (next) void submit(next);
   }
 
   const banner = useMemo(() => <Banner model={initialModel} />, [initialModel]);
@@ -268,6 +310,15 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       {streaming ? (
         <Box marginTop={1}>
           <Text>{streaming}</Text>
+        </Box>
+      ) : null}
+      {queued.length ? (
+        <Box flexDirection="column" marginTop={1}>
+          {queued.map((q, i) => (
+            <Text key={i} dimColor>
+              ⏳ คิว {i + 1}: {q.length > 64 ? `${q.slice(0, 64)}…` : q}
+            </Text>
+          ))}
         </Box>
       ) : null}
       {approvalReq ? (
@@ -291,10 +342,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   );
 }
 
-/** input ที่มี cursor (inverse) + placeholder — minimal */
+/** input ที่มี cursor (inverse) + placeholder — minimal; รับ input ได้แม้ busy (ต่อคิว) */
 function InputView({ value, cursor, busy }: { value: string; cursor: number; busy: boolean }) {
-  if (busy) return <Text dimColor>กำลังทำงาน… (Ctrl+C ยกเลิก)</Text>;
-  if (!value) return <Text dimColor>ถามอะไรก็ได้ · /help · @ไฟล์ แนบ context/รูป</Text>;
+  if (busy && !value) return <Text dimColor>กำลังทำงาน… Esc/Ctrl+C หยุด · พิมพ์เพื่อต่อคิว (⏎)</Text>;
+  if (!busy && !value) return <Text dimColor>ถามอะไรก็ได้ · /help · @ไฟล์ แนบ context/รูป</Text>;
   const before = value.slice(0, cursor);
   const at = value.slice(cursor, cursor + 1) || ' ';
   const after = value.slice(cursor + 1);
@@ -303,6 +354,7 @@ function InputView({ value, cursor, busy }: { value: string; cursor: number; bus
       {before}
       <Text inverse>{at}</Text>
       {after}
+      {busy ? <Text dimColor>{'  '}(⏎ ต่อคิว)</Text> : null}
     </Text>
   );
 }

@@ -2,6 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { readFile, writeFile } from 'node:fs/promises';
 import { checkWritePath } from './permission.js';
+import { resolveAgentPath } from './util.js';
 import { renderEditDiff } from '../diff.js';
 
 export interface Match {
@@ -68,14 +69,18 @@ export function findMatch(content: string, needle: string): Match | null {
 
 export const editFileTool = tool({
   description:
-    'แก้ไฟล์โดยแทนที่ old_string ด้วย new_string. old_string ต้องมีอยู่จริงและ unique ในไฟล์ (ใส่ context รอบๆ ให้พอระบุตำแหน่งเดียว). อ่านไฟล์ด้วย read_file ก่อนเสมอ',
+    'แก้ไฟล์แบบ search/replace — แทนที่เฉพาะ "ช่วงที่ส่งมา" ไม่ใช่ทั้งไฟล์/ทั้งบรรทัด. ' +
+    'ให้ old_string สั้นที่สุดเท่าที่ยัง unique (ประหยัด token — ไม่ต้องลอกทั้งบรรทัด/ทั้ง block ถ้าไม่จำเป็น). ' +
+    'จะแก้ token เดิมหลายที่ (rename) → ตั้ง replace_all:true แล้วใส่ old_string สั้นๆ ได้เลย ไม่ต้องทำให้ unique. อ่านไฟล์ด้วย read_file ก่อนเสมอ',
   inputSchema: z.object({
     path: z.string().describe('path ของไฟล์ที่จะแก้'),
-    old_string: z.string().describe('ข้อความเดิมที่จะถูกแทนที่ (ต้องตรงและ unique)'),
+    old_string: z.string().describe('ข้อความเดิมที่จะถูกแทนที่ — สั้นที่สุดที่ยัง unique (replace_all:true ไม่ต้อง unique)'),
     new_string: z.string().describe('ข้อความใหม่'),
+    replace_all: z.boolean().optional().describe('true = แทนที่ทุกที่ที่ตรง old_string เป๊ะ (เหมาะกับ rename) — old_string ไม่ต้อง unique'),
   }),
-  execute: async ({ path, old_string, new_string }) => {
-    const guard = await checkWritePath(path);
+  execute: async ({ path, old_string, new_string, replace_all = false }) => {
+    const full = resolveAgentPath(path); // relative ผูกกับ agentCwd (worktree ของ sub-agent ถ้ามี)
+    const guard = await checkWritePath(full);
     if (!guard.ok) return `BLOCKED: ${guard.reason}`;
     if (old_string === '') return `ERROR: old_string ต้องไม่ว่าง`;
     if (old_string === new_string) {
@@ -84,7 +89,7 @@ export const editFileTool = tool({
 
     let raw: string;
     try {
-      raw = await readFile(path, 'utf8');
+      raw = await readFile(full, 'utf8');
     } catch (err) {
       return `ERROR: อ่านไฟล์ "${path}" ไม่ได้ — ${(err as Error).message}`;
     }
@@ -96,18 +101,34 @@ export const editFileTool = tool({
     const oldNorm = old_string.replace(/\r\n/g, '\n');
     const newNorm = new_string.replace(/\r\n/g, '\n');
 
+    // replace_all: แทนที่ทุกที่ที่ตรง "เป๊ะ" (exact เท่านั้น — flex หลายช่วงกำกวม) → old_string สั้นได้ ไม่ต้อง unique
+    if (replace_all) {
+      const exact = exactMatch(content, oldNorm);
+      if (!exact) {
+        return `ERROR: ไม่พบ old_string ในไฟล์ "${path}" — replace_all ใช้ match แบบตรงเป๊ะเท่านั้น (อ่านไฟล์ใหม่แล้วคัดข้อความที่ตรง)`;
+      }
+      let updated = content.split(oldNorm).join(newNorm); // split/join = แทนที่ทุกที่ (string literal, ไม่ใช่ regex)
+      if (usesCRLF) updated = updated.replace(/\n/g, '\r\n');
+      try {
+        await writeFile(full, updated, 'utf8');
+      } catch (err) {
+        return `ERROR: เขียนไฟล์ "${path}" ไม่ได้ — ${(err as Error).message}`;
+      }
+      return `OK: แก้ "${path}" (${exact.count} ที่)\n${renderEditDiff(oldNorm, newNorm)}`;
+    }
+
     const m = findMatch(content, oldNorm);
     if (!m) {
       return `ERROR: ไม่พบ old_string ในไฟล์ "${path}" — อ่านไฟล์ใหม่ด้วย read_file แล้วคัดข้อความที่ตรงเป๊ะมาใช้`;
     }
     if (m.count > 1) {
-      return `ERROR: old_string พบ ${m.count} ที่ในไฟล์ "${path}" (ต้อง unique) — ใส่ context รอบๆ ให้มากขึ้นเพื่อระบุตำแหน่งเดียว`;
+      return `ERROR: old_string พบ ${m.count} ที่ในไฟล์ "${path}" — ตั้ง replace_all:true เพื่อแก้ทุกที่ หรือใส่ context รอบๆ ให้พอ unique (ใช้เท่าที่จำเป็น ประหยัด token)`;
     }
 
     let updated = content.slice(0, m.start) + newNorm + content.slice(m.end);
     if (usesCRLF) updated = updated.replace(/\n/g, '\r\n');
     try {
-      await writeFile(path, updated, 'utf8');
+      await writeFile(full, updated, 'utf8');
     } catch (err) {
       return `ERROR: เขียนไฟล์ "${path}" ไม่ได้ — ${(err as Error).message}`;
     }
