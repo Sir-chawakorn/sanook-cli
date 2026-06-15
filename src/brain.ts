@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, readdir, stat } from 'node:fs/promises';
+import { chmod, readFile, writeFile, mkdir, readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -255,6 +255,7 @@ export async function wireBrainMcp(vaultPath: string): Promise<'added' | 'exists
     args: ['-y', '@modelcontextprotocol/server-filesystem', vaultPath],
   };
   await mkdir(dirname(mcpPath), { recursive: true });
-  await writeFile(mcpPath, `${JSON.stringify(cfg, null, 2)}\n`);
+  await writeFile(mcpPath, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
+  await chmod(mcpPath, 0o600).catch(() => {});
   return 'added';
 }

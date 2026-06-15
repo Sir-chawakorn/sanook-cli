@@ -69,8 +69,8 @@ export function useEditor(history: string[]): Editor {
         case 'e': return setCursor(value.length), 'handled';
         case 'u': return set(value.slice(cursor), 0), 'handled'; // ลบจากต้นบรรทัดถึง cursor
         case 'k': return set(value.slice(0, cursor), cursor), 'handled'; // ลบจาก cursor ถึงท้าย
-        case 'w': { // ลบ word ก่อน cursor
-          const left = value.slice(0, cursor).replace(/\s*\S+\s*$/, '');
+        case 'w': { // ลบ word ก่อน cursor (รวมกรณีเหลือแต่ whitespace)
+          const left = value.slice(0, cursor).replace(/\s+$|\s*\S+\s*$/, '');
           return set(left + value.slice(cursor), left.length), 'handled';
         }
         case 'c': return 'interrupt';

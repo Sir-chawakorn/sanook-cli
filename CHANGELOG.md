@@ -2,12 +2,26 @@
 
 ## Unreleased
 
-- **Memory routing into the vault**: `remember` now routes facts into the second-brain `Shared/Memory-Inbox`, and headless runs append a daily worklog to `Sessions/` — the agent actually writes to *your* brain.
-- **Fallback model**: if the primary model fails mid-stream (rate-limit/billing), it retries once with `config.fallbackModel`.
-- **Headless output**: `--output-format final` / `-q` prints only the answer (no tool/cost chatter) for scripting/CI.
-- **REPL**: `/diff` (git diff of the agent's changes) and `/undo` (git-stash the last edits, recoverable).
-- **`sanook config` / `sanook mcp`** management commands; fixed Codex delegate streaming (was repeating the message); added a tag-triggered npm publish workflow (`release.yml`, with provenance).
-- Tests for memory routing, the sub-agent depth guard, `cleanProviderError`, the BYOK/redaction core, and the budget cap (152 total).
+### Competitive parity pass (table-stakes the OSS field now expects)
+
+- **Remote MCP**: connect MCP servers over Streamable-HTTP (`{ "url": "https://…", "headers": {…} }`), not just stdio — half the hosted MCP ecosystem (GitHub/Slack/Postgres/…) is HTTP-only. `sanook mcp add <name> <url>` auto-detects remote.
+- **Prompt caching**: the static system preamble (instructions + skills + brain + repo map) is sent as a cached Anthropic block, cutting cost/latency on multi-step turns; safely ignored by other providers.
+- **OS sandbox for `run_bash`**: Seatbelt (macOS) / bubblewrap (Linux) confine shell **writes** to the workspace/brain/tmp — defense-in-depth over the regex blocklist. Reads + network unchanged; `SANOOK_NO_SANDBOX=1` to disable.
+- **Checkpoint + `/rewind`**: a shadow-git snapshot before each turn; `/rewind` restores files **and** truncates the conversation (recoverable — it stashes the current state first).
+- **Input ergonomics**: multiline (trailing `\` / Alt+Enter), `↑`/`↓` persisted prompt history, readline keys (Ctrl-A/E/U/K/W), and `@file` mentions that inline file contents.
+- **Image / vision input**: `@image.png` attaches the image to vision-capable models (history keeps a lightweight placeholder, not the bytes).
+- **Custom slash commands**: `.sanook/commands/<name>.md` prompt templates invoked as `/<name>` (project commands gated by trust).
+- **Repo map**: a zero-dep, git-aware symbol map injected at session start so the agent selects files without blind grepping.
+- **Reliability**: rate-limit/overload retry with exponential backoff, kept distinct from auth/billing failures (which fail fast); per-tool execution timeouts so a runaway read/grep can't hang the loop.
+- **Minimal terminal-first TUI**: compact gradient banner, a real cursor + placeholder, and cleaner turn rendering.
+
+### Fixes
+
+- **Multi-turn history loss**: REPL/`--continue` now retain the full conversation (the user's earlier turns were being dropped — only assistant/tool messages were kept).
+- **Budget cap was silent for ~all non-Anthropic models**: added approximate list prices for the other providers, a `pricing` override (`sanook config set pricing …` / `SANOOK_PRICING`), and a warning when `-b` is set for a model (or fallback model) with no pricing. Cost now carries over when the model falls back instead of resetting.
+- MCP SSE parsing no longer aborts on a malformed earlier event; checkpoint restore pins the snapshot commit (correct even after an intervening commit) and removes files added after the snapshot.
+
+- Tests: remote-MCP, sandbox, repo map, prompt-caching/system-preservation, rate-limit classification, tool timeout, checkpoint restore, cost merge, custom commands (≈200 total).
 
 ## 0.4.0 — second brain, GLM Coding Plan, Telegram, hardening
 

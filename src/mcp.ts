@@ -171,14 +171,16 @@ class HttpTransport implements Transport {
         .map((l) => l.slice(5).trim())
         .join('');
       if (!data) continue;
+      let msg: { id?: number; result?: unknown; error?: { message?: string } };
       try {
-        const msg = JSON.parse(data) as { id?: number; result?: unknown; error?: { message?: string } };
-        if (msg.id === id) {
-          if (msg.error) throw new Error(msg.error.message ?? 'mcp error');
-          return msg.result;
-        }
-      } catch (e) {
-        if (e instanceof Error && e.message !== 'Unexpected end of JSON input') throw e;
+        msg = JSON.parse(data);
+      } catch {
+        continue; // block นี้ไม่ใช่ JSON สมบูรณ์ → ข้ามไป block ถัดไป (ไม่ abort ทั้ง stream)
+      }
+      // MCP protocol error / return อยู่นอก try → ไม่ถูกกลบโดย catch ของ JSON.parse
+      if (msg.id === id) {
+        if (msg.error) throw new Error(msg.error.message ?? 'mcp error');
+        return msg.result;
       }
     }
     throw new Error('mcp http: ไม่พบ response ใน event-stream');

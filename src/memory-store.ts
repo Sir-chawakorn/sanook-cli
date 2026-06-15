@@ -17,8 +17,9 @@
 // recency decay with a real archive action, a protected tier, and an inbox TTL.
 // No network, no embeddings — similarity is deterministic token Jaccard.
 // ============================================================================
-import { chmod, mkdir, readFile, rename, stat, writeFile, copyFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, rm, stat, writeFile, copyFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { appHomePath, BRAND, persistenceEnabled } from './brand.js';
 import { redactKey } from './providers/keys.js';
@@ -137,7 +138,6 @@ export const MEMORY_DIR = appHomePath('memory');
 export const MEMORY_JSON = join(MEMORY_DIR, 'memory.json'); // source of truth
 export const AUTO_MEMORY_FILE = join(MEMORY_DIR, 'MEMORY.md'); // derived view (legacy name kept)
 const MEMORY_BAK = join(MEMORY_DIR, 'MEMORY.md.bak');
-const MEMORY_TMP = join(MEMORY_DIR, 'memory.json.tmp');
 
 // ============================================================================
 // Pure helpers (no FS, clock only via injected `now`)
@@ -220,7 +220,7 @@ function contradiction(a: string, b: string, sameCategory: boolean): 'yes' | 'am
 const CATEGORY: ReadonlySet<NoteType> = new Set(['preference', 'decision', 'convention']);
 
 /** an empty version-2 store. */
-export function emptyStore(now: number = Date.now()): MemoryStore {
+export function emptyStore(_now: number = Date.now()): MemoryStore {
   return { version: 2, meta: { lastConsolidated: 0, activeAtLastConsolidate: 0, migratedFrom: null }, facts: [] };
 }
 
@@ -289,8 +289,18 @@ export function mergeFact(store: MemoryStore, incoming: Incoming, now: number = 
   }
 
   const tier: Tier = inc.tier ?? 'durable';
+  const norm = normalize(text);
 
-  // 3) SIMILARITY MATCH — only against active facts of the SAME tier.
+  // 3a) EXACT normalized duplicate (same tier, active) ⇒ NOOP + touch.
+  // Robust even when token-Jaccard is 0 (e.g. 1-char facts) — keeps idempotent remember + bumps the importance signal.
+  const exactIdx = facts.findIndex((m) => m.status === 'active' && m.tier === tier && normalize(m.text) === norm);
+  if (exactIdx >= 0) {
+    const m = facts[exactIdx];
+    facts[exactIdx] = { ...m, accessCount: m.accessCount + 1, lastAccessed: now, updated: now };
+    return { store: withFacts(store, facts), op: 'NOOP', fact: facts[exactIdx] };
+  }
+
+  // 3b) FUZZY MATCH — best active fact in the SAME tier by token-Jaccard similarity.
   let best: Fact | undefined;
   let bestSim = 0;
   for (const m of facts) {
@@ -305,12 +315,6 @@ export function mergeFact(store: MemoryStore, incoming: Incoming, now: number = 
   const idx = best ? facts.indexOf(best) : -1;
 
   if (best && bestSim >= NEAR_DUP) {
-    if (normalize(text) === normalize(best.text)) {
-      // exact (normalized) duplicate ⇒ NOOP, but touch (keeps idempotent remember + bumps importance signal)
-      const touched: Fact = { ...best, accessCount: best.accessCount + 1, lastAccessed: now, updated: now };
-      facts[idx] = touched;
-      return { store: withFacts(store, facts), op: 'NOOP', fact: touched };
-    }
     // near-dup but not identical ⇒ UPDATE in place, keep id, longer text wins
     const longerWins = tokenCount(text) > tokenCount(best.text) ? text : best.text;
     const updated: Fact = {
@@ -381,30 +385,28 @@ export function consolidate(store: MemoryStore, now: number = Date.now()): { sto
   });
 
   // STEP 2 — MERGE OVERLAPPING active facts that escaped inline merge (fold younger into oldest)
-  const active = facts.filter((f) => f.status === 'active');
-  const removed = new Set<string>();
-  for (let i = 0; i < active.length; i++) {
-    const keep = active[i];
-    if (removed.has(keep.id)) continue;
-    for (let j = i + 1; j < active.length; j++) {
-      const dup = active[j];
-      if (removed.has(dup.id) || keep.tier !== dup.tier) continue;
+  const removed = new Set<number>();
+  for (let i = 0; i < facts.length; i++) {
+    if (removed.has(i) || facts[i].status !== 'active') continue;
+    for (let j = i + 1; j < facts.length; j++) {
+      const keep = facts[i];
+      const dup = facts[j];
+      if (removed.has(j) || dup.status !== 'active' || keep.tier !== dup.tier) continue;
       if (sim(keep.text, dup.text) >= NEAR_DUP) {
-        const ki = facts.indexOf(keep);
-        facts[ki] = {
-          ...facts[ki],
-          text: tokenCount(facts[ki].text) >= tokenCount(dup.text) ? facts[ki].text : dup.text,
-          importance: clamp01(Math.max(facts[ki].importance, dup.importance)),
-          accessCount: facts[ki].accessCount + dup.accessCount,
-          tags: [...new Set([...facts[ki].tags, ...dup.tags])],
+        facts[i] = {
+          ...keep,
+          text: tokenCount(keep.text) >= tokenCount(dup.text) ? keep.text : dup.text,
+          importance: clamp01(Math.max(keep.importance, dup.importance)),
+          accessCount: keep.accessCount + dup.accessCount,
+          tags: [...new Set([...keep.tags, ...dup.tags])],
           updated: now,
         };
-        removed.add(dup.id);
+        removed.add(j);
         report.merged.push(dup.id);
       }
     }
   }
-  if (removed.size) facts = facts.filter((f) => !removed.has(f.id));
+  if (removed.size) facts = facts.filter((_, idx) => !removed.has(idx));
 
   // STEP 3 — INBOX DRAIN / TTL: promote agent-origin items past TTL, flag untrusted for review
   const durableTexts = facts.filter((f) => f.status === 'active' && f.tier === 'durable').map((f) => f.text);
@@ -482,7 +484,7 @@ function inferNoteType(text: string): NoteType {
 
 /** one-time, idempotent, lossless migration of the flat "# title \n - fact" markdown into a store. */
 export function migrateFromFlat(md: string, now: number = Date.now()): MemoryStore {
-  let store = emptyStore(now);
+  let store = emptyStore();
   const header = `# ${BRAND.autoMemoryTitle}`;
   for (const raw of md.split('\n')) {
     const line = raw.trim();
@@ -526,7 +528,7 @@ export async function loadStore(now: number = Date.now()): Promise<MemoryStore> 
   } catch {
     /* no legacy file either */
   }
-  return emptyStore(now);
+  return emptyStore();
 }
 
 async function writeSecure(path: string, content: string): Promise<void> {
@@ -547,8 +549,14 @@ export async function saveStore(store: MemoryStore, now: number = Date.now()): P
     await copyFile(AUTO_MEMORY_FILE, MEMORY_BAK).catch(() => {});
     await chmod(MEMORY_BAK, 0o600).catch(() => {});
   }
-  await writeFile(MEMORY_TMP, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
-  await chmod(MEMORY_TMP, 0o600).catch(() => {});
-  await rename(MEMORY_TMP, MEMORY_JSON);
+  const tmp = join(MEMORY_DIR, `memory.${randomUUID()}.tmp`);
+  try {
+    await writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
+    await chmod(tmp, 0o600).catch(() => {});
+    await rename(tmp, MEMORY_JSON);
+  } catch (e) {
+    await rm(tmp, { force: true }).catch(() => {});
+    throw e;
+  }
   await writeSecure(AUTO_MEMORY_FILE, renderView(store, now));
 }

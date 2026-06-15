@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { checkReadPath } from '../tools/permission.js';
 
@@ -28,19 +28,21 @@ export async function expandMentions(input: string): Promise<ExpandedInput> {
 
   for (const rel of [...new Set(mentions)]) {
     const abs = resolve(rel);
-    if (IMAGE_EXT.has(extname(rel).toLowerCase())) {
-      const guard = await checkReadPath(abs);
-      if (guard.ok) images.push(abs);
+    // canonicalize ก่อนเช็ก extension → symlink ที่ชื่อไม่มีนามสกุลแต่ชี้ไปรูป ก็จับเป็น image ถูก
+    const real = await realpath(abs).catch(() => abs);
+    if (IMAGE_EXT.has(extname(real).toLowerCase())) {
+      const guard = await checkReadPath(real);
+      if (guard.ok) images.push(real);
       else errors.push(`@${rel} (${guard.reason})`);
       continue;
     }
-    const guard = await checkReadPath(abs);
+    const guard = await checkReadPath(real);
     if (!guard.ok) {
       errors.push(`@${rel} (${guard.reason})`);
       continue;
     }
     try {
-      const content = (await readFile(abs, 'utf8')).slice(0, MAX_INLINE);
+      const content = (await readFile(real, 'utf8')).slice(0, MAX_INLINE);
       inlined.push(`<file path="${rel}">\n${content}\n</file>`);
     } catch (e) {
       errors.push(`@${rel} (${(e as Error).message})`);

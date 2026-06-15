@@ -13,7 +13,7 @@ Bring your own key · 12 providers · MCP · a built-in **"second brain"** that 
 [![License](https://img.shields.io/badge/license-Apache--2.0-22c55e.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-164%20passing-22c55e.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-229%20passing-22c55e.svg)](#development)
 [![CI](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml)
 
 [Quickstart](#quickstart) · [Providers](#providers) · [Usage](#usage) · [Gateway](#gateway--scheduling) · [Skills](#skills) · [MCP](#mcp) · [Security](#security)
@@ -47,8 +47,13 @@ The agent loop, BYOK, and MCP are table stakes now. What Sanook has that the big
 | Bring your own key | ✅ | — | ✅ | ✅ |
 | Providers | **12** | 1 | 1 | 1 |
 | Local models (Ollama / LM Studio) | ✅ | ❌ | ❌ | ❌ |
-| MCP | ✅ | ✅ | ✅ | ✅ |
+| MCP (stdio **+ remote HTTP**) | ✅ | ✅ | ✅ | ✅ |
+| OS sandbox (Seatbelt / bubblewrap) | ✅ | ✅ | ✅ | ✅ |
+| Checkpoint / rewind | ✅ | ✅ | ✅ | ✅ |
+| Image / vision input | ✅ | ✅ | ✅ | ✅ |
+| Prompt caching | ✅ | ✅ | ✅ | ✅ |
 | **Durable cross-session memory** | ✅ | ❌ | ❌ | ❌ |
+| **Local gateway + cron + Telegram** | ✅ | ❌ | ❌ | ❌ |
 
 On raw benchmark scores the frontier vendors win — Sanook's bet is **portability + persistent memory**, not beating Opus on SWE-bench. Use whatever fits; this one remembers.
 
@@ -73,15 +78,20 @@ sanook --json "..."             # JSONL output for CI / scripts
 
 | Area | What you get |
 |---|---|
-| **Agent loop** | Built on the Vercel AI SDK 6 (`streamText` + `stopWhen` + `fullStream`), with streamed output, a cost meter, and a budget cap. |
-| **Tools** | `read_file` · `write_file` · `edit_file` (multi-tier matcher) · `list_dir` · `glob` · `grep` · `run_bash`, plus git tools — gated by a permission layer that denies destructive commands, protected paths, and paths outside the workspace/brain by default. |
+| **Agent loop** | Built on the Vercel AI SDK 6 (`streamText` + `stopWhen` + `fullStream`), with streamed output, a cost meter, a budget cap, Anthropic **prompt caching** on the static preamble, and rate-limit-aware retry/backoff (distinct from auth failures) with model fallback. |
+| **Tools** | `read_file` · `write_file` · `edit_file` (multi-tier matcher) · `list_dir` · `glob` · `grep` · `run_bash`, plus git tools — gated by a permission layer that denies destructive commands, protected paths, and paths outside the workspace/brain by default. Non-bash tools are timeout-guarded so a runaway read/grep can't hang the loop. |
+| **Sandbox** | `run_bash` is confined by an OS sandbox — **Seatbelt** on macOS, **bubblewrap** on Linux — so shell writes stay inside the workspace/brain/tmp (reads + network unaffected). Opt out with `SANOOK_NO_SANDBOX=1`. |
 | **Approval** | `ask` mode is the default and prompts `y/n` before any file write or shell command. `--yes` for auto-approve; headless ask-mode safely denies mutations when no approval UI exists. |
+| **Input** | Multiline editing, `↑`/`↓` persisted prompt history, readline keys (Ctrl-A/E/U/K/W), and `@file` mentions that inline a file's contents (or attach an **image** for vision-capable models). |
+| **Checkpoint** | A shadow-git snapshot is taken before each turn; `/rewind` restores the files **and** truncates the conversation — recoverable (it stashes the current state first). |
 | **Memory** | The agent writes its own notes (`remember`), recalls them across past sessions (`recall`), and `--continue` resumes the latest run for the current project. |
+| **Repo map** | A lightweight symbol map of the repo (zero-dep, git-aware) is injected at session start so the agent picks the right files without blind grepping. |
 | **Skills** | Built-in skills + install your own from a GitHub repo, URL, or local path. The agent can also author new skills after a repeatable task. |
+| **Custom commands** | Drop a `.sanook/commands/<name>.md` prompt template and call it as `/<name>` (project commands require trust). |
 | **Subagents** | A `task` tool spawns a fresh-context sub-agent for scoped exploration without bloating the main context — read-only by default, depth-guarded. |
 | **Gateway + cron** | `sanook serve` runs a long-lived daemon: a loopback OpenAI-compatible HTTP endpoint plus a cron scheduler. Ask it in plain language and it schedules itself. |
 | **Channels** | A Telegram adapter (long-polling, no public URL) lets you drive the agent from your phone — locked down with a required allowlist and private-chat-only policy. |
-| **MCP** | Connect any Model Context Protocol server (filesystem, GitHub, Postgres, …) via `~/.sanook/mcp.json`. |
+| **MCP** | Connect any Model Context Protocol server over **stdio or remote Streamable-HTTP** (filesystem, GitHub, Postgres, hosted servers, …) via `~/.sanook/mcp.json`. |
 | **Git** | Branch, uncommitted changes, and recent commits are injected automatically, with `git_status` / `git_diff` / `git_log` / `git_commit` tools. |
 | **Hooks** | Run your own command before/after any tool. A non-zero `PreToolUse` exit blocks the tool — enforce lint, format, or policy. |
 | **Plan mode** | `--plan` restricts the agent to read-only tools and asks it to produce a plan before touching anything. |
@@ -132,7 +142,7 @@ sanook update            update the CLI to the latest npm release
   -h, --help             show help
 ```
 
-**REPL slash commands:** `/model` · `/tools` · `/skills` · `/cost` · `/clear` · `/compact` · `/help` · `/quit`
+**REPL slash commands:** `/model` · `/tools` · `/skills` · `/cost` · `/diff` · `/undo` · `/rewind` · `/clear` · `/compact` · `/help` · `/quit` — plus your own `.sanook/commands/*.md`. Input supports `↑`/`↓` history, `@file` mentions (text or image), and multiline (trailing `\` or Alt+Enter).
 
 ## Updating
 
@@ -214,24 +224,27 @@ Everything is **create-if-missing** — re-running never overwrites your notes. 
 
 ## MCP
 
-Connect Model Context Protocol servers (stdio) with the same config shape you already use elsewhere:
+Connect Model Context Protocol servers over **stdio or remote Streamable-HTTP** with the same config shape you already use elsewhere:
 
 ```jsonc
 // ~/.sanook/mcp.json
 {
   "mcpServers": {
-    "filesystem": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path"] }
+    "filesystem": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path"] },
+    "remote":     { "url": "https://example.com/mcp", "headers": { "Authorization": "Bearer <token>" } }
   }
 }
 ```
 
+Add servers from the CLI too: `sanook mcp add fs npx -y @modelcontextprotocol/server-filesystem /path` (stdio) or `sanook mcp add remote https://example.com/mcp` (a URL is detected as remote HTTP).
+
 Their tools are merged into the agent's toolset automatically. `/tools` in the REPL lists everything currently available.
 
-Project-local `.sanook/mcp.json` is ignored until the project is trusted:
+Project-local `.sanook/mcp.json`, `.sanook/hooks.json`, `.sanook/skills/`, and `.sanook/commands/` are ignored until the project is trusted:
 
 ```bash
 sanook trust status
-sanook trust add       # allow this project's .sanook/mcp.json and hooks.json
+sanook trust add       # allow this project's .sanook mcp/hooks/skills/commands
 sanook trust remove
 ```
 
@@ -247,7 +260,7 @@ Everything lives under `~/.sanook/` (with per-project `.sanook/` overrides where
 ~/.sanook/mcp.json           MCP servers  { "mcpServers": { … } }
 ~/.sanook/hooks.json         PreToolUse / PostToolUse hooks
 ~/.sanook/gateway/           gateway token + task ledger
-~/.sanook/trusted-projects.json project roots allowed to run project MCP/hooks
+~/.sanook/trusted-projects.json project roots allowed to load project .sanook extensions
 SANOOK.md                    project memory (hierarchical, like a system prompt)
 ```
 
@@ -263,7 +276,7 @@ SANOOK_HOOKS_INHERIT_ENV=1          # pass full env to hooks instead of a minima
 SANOOK_DISABLE_PERSISTENCE=1        # do not save sessions or memory
 SANOOK_DISABLE_UPDATE_CHECK=1       # do not show interactive update prompts
 SANOOK_DISABLE_WORKLOG=1            # do not append second-brain worklogs
-SANOOK_TRUST_PROJECT=1              # temporary trust override for project MCP/hooks
+SANOOK_TRUST_PROJECT=1              # temporary trust override for project .sanook extensions
 ```
 
 ## Security
@@ -272,7 +285,8 @@ Sanook runs shell commands and edits files, so safety is built into the core rat
 
 - **BYOK, direct keys only** — OAuth and subscription tokens are rejected by an explicit guard (`ya29.`, `Bearer`, `sk-ant-oat…`). This keeps you within every provider's terms of service.
 - **Permission gate** — destructive commands (`rm -rf`, `git reset --hard`, `push --force`, fork bombs, …), protected paths (`.env`, `.git`, `node_modules`, credential folders), and paths outside the workspace/brain are denied unless explicitly opted in.
-- **Project trust gate** — project `.sanook/mcp.json` and `.sanook/hooks.json` can execute code, so they are ignored until `sanook trust add`.
+- **OS sandbox** — `run_bash` runs under Seatbelt (macOS) / bubblewrap (Linux) when available, confining shell writes to the workspace/brain/tmp — defense in depth beyond the regex blocklist (`SANOOK_NO_SANDBOX=1` to disable).
+- **Project trust gate** — project `.sanook/mcp.json`, `.sanook/hooks.json`, `.sanook/skills/`, and `.sanook/commands/` can execute or steer the agent, so they are ignored until `sanook trust add`.
 - **Secret redaction** — API keys are stripped from error messages, saved sessions, memory, and worklogs.
 - **Safe fallback** — provider fallback does not retry after a mutating tool call has already happened, avoiding duplicate side effects.
 - **Gateway** — HTTP binds to `127.0.0.1` only and requires a bearer token on every non-health endpoint.

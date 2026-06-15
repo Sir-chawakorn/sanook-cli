@@ -2,7 +2,8 @@ import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import type { Dirent } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { appHomePath, appProjectPath } from './brand.js';
+import { appHomePath } from './brand.js';
+import { projectConfigPathIfTrusted } from './trust.js';
 
 // skills = วิธีทำงานเฉพาะทาง/runbook ที่โหลด on-demand (progressive disclosure)
 // agent เห็นแค่ name+description ใน system prompt → โหลดเต็มด้วย `skill` tool เมื่อ task ตรง
@@ -10,7 +11,6 @@ import { appHomePath, appProjectPath } from './brand.js';
 // 3 ชั้น: bundled (ship กับ CLI) → global (~/.sanook) → project (.sanook) — ชั้นหลัง override ชื่อซ้ำ
 const BUNDLED_SKILLS = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills');
 const GLOBAL_SKILLS = appHomePath('skills');
-const projectSkills = (): string => appProjectPath(process.cwd(), 'skills');
 
 export interface Skill {
   name: string;
@@ -43,10 +43,11 @@ export function isValidSkillName(name: string): boolean {
 }
 
 /** scan project + global skills → list (name+description เท่านั้น สำหรับ inject). project ทับ global ชื่อซ้ำ */
-export async function loadSkills(): Promise<Skill[]> {
+export async function loadSkills(cwd: string = process.cwd()): Promise<Skill[]> {
   const out = new Map<string, Skill>();
+  const projectSkills = await projectConfigPathIfTrusted('skills', cwd);
   // bundled ก่อน → global → project ทับ (specific กว่าอยู่ท้าย)
-  for (const dir of [BUNDLED_SKILLS, GLOBAL_SKILLS, projectSkills()]) {
+  for (const dir of [BUNDLED_SKILLS, GLOBAL_SKILLS, projectSkills].filter((d): d is string => Boolean(d))) {
     let entries: Dirent[];
     try {
       entries = await readdir(dir, { withFileTypes: true });
@@ -73,9 +74,10 @@ export async function loadSkills(): Promise<Skill[]> {
 }
 
 /** อ่านเนื้อหา SKILL.md เต็ม (skill tool เรียกเมื่อ agent ตัดสินใจใช้) */
-export async function getSkillBody(name: string): Promise<string | null> {
+export async function getSkillBody(name: string, cwd: string = process.cwd()): Promise<string | null> {
   if (!isValidSkillName(name)) return null;
-  for (const dir of [projectSkills(), GLOBAL_SKILLS, BUNDLED_SKILLS]) {
+  const projectSkills = await projectConfigPathIfTrusted('skills', cwd);
+  for (const dir of [projectSkills, GLOBAL_SKILLS, BUNDLED_SKILLS].filter((d): d is string => Boolean(d))) {
     try {
       return await readFile(join(dir, name, 'SKILL.md'), 'utf8');
     } catch {

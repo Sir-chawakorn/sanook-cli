@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, readFile, writeFile, mkdir, stat, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { scaffoldBrain, substitute, expandHome, FOLDERS, BRAIN_DEFAULTS, type BrainConfig } from './brain.js';
+import { scaffoldBrain, substitute, expandHome, FOLDERS, BRAIN_DEFAULTS, wireBrainMcp, type BrainConfig } from './brain.js';
 
 const CFG: BrainConfig = { ...BRAIN_DEFAULTS, ownerName: 'ปิ๊ก', aiName: 'หนู', today: '2026-06-14' };
 
@@ -33,6 +33,7 @@ describe('scaffoldBrain', () => {
     dir = await mkdtemp(join(tmpdir(), 'brain-'));
   });
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await rm(dir, { recursive: true, force: true });
   });
 
@@ -290,5 +291,13 @@ describe('scaffoldBrain', () => {
   it('expandHome ขยาย ~ เป็น home', () => {
     expect(expandHome('~/x')).not.toContain('~');
     expect(expandHome('/abs/path')).toBe('/abs/path');
+  });
+
+  it('wireBrainMcp เขียน mcp.json ด้วย permission 0600', async () => {
+    vi.stubEnv('HOME', dir);
+    expect(await wireBrainMcp('/tmp/sanook-vault')).toBe('added');
+    const mcpPath = join(dir, '.sanook', 'mcp.json');
+    expect((await stat(mcpPath)).mode & 0o777).toBe(0o600);
+    expect(await readFile(mcpPath, 'utf8')).toContain('@modelcontextprotocol/server-filesystem');
   });
 });

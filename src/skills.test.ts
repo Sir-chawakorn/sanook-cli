@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { parseFrontmatter, isValidSkillName, renderAvailableSkills } from './skills.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { parseFrontmatter, isValidSkillName, renderAvailableSkills, loadSkills, getSkillBody } from './skills.js';
 
 describe('parseFrontmatter', () => {
   it('ดึง key: value จาก --- block + คืน body', () => {
@@ -39,5 +42,33 @@ describe('renderAvailableSkills', () => {
     const out = renderAvailableSkills([{ name: 'd', description: 'deploy', path: '/x' }]);
     expect(out).toContain('available_skills');
     expect(out).toContain('d: deploy');
+  });
+});
+
+describe('project skills trust gate', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sanook-skill-project-'));
+    await writeFile(join(dir, 'package.json'), '{}');
+    await mkdir(join(dir, '.sanook', 'skills', 'repo-skill'), { recursive: true });
+    await writeFile(
+      join(dir, '.sanook', 'skills', 'repo-skill', 'SKILL.md'),
+      '---\nname: repo-skill\ndescription: project-controlled\n---\n\n## Steps\n1. from project',
+    );
+  });
+
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('ไม่โหลด project skill จนกว่า project จะ trusted', async () => {
+    expect((await loadSkills(dir)).some((s) => s.name === 'repo-skill')).toBe(false);
+    expect(await getSkillBody('repo-skill', dir)).toBeNull();
+
+    vi.stubEnv('SANOOK_TRUST_PROJECT', '1');
+    expect((await loadSkills(dir)).some((s) => s.name === 'repo-skill')).toBe(true);
+    expect(await getSkillBody('repo-skill', dir)).toContain('from project');
   });
 });

@@ -292,7 +292,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   // model หลักล้มกลางทาง (ไม่ใช่ rate-limit ที่ retry หมดแล้ว) → ลอง fallback model
   if (streamError && opts.fallbackModel && opts.fallbackModel !== opts.model && !sideEffectToolSeen) {
     opts.onEvent?.({ type: 'text', text: `\n[model หลักล้ม → fallback: ${opts.fallbackModel}]\n` });
-    meter = new CostMeter(specKey(opts.fallbackModel), opts.budgetUsd);
+    // meter ใหม่ใช้ pricing ของ fallback แต่ merge usage/cost ของ primary เข้าด้วย (กัน cost หาย + budget นับต่อ)
+    const fallbackMeter = new CostMeter(specKey(opts.fallbackModel), opts.budgetUsd);
+    fallbackMeter.merge(meter);
+    meter = fallbackMeter;
     ({ text, result, err: streamError } = await runWithRetry(resolveModel(opts.fallbackModel)));
   } else if (streamError && sideEffectToolSeen) {
     throw new Error(`${cleanProviderError(streamError)} (ไม่ retry fallback เพราะมี tool ที่อาจเปลี่ยน state แล้ว)`);

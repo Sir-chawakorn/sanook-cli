@@ -5,7 +5,7 @@ import { runGit, isGitRepo } from './git.js';
 // ข้อจำกัด: ครอบเฉพาะ tracked files (เหมือน /undo) และต้องเป็น git repo
 
 export interface Checkpoint {
-  /** git ref ของ snapshot — sha จาก stash create หรือ 'CLEAN' (ตอน snapshot tree = HEAD) */
+  /** git ref ของ snapshot — sha จาก stash create (มีการแก้) หรือ HEAD sha ที่ pin (tree clean) */
   ref: string;
   /** จำนวน message ใน conversation ตอน snapshot (สำหรับตัดบทสนทนากลับ) */
   msgLen: number;
@@ -18,7 +18,10 @@ export async function snapshotWorkTree(cwd: string = process.cwd()): Promise<str
   if (!(await isGitRepo(cwd))) return null;
   try {
     const sha = (await runGit(['stash', 'create'], cwd)).trim();
-    return sha || 'CLEAN'; // ไม่มีการแก้ไข ณ ตอน snapshot = สถานะ HEAD
+    if (sha) return sha;
+    // working tree clean → pin HEAD SHA จริง (ถ้าใช้ 'HEAD' lazy แล้ว HEAD ขยับ เช่นมี commit ระหว่างนั้น = restore ผิด)
+    const head = (await runGit(['rev-parse', 'HEAD'], cwd)).trim();
+    return head || null;
   } catch {
     return null;
   }
@@ -41,8 +44,8 @@ export async function restoreWorkTree(ref: string, cwd: string = process.cwd()):
       await runGit(['stash', 'store', '-m', 'sanook /rewind backup', current], cwd);
       recovery = 'git stash pop';
     }
-    // restore: 'CLEAN' = กลับสู่ HEAD, ไม่งั้น checkout tree ของ snapshot
-    await runGit(['checkout', ref === 'CLEAN' ? 'HEAD' : ref, '--', '.'], cwd);
+    // restore: ให้ index + worktree ตรงกับ snapshot (ลบ tracked files ที่ถูกเพิ่มหลัง snapshot ด้วย)
+    await runGit(['restore', `--source=${ref}`, '--staged', '--worktree', '.'], cwd);
     return { ok: true, recovery };
   } catch (e) {
     return { ok: false, reason: (e as Error).message };

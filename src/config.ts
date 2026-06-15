@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
 import { appHomePath, appProjectPath, BRAND } from './brand.js';
-import { projectTrustStatus } from './trust.js';
+import { projectRoot, projectTrustStatus } from './trust.js';
 import { registerPricing, type Pricing } from './cost.js';
 
 export const CONFIG_DIR = appHomePath();
@@ -65,8 +65,9 @@ export async function loadConfig(
   cwd: string = process.cwd(),
 ): Promise<Config> {
   const global = await readJson(CONFIG_PATH);
-  const projectRaw = await readJson(appProjectPath(cwd, 'config.json'));
-  const trust = await projectTrustStatus(cwd);
+  const root = await projectRoot(cwd);
+  const projectRaw = await readJson(appProjectPath(root, 'config.json'));
+  const trust = await projectTrustStatus(root);
   const project = trust.trusted ? projectRaw : sanitizeUntrustedProjectConfig(projectRaw);
   const envConfig: Record<string, unknown> = {};
   if (process.env[BRAND.modelEnvVar]) envConfig.model = process.env[BRAND.modelEnvVar];

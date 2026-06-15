@@ -24,11 +24,11 @@ export type GateResult = { ok: true } | { ok: false; reason: string };
 
 function hasRmRecursiveForce(cmd: string): boolean {
   for (const match of cmd.matchAll(/\brm\b([^;&|]*)/gi)) {
-    const flags = match[1]
-      .split(/\s+/)
-      .filter((part) => /^-[^-]/.test(part))
-      .join('');
-    if (/r/i.test(flags) && /f/i.test(flags)) return true;
+    const parts = match[1].split(/\s+/).filter(Boolean);
+    const shortFlags = parts.filter((part) => /^-[^-]/.test(part)).join('');
+    const recursive = /r/i.test(shortFlags) || parts.includes('--recursive') || parts.includes('--dir');
+    const force = /f/i.test(shortFlags) || parts.includes('--force');
+    if (recursive && force) return true;
   }
   return false;
 }

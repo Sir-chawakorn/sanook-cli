@@ -40,12 +40,13 @@ function isSource(rel: string): boolean {
   return SOURCE_EXT.has(extname(rel).toLowerCase()) && !IGNORE_DIR.test(rel);
 }
 
-async function listFiles(cwd: string): Promise<string[]> {
+// คืน null = git ล้มชั่วคราว (อย่า cache, ลองใหม่รอบหน้า) · [] = ไม่ใช่ git repo จริงๆ (cache ได้)
+async function listFiles(cwd: string): Promise<string[] | null> {
   if (await isGitRepo(cwd)) {
     try {
       return (await runGit(['ls-files'], cwd)).split('\n').filter(Boolean);
     } catch {
-      /* fallthrough */
+      return null; // ls-files ล้ม (เช่น maxBuffer / index lock) ≠ repo ว่าง
     }
   }
   return [];
@@ -59,7 +60,9 @@ let cached: { cwd: string; map: string } | null = null;
  */
 export async function loadRepoMap(cwd: string = process.cwd(), maxChars = 4000): Promise<string> {
   if (cached && cached.cwd === cwd) return cached.map;
-  const files = (await listFiles(cwd)).filter(isSource).slice(0, MAX_FILES);
+  const raw = await listFiles(cwd);
+  if (raw === null) return ''; // git ล้มชั่วคราว → คืนว่างแต่ไม่ cache (ลองใหม่รอบหน้า)
+  const files = raw.filter(isSource).slice(0, MAX_FILES);
   if (!files.length) {
     cached = { cwd, map: '' };
     return '';

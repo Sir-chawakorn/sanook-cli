@@ -29,8 +29,15 @@ function safeEnv(): Record<string, string> {
 
 async function readHooksFile(path: string, merged: HooksConfig): Promise<void> {
   const cfg = JSON.parse(await readFile(path, 'utf8')) as HooksConfig;
-  if (Array.isArray(cfg.PreToolUse)) merged.PreToolUse!.push(...cfg.PreToolUse);
-  if (Array.isArray(cfg.PostToolUse)) merged.PostToolUse!.push(...cfg.PostToolUse);
+  const valid = (h: unknown): h is HookEntry =>
+    Boolean(
+      h &&
+        typeof h === 'object' &&
+        typeof (h as HookEntry).matcher === 'string' &&
+        typeof (h as HookEntry).command === 'string',
+    );
+  if (Array.isArray(cfg.PreToolUse)) merged.PreToolUse!.push(...cfg.PreToolUse.filter(valid));
+  if (Array.isArray(cfg.PostToolUse)) merged.PostToolUse!.push(...cfg.PostToolUse.filter(valid));
 }
 
 export async function loadHooksConfig(cwd: string = process.cwd()): Promise<HooksConfig> {

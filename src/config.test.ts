@@ -23,6 +23,14 @@ describe('loadConfig layering', () => {
     expect(c.maxSteps).toBe(33);
   });
 
+  it('อ่าน project config จาก root แม้รันจาก subfolder', async () => {
+    await writeFile(join(dir, 'package.json'), '{}');
+    await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ model: 'root-model' }));
+    const subdir = join(dir, 'packages', 'app');
+    await mkdir(subdir, { recursive: true });
+    expect((await loadConfig({}, subdir)).model).toBe('root-model');
+  });
+
   it('CLI override ชนะ project config', async () => {
     await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ model: 'opus-test' }));
     expect((await loadConfig({ model: 'haiku-test' }, dir)).model).toBe('haiku-test');

@@ -51,11 +51,13 @@ export function registerPricing(extra: Record<string, Partial<Pricing>> | undefi
   for (const [key, p] of Object.entries(extra)) {
     if (p == null || typeof p !== 'object') continue;
     const base = PRICING[key] ?? { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+    const inputRate = Number(p.input ?? base.input);
     const next = {
-      input: Number(p.input ?? base.input),
+      input: inputRate,
       output: Number(p.output ?? base.output),
+      // override ที่ใส่แค่ input/output (ตามที่ hint แนะนำ) → cache rate อนุมานจาก input แทน 0 (กัน undercount)
       cacheWrite: Number(p.cacheWrite ?? p.input ?? base.cacheWrite),
-      cacheRead: Number(p.cacheRead ?? base.cacheRead),
+      cacheRead: Number(p.cacheRead ?? (base.cacheRead || inputRate * 0.1)),
     };
     if (Object.values(next).some((n) => !Number.isFinite(n) || n < 0)) continue;
     PRICING[key] = next;
@@ -106,6 +108,15 @@ export class CostMeter {
         (cacheRead / 1e6) * p.cacheRead +
         (cacheWriteTokens / 1e6) * p.cacheWrite;
     }
+  }
+
+  /** รวม token + cost จาก meter อีกตัว (เช่น primary model ก่อน fallback) — กัน usage หาย/budget reset */
+  merge(other: CostMeter): void {
+    this.inTok += other.inTok;
+    this.outTok += other.outTok;
+    this.cacheReadTok += other.cacheReadTok;
+    this.cacheWriteTok += other.cacheWriteTok;
+    this.spent += other.spent;
   }
 
   get totalUsd(): number {
