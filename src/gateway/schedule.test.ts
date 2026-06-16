@@ -54,6 +54,8 @@ describe('nextRun', () => {
 describe('parseSchedule hardening (จาก adversarial review)', () => {
   it('interval overflow → null (ไม่ใช่ Invalid Date)', () => {
     expect(parseSchedule('999999999999d', T0)).toBeNull();
+    expect(parseSchedule('104249991d', T0)).toBeNull(); // ms safe แต่ now + ms ไม่ safe
+    expect(parseSchedule('100000000d', T0)).toBeNull(); // runAt safe แต่เกินช่วง valid Date
   });
   it('year-only / bare number ไม่ใช่ ISO → null', () => {
     expect(parseSchedule('2026', T0)).toBeNull();
@@ -66,6 +68,17 @@ describe('parseSchedule hardening (จาก adversarial review)', () => {
     const p = parseSchedule('2026-12-25', T0);
     expect(p?.recurring).toBe(false);
     expect(p?.kind).toBe('once');
+  });
+  it('impossible future calendar dates → null', () => {
+    expect(parseSchedule('2026-00-10', T0)).toBeNull();
+    expect(parseSchedule('2026-13-01', T0)).toBeNull();
+    expect(parseSchedule('2026-11-31', T0)).toBeNull();
+    expect(parseSchedule('2027-02-29', T0)).toBeNull();
+    expect(parseSchedule('2028-02-29', T0)?.runAt).toBe(Date.parse('2028-02-29'));
+    expect(parseSchedule('2027-02-29T00:00:00.000Z', T0)).toBeNull();
+    expect(parseSchedule('2028-02-29T00:00:00.000Z', T0)?.runAt).toBe(Date.parse('2028-02-29T00:00:00.000Z'));
+    expect(parseSchedule('2100-02-29T00:00:00.000Z', T0)).toBeNull();
+    expect(parseSchedule('2400-02-29T00:00:00.000Z', T0)?.runAt).toBe(Date.parse('2400-02-29T00:00:00.000Z'));
   });
 });
 
