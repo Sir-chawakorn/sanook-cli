@@ -15,49 +15,12 @@ import { chmod, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { appHomePath, BRAND, BRAND_ENV, envFlag } from './brand.js';
 import type { UpdateCache } from './update.js';
+import { parseArgs } from './cli-args.js';
 
 // สี: เคารพ NO_COLOR + auto-plain เมื่อ pipe/redirect (legacy Windows cmd ก็ไม่เห็น garbage ANSI); FORCE_COLOR บังคับได้
 const useColor = !process.env.NO_COLOR && (Boolean(process.env.FORCE_COLOR) || process.stdout.isTTY === true);
 const DIM = useColor ? '\x1b[2m' : '';
 const RESET = useColor ? '\x1b[0m' : '';
-
-interface Args {
-  model?: string;
-  budget?: number;
-  json: boolean;
-  quiet: boolean; // --output-format final / -q : print แค่คำตอบสุดท้าย (ไม่มี tool/cost chatter)
-  prompt: string;
-  planMode: boolean;
-  yes: boolean;
-}
-
-function parseArgs(argv: string[]): Args {
-  let model: string | undefined;
-  let budget: number | undefined;
-  let json = false;
-  let quiet = false;
-  let planMode = false;
-  let yes = false;
-  const rest: string[] = [];
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === '--model' || a === '-m') model = argv[++i];
-    else if (a === '--budget' || a === '-b') budget = Number.parseFloat(argv[++i] ?? '');
-    else if (a === '--json') json = true;
-    else if (a === '-q' || a === '--quiet') quiet = true;
-    else if (a === '--output-format') {
-      const v = argv[++i];
-      if (v === 'json') json = true;
-      else if (v === 'final' || v === 'quiet') quiet = true;
-      /* 'text' = default */
-    } else if (a === '--plan') planMode = true;
-    else if (a === '--yes' || a === '-y') yes = true;
-    else if (a === '-p' || a === '--print' || a === '-c' || a === '--continue') {
-      /* -p headless flag · -c/--continue resume (handled in main) */
-    } else rest.push(a);
-  }
-  return { model, budget, json, quiet, prompt: rest.join(' ').trim(), planMode, yes };
-}
 
 async function runHeadless(
   model: string,
@@ -163,13 +126,13 @@ search (BM25 + optional BYOK semantic เหนือ vault + memory + sessions 
   ${BRAND.cliName} mcp serve                       expose brain เป็น MCP server (stdio) ให้ Claude Desktop/Cursor
 
 config & mcp:
-  ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/budgetUsd/permissionMode/cacheTtl/compaction/thinking)
+  ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/budgetUsd/permissionMode/cacheTtl/compaction/thinking/embeddingModel)
   ${BRAND.cliName} mcp [list|add <name> <cmd> …|remove <name>]   จัดการ MCP servers
   ${BRAND.cliName} trust [status|add|remove]      อนุญาต/ยกเลิก project .sanook mcp/hooks/skills/commands
 
 flags:
   -m, --model <spec>   sonnet/opus/haiku/fable · gpt/codex · gemini · grok · deepseek · mistral · groq · ollama/lmstudio
-                       or "provider:model-id" (e.g. openai:gpt-5-codex, groq:fast, google:gemini-2.5-flash)
+                       or "provider:model-id" (e.g. openai:gpt-5.3-codex, groq:fast, google:gemini-2.5-flash)
   -b, --budget <usd>   stop when estimated cost exceeds this
   -c, --continue       resume the latest session ของ project นี้
       --continue-any   resume latest session ข้าม project (explicit)
@@ -404,7 +367,20 @@ async function readStdin(): Promise<string> {
 async function runConfig(args: string[]): Promise<void> {
   const { readGlobalConfigRaw, patchGlobalConfig } = await import('./config.js');
   const [action, key, ...rest] = args;
-  const ALLOWED = ['model', 'fallbackModel', 'budgetUsd', 'maxSteps', 'permissionMode', 'brainPath', 'pricing', 'cacheTtl', 'compaction', 'thinking', 'summaryModel'];
+  const ALLOWED = [
+    'model',
+    'fallbackModel',
+    'budgetUsd',
+    'maxSteps',
+    'permissionMode',
+    'brainPath',
+    'pricing',
+    'cacheTtl',
+    'compaction',
+    'thinking',
+    'summaryModel',
+    'embeddingModel',
+  ];
   if (action === 'set') {
     if (!key || rest.length === 0) {
       console.error(`ใช้: ${BRAND.cliName} config set <key> <value>   (key: ${ALLOWED.join(' | ')})`);
@@ -484,24 +460,16 @@ async function runIndex(_args: string[]): Promise<void> {
 
 /** sanook search "<query>" [--mode ..] [--limit N] [--source a,b] — one-shot ranked search */
 async function runSearch(args: string[]): Promise<void> {
-  const queryParts: string[] = [];
-  let mode = 'auto';
-  let limit = 8;
-  let sources: string[] | undefined;
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--mode') mode = args[++i] ?? 'auto';
-    else if (a === '--limit') limit = Number.parseInt(args[++i] ?? '8', 10) || 8;
-    else if (a === '--source' || a === '--sources') sources = (args[++i] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-    else queryParts.push(a);
-  }
-  const query = queryParts.join(' ').trim();
-  if (!query) {
+  const { parseSearchArgs } = await import('./search/cli.js');
+  const parsed = parseSearchArgs(args);
+  if (!parsed.ok) {
+    console.error(parsed.message);
     console.error(`ใช้: ${BRAND.cliName} search "<query>" [--mode auto|fts|semantic|hybrid] [--limit N] [--source vault,memory]`);
     process.exit(1);
   }
+  const { query, mode, limit, sources } = parsed.value;
   const { search } = await import('./search/engine.js');
-  const res = await search(query, { mode: mode as 'auto' | 'fts' | 'semantic' | 'hybrid', limit, sources: sources as ('vault' | 'memory' | 'session' | 'skill')[] | undefined });
+  const res = await search(query, { mode, limit, sources });
   if (res.degraded) console.log(`${DIM}(mode=${res.mode}, degraded: ${res.degraded})${RESET}`);
   else console.log(`${DIM}(mode=${res.mode}, ${res.hits.length} hits)${RESET}`);
   if (!res.hits.length) {
@@ -808,17 +776,21 @@ async function main(): Promise<void> {
 
   await maybePromptForInteractiveUpdate();
 
-  // interactive — ครั้งแรก (ยังไม่มี config): ถ้าไม่มี key ใน env → ต้องโชว์ wizard
+  // interactive — ครั้งแรก (ยังไม่มี config): ถ้าไม่มี key ใช้ได้ใน env → ต้องโชว์ wizard
   let needsSetup = false;
   if (await isFirstRun()) {
-    const detected = detectEnvProvider();
-    if (detected) {
-      // มี API key ใน env แล้ว → ข้าม wizard, ตั้ง default ให้ตรง provider นั้น, บอกว่าพร้อมใช้
+    // provider เป้าหมาย: เคารพ -m ที่ user ใส่ก่อน (กันขึ้น "พร้อมใช้" ผิด provider), ไม่งั้น scan env ตามนิยม
+    const flagProvider = model ? parseSpec(model).provider : undefined;
+    const target = flagProvider ?? detectEnvProvider()?.provider;
+    const tcfg = target ? PROVIDERS[target] : undefined;
+    const { providerCanSkipSetup } = await import('./first-run.js');
+    if (target && tcfg && (await providerCanSkipSetup(target))) {
+      // มี key ใช้ได้จริง (ผ่าน policy ไม่ใช่ OAuth) → ข้าม wizard, ตั้ง default, บอกว่าพร้อมใช้
       const { saveGlobalConfig } = await import('./config.js');
-      await saveGlobalConfig({ model: `${detected.provider}:${detected.model}`, provider: detected.provider });
-      console.log(`✅ เจอ ${detected.label} (${detected.envVar}) — พร้อมใช้เลย (ข้าม setup wizard)\n`);
+      await saveGlobalConfig({ model: model ?? `${target}:${tcfg.models.default}`, provider: target });
+      console.log(`✅ ${tcfg.label} พร้อมใช้เลย (ข้าม setup wizard)\n`);
     } else {
-      needsSetup = true; // wizard จะรันใน Ink เดียวกับ REPL (รวม render กัน stdin หลุด → พิมพ์ไม่ได้)
+      needsSetup = true; // ไม่มี provider ที่ key ใช้ได้ (หรือ -m provider ไม่มี key) → wizard (รัน Ink เดียวกับ REPL)
     }
   }
   const config = await loadConfig({ model, budgetUsd });

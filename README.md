@@ -13,7 +13,7 @@ Bring your own key · 12 providers · MCP · a built-in **"second brain"** that 
 [![License](https://img.shields.io/badge/license-Apache--2.0-22c55e.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-381%20passing-22c55e.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-431%20passing-22c55e.svg)](#development)
 [![CI](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml)
 
 [Quickstart](#quickstart) · [Providers](#providers) · [Usage](#usage) · [Gateway](#gateway--scheduling) · [Skills](#skills) · [MCP](#mcp) · [Security](#security)
@@ -311,6 +311,7 @@ Quality-neutral knobs in `~/.sanook/config.json` (or the matching `SANOOK_*` env
 | `compaction summarize` | `SANOOK_COMPACTION=summarize` | when context gets long, condense it with a **cheap model** instead of truncating — better recall at the same budget (default `truncate`, zero-LLM) |
 | — | `SANOOK_SUBAGENT_MODEL=haiku` | run all sub-agent work (exploration/search) on a cheaper model while the main agent keeps the strong one |
 | `summaryModel <spec>` | `SANOOK_SUMMARY_MODEL=<spec>` | model used for summarize-compaction (default: the fast sibling of your main model) |
+| `embeddingModel <spec>` | `SANOOK_EMBEDDING_MODEL=<spec>` | model used for semantic search embeddings (for example `openai:text-embedding-3-small`) |
 | `thinking 4000` | `SANOOK_THINKING=4000` | opt-in Anthropic extended thinking on the main agent with a `budgetTokens` cap (default off) |
 
 Read-side savings are automatic: the agent reads file ranges (`read_file` with `offset`/`limit`) and edits with minimal `old_string` / `replace_all` rather than rewriting whole files.
@@ -322,7 +323,7 @@ SANOOK_MODEL=sonnet                 # default model alias or provider:model
 SANOOK_ALLOW_OUTSIDE_WORKSPACE=1    # allow file tools outside cwd/brain
 SANOOK_GATEWAY_ALLOW_WRITE=1        # let sanook serve run mutating tools unattended
 SANOOK_HOOKS_INHERIT_ENV=1          # pass full env to hooks instead of a minimal safe env
-SANOOK_DISABLE_PERSISTENCE=1        # do not save sessions or memory
+SANOOK_DISABLE_PERSISTENCE=1        # do not save sessions, memory, prompt history, or worklogs
 SANOOK_DISABLE_UPDATE_CHECK=1       # do not show interactive update prompts
 SANOOK_DISABLE_WORKLOG=1            # do not append second-brain worklogs
 SANOOK_TRUST_PROJECT=1              # temporary trust override for project .sanook extensions

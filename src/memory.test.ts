@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -66,10 +66,13 @@ describe('buildBrainContext (closed loop — remembered fact กลับเข�
 describe('appendBrainWorklog (auto worklog → vault Sessions)', () => {
   let vault: string;
   beforeEach(async () => {
+    vi.stubEnv('SANOOK_DISABLE_PERSISTENCE', '');
+    vi.stubEnv('SANOOK_DISABLE_WORKLOG', '');
     vault = await mkdtemp(join(tmpdir(), 'vault-'));
     await mkdir(join(vault, 'Sessions'), { recursive: true });
   });
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await rm(vault, { recursive: true, force: true });
   });
 
@@ -97,5 +100,11 @@ describe('appendBrainWorklog (auto worklog → vault Sessions)', () => {
     const notVault = await mkdtemp(join(tmpdir(), 'x-'));
     expect(await appendBrainWorklog(notVault, { prompt: 'x', summary: 'y', model: 'm', today: '2026-06-15' })).toBe(false);
     await rm(notVault, { recursive: true, force: true });
+  });
+
+  it('ไม่เขียน worklog เมื่อปิด persistence ทั้งหมด', async () => {
+    vi.stubEnv('SANOOK_DISABLE_PERSISTENCE', '1');
+    expect(await appendBrainWorklog(vault, { prompt: 'private task', summary: 'done', model: 'm', today: '2026-06-15' })).toBe(false);
+    await expect(readFile(join(vault, 'Sessions', '2026-06-15-worklog.md'), 'utf8')).rejects.toThrow();
   });
 });

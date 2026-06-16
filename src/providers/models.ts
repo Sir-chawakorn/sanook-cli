@@ -54,13 +54,29 @@ export async function listRemoteModels(
 
 /**
  * merge: curated alias (registry — มี label สื่อความหมาย) นำหน้า + remote id ที่เหลือต่อท้าย
- * dedup ด้วย model id (ไม่โชว์ id ซ้ำสองครั้ง). ใช้ทั้ง setup wizard และ /model picker
+ * dedup ด้วย model id — alias หลายตัวที่ชี้ id เดียวกัน (เช่น haiku/fast → claude-haiku-4-5,
+ * smart/gpt → gpt-5.5) ต้องรวมเป็น "haiku / fast — id" บรรทัดเดียว ไม่งั้น value ซ้ำ → React key ชน
+ * → ตัวเลือกโผล่ซ้ำ/หาย (bug "มีตัวเลือกสองตัวเลือกเป็น model เดียวกัน"). ใช้ทั้ง setup wizard และ /model picker
  */
 export function mergeModelOptions(cfg: ProviderConfig, remote: string[] = []): ModelOption[] {
-  const curated = Object.entries(cfg.models)
-    .filter(([alias]) => alias !== 'default')
-    .map(([alias, id]) => ({ id, label: `${alias} — ${id}` }));
-  const seen = new Set(curated.map((c) => c.id));
-  const extra = remote.filter((id) => !seen.has(id)).map((id) => ({ id, label: id }));
+  // group alias ทั้งหมดตาม id (รวม 'default' ด้วย — กัน id ที่มีแต่ alias 'default' เช่น lmstudio:local-model,
+  // ollama:qwen3 หายไปจนเลือกไม่ได้/Select ว่าง). ตอนทำ label ค่อยซ่อนคำ "default" ถ้ามีชื่ออื่นอยู่แล้ว
+  const aliasesById = new Map<string, string[]>();
+  const order: string[] = []; // คง first-seen order ของ id
+  for (const [alias, id] of Object.entries(cfg.models)) {
+    if (!aliasesById.has(id)) {
+      aliasesById.set(id, []);
+      order.push(id);
+    }
+    aliasesById.get(id)?.push(alias);
+  }
+  const curated = order.map((id) => {
+    const aliases = aliasesById.get(id) ?? [];
+    const named = aliases.filter((a) => a !== 'default');
+    const shown = named.length ? named : aliases; // มีแต่ 'default' → โชว์ 'default' (ดีกว่าซ่อน id หายไป)
+    return { id, label: `${shown.join(' / ')} — ${id}` };
+  });
+  const seen = new Set(order);
+  const extra = [...new Set(remote)].filter((id) => id && !seen.has(id)).map((id) => ({ id, label: id }));
   return [...curated, ...extra].map((o) => ({ label: o.label, value: o.id }));
 }

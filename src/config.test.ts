@@ -58,6 +58,11 @@ describe('loadConfig layering', () => {
     expect((await loadConfig({ model: 'cli-model' }, dir)).model).toBe('cli-model');
   });
 
+  it('keeps embeddingModel for semantic search config', async () => {
+    await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ embeddingModel: 'openai:text-embedding-3-small' }));
+    expect((await loadConfig({}, dir)).embeddingModel).toBe('openai:text-embedding-3-small');
+  });
+
   it('untrusted project config ลด permissionMode เป็น auto ไม่ได้', async () => {
     await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ permissionMode: 'auto' }));
     expect((await loadConfig({}, dir)).permissionMode).toBe('ask');

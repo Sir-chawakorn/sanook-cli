@@ -283,11 +283,31 @@ export interface EnvProvider {
   model: string; // default model alias-resolved id ของ provider นั้น
 }
 
-/** หา provider ที่ "มี key ใน env แล้ว" (cloud, ตามลำดับนิยม) — ใช้ทำ first-run smart skip + แนะ headless */
+/**
+ * provider นี้มี key ใน env ที่ "ใช้ได้จริง" ไหม — มี key + ผ่าน policy (ไม่ใช่ OAuth/subscription token
+ * หรือ format ผิด). ใช้ทั้ง first-run smart-skip และ -m flag เพื่อไม่ให้ข้าม wizard ทั้งที่ key ใช้ไม่ได้
+ * (เช่น export ANTHROPIC_API_KEY=sk-ant-oat… → ถูกแบน → ต้องเข้า wizard ไม่ใช่ขึ้น "พร้อมใช้")
+ */
+export function hasUsableEnvKey(provider: string): boolean {
+  const cfg = PROVIDERS[provider];
+  if (!cfg) return false;
+  if (cfg.kind === 'delegate') return false; // ต้องเช็ก readiness แยก (เช่น codex CLI installed + logged in)
+  if (!cfg.requiresKey) return true; // local — ไม่ต้อง key
+  const k = resolveKeyFromEnv(cfg.envVar, cfg.envFallbacks);
+  if (!k) return false;
+  try {
+    assertDirectApiKey(cfg, k); // reject OAuth prefix / format ผิด
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** หา provider ที่ "มี key ใช้ได้จริงใน env" (cloud, ตามลำดับนิยม) — ใช้ทำ first-run smart skip + แนะ headless */
 export function detectEnvProvider(): EnvProvider | null {
   for (const id of ['anthropic', 'openai', 'google', 'deepseek', 'xai', 'mistral', 'groq', 'glm', 'minimax']) {
     const cfg = PROVIDERS[id];
-    if (cfg?.requiresKey && resolveKeyFromEnv(cfg.envVar, cfg.envFallbacks)) {
+    if (cfg?.requiresKey && hasUsableEnvKey(id)) {
       return { provider: id, label: cfg.label, envVar: cfg.envVar, model: cfg.models.default };
     }
   }

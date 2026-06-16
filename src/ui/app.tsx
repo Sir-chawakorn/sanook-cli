@@ -341,7 +341,8 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     if (next) void submit(next);
   }
 
-  const banner = useMemo(() => <Banner model={initialModel} />, [initialModel]);
+  // banner ผูกกับ live `model` (ไม่ใช่ initialModel) → /model เปลี่ยนแล้ว banner อัปเดตตาม ไม่ค้าง model เก่า
+  const banner = useMemo(() => <Banner model={model} />, [model]);
   const costHint = lastCost.current.includes('cost ') ? lastCost.current.split('cost ')[1] : '';
 
   return (

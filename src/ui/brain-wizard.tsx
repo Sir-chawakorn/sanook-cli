@@ -44,9 +44,9 @@ export function BrainWizard({ onComplete }: { onComplete: (a: BrainAnswers) => v
 
       {step === 'owner' && (
         <Box flexDirection="column">
-          <Text>2. เรียกคุณว่าอะไรดี? (ชื่อ/ชื่อเล่น — Enter = ข้าม)</Text>
+          <Text>2. เรียกคุณว่าอะไรดี? (ชื่อ/ชื่อเล่น — Enter เปล่า = ใช้ &quot;{BRAIN_DEFAULTS.ownerName}&quot;)</Text>
           <TextInput
-            defaultValue={BRAIN_DEFAULTS.ownerName}
+            placeholder={BRAIN_DEFAULTS.ownerName}
             onSubmit={(v) => {
               setOwnerName(v.trim() || BRAIN_DEFAULTS.ownerName);
               setStep('ai');
@@ -57,9 +57,9 @@ export function BrainWizard({ onComplete }: { onComplete: (a: BrainAnswers) => v
 
       {step === 'ai' && (
         <Box flexDirection="column">
-          <Text>3. อยากให้ AI เรียกตัวเองว่าอะไร?</Text>
+          <Text>3. อยากให้ AI เรียกตัวเองว่าอะไร? <Text color="gray">(Enter เปล่า = &quot;{BRAIN_DEFAULTS.aiName}&quot;)</Text></Text>
           <TextInput
-            defaultValue={BRAIN_DEFAULTS.aiName}
+            placeholder={BRAIN_DEFAULTS.aiName}
             onSubmit={(v) => {
               setAiName(v.trim() || BRAIN_DEFAULTS.aiName);
               setStep('autonomy');

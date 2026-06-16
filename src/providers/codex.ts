@@ -19,8 +19,19 @@ export interface CodexStatus {
 export async function detectCodex(): Promise<CodexStatus> {
   const hasBinary = await new Promise<boolean>((resolve) => {
     const p = spawn('codex', ['--version'], { shell: process.platform === 'win32' });
-    p.on('error', () => resolve(false));
-    p.on('close', (code) => resolve(code === 0));
+    // timeout: binary ค้าง (shim รอ stdin / Gatekeeper stall ตอนรันครั้งแรกบน macOS) → ไม่ให้ wizard ตัน
+    const timer = setTimeout(() => {
+      p.kill();
+      resolve(false);
+    }, 5000);
+    p.on('error', () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+    p.on('close', (code) => {
+      clearTimeout(timer);
+      resolve(code === 0);
+    });
   });
   if (!hasBinary) {
     return { installed: false, loggedIn: false, reason: 'ไม่พบ codex CLI — ติดตั้ง: npm i -g @openai/codex' };

@@ -166,7 +166,7 @@ export async function appendBrainWorklog(
   brainPath: string,
   entry: { prompt: string; summary: string; model: string; today: string },
 ): Promise<boolean> {
-  if (!worklogEnabled()) return false;
+  if (!persistenceEnabled() || !worklogEnabled()) return false;
   const dir = join(brainPath, 'Sessions');
   if (!(await exists(dir))) return false; // ไม่ใช่ vault → ข้าม
   const topic = entry.prompt.trim().split(/\s+/).slice(0, 6).join(' ').slice(0, 50) || 'work';

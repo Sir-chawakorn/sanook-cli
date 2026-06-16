@@ -45,6 +45,8 @@ export const ConfigSchema = z.object({
   thinking: z.union([z.boolean(), z.number().int().positive()]).optional().catch(undefined),
   // model สำหรับย่อ (compaction=summarize) — ไม่ตั้ง = ใช้ fast-sibling ของ model หลัก (ค่ายเดียวกัน ถูกกว่า)
   summaryModel: z.string().optional().catch(undefined),
+  // model สำหรับ semantic search embeddings (เช่น openai:text-embedding-3-small)
+  embeddingModel: z.string().optional().catch(undefined),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

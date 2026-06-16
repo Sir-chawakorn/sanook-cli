@@ -6,9 +6,36 @@
 
 The setup wizard and the REPL were two separate Ink renders (`render(SetupWizard)` → `unmount` → `render(App)`). After the first Ink instance unmounted, stdin raw-mode/keypress handling didn't reattach to the second, so the chat input was dead — you couldn't type anything. Now the wizard, the brain wizard, and the REPL live under **one Ink render** (a `Root` component swaps screens), so stdin stays continuous and input works the moment the REPL appears. (Regression-tested with ink-testing-library: typed characters reach the input box; phase routing verified.)
 
+### Setup/first-run audit — 8 bugs found by adversarial review, all fixed
+
+A multi-agent review of the first-run + setup + REPL flow surfaced (and independently verified) eight real, user-facing bugs — now fixed and regression-tested:
+
+- **Empty API key silently completed setup.** `@inkjs/ui` PasswordInput fires `onSubmit` on Enter even when empty, so pressing Enter on a blank key advanced the wizard, finished, and saved *no key* — the first message then failed with "no API key" and no way back. The key step now rejects an empty submit (stays put, shows an inline error).
+- **Wizard accepted OAuth/malformed keys it explicitly warned against.** The key step now runs the same `assertDirectApiKey` policy the runtime uses — paste a `sk-ant-oat…` subscription token and it's rejected *at the input* with a clear message, instead of being saved and blowing up later.
+- **No way back from the key/model steps.** Picking the wrong provider dead-ended you into typing a key for the wrong service (Ctrl+C was the only escape). **Esc now returns to provider selection** from any step.
+- **First-run env-detect trusted banned tokens.** An exported OAuth token (`ANTHROPIC_API_KEY=sk-ant-oat…`) made sanook print "✅ ready" and skip the wizard, then error on every message. `detectEnvProvider` now validates the key against policy (new `hasUsableEnvKey`) and falls through to the wizard when it's unusable.
+- **First-run ignored an explicit `-m` flag.** `sanook -m groq` on a machine with only `OPENAI_API_KEY` printed "OpenAI ready" and ran a keyless Groq session. First-run now keys off the `-m` provider when given.
+- **Codex auth step could wedge.** `detectCodex` had no timeout, so a hung `codex` binary left the step with no way forward. Added a 5s timeout (+ Esc always backs out).
+- **Brain wizard name fields were pre-filled with the literal default** (`Owner` / `ผู้ช่วย`), so typing a custom name produced `OwnerPick`. Switched to a placeholder so the field starts empty (Enter still accepts the default).
+- **Banner showed a stale model after `/model`.** It now tracks the live model.
+
+### Fix: duplicate / empty model choices in the setup wizard
+
+`mergeModelOptions` only deduped *remote* model ids against the curated list — never the curated list against itself. So aliases pointing at the same id rendered as **two identical-looking choices** (e.g. `haiku — claude-haiku-4-5` and `fast — claude-haiku-4-5`; OpenAI's `smart`/`gpt` both → `gpt-5.5`), which also collided on React keys (`Encountered two children with the same key` → options could duplicate or vanish). It now groups by model id and merges the alias names into one option (`haiku / fast — claude-haiku-4-5`). Separately, the old code dropped the `default` alias entirely, which **emptied the model list for LM Studio** (`{ default: 'local-model' }`) and hid Ollama's `qwen3` — those models are now selectable again. Locked in with tests (every provider yields unique option values; LM Studio/Ollama are non-empty).
+
+### CLI audit follow-ups
+
+- **`--continue-any` actually works as a resume flag now.** The headless arg parser forgot to consume it, so `sanook --continue-any` became a literal prompt instead of opening the REPL with the latest cross-project session. The parser is now split into a tested module and consumes all resume/headless aliases.
+- **Search flags are validated.** `sanook search q --mode nope` used to silently fall back to FTS, and `--limit -5` could produce odd slice behavior. Search args now reject invalid modes, sources, missing queries, and non-positive limits with a clear usage line.
+- **`SANOOK_DISABLE_PERSISTENCE=1` now includes second-brain worklogs.** Sessions, auto-memory, prompt history, and worklogs all honor the global persistence kill switch; `SANOOK_DISABLE_WORKLOG=1` remains available for worklog-only opt-out.
+- **First-run Codex readiness is real.** `sanook -m codex` no longer skips setup just because Codex does not use an API key; it only skips when the official `codex` CLI is installed and logged in.
+- **Provider menu env-key labels now use the same key policy as runtime.** Malformed/OAuth env keys show as unusable instead of a misleading ready checkmark.
+- **`config set embeddingModel ...` is now supported.** The README documented this semantic-search setting, but the config allowlist/schema did not accept it.
+- **Help/docs cleanup.** The CLI help no longer points at the deprecated OpenAI Codex model id, and the README test badge was refreshed.
+
 ### Setup wizard — better provider selection + working OpenAI Codex login
 
-- **Provider menu**: each option now shows a one-line hint — `✓ เจอ key ใน env`, `local · ไม่ต้อง key`, `login ChatGPT · ไม่ใช้ API key`, or `ต้องมี API key` — and the list is ordered (popular cloud → others → local → Codex). The API-key step shows the expected key format.
+- **Provider menu**: each option now shows a one-line hint — `✓ key ใน env ใช้ได้`, `key ใน env ใช้ไม่ได้`, `local · ไม่ต้อง key`, `login ChatGPT · ไม่ใช้ API key`, or `ต้องมี API key` — and the list is ordered (popular cloud → others → local → Codex). The API-key step shows the expected key format.
 - **OpenAI Codex (ChatGPT plan)**: picking Codex used to skip straight past auth. It now runs a dedicated step that detects whether the `codex` CLI is installed and logged in (reads `~/.codex/auth.json` — robust inside sandboxes where `codex login status` can panic), and guides you: `npm i -g @openai/codex` → `codex login` → re-check, then continues automatically once you're signed in. No API key required.
 - **Codex runs**: `codex exec` now passes `--ask-for-approval never` (no hang waiting on approvals; safe under the default read-only sandbox) and removes `OPENAI_API_KEY` from the child env so it can't fight the ChatGPT-plan login (codex #2733/#3286). Verified the exact CLI surface against the official OpenAI Codex docs.
 

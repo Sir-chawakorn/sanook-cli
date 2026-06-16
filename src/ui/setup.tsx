@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useInput } from 'ink';
 import { Select, PasswordInput } from '@inkjs/ui';
-import { PROVIDERS, consoleUrl } from '../providers/registry.js';
-import { resolveKeyFromEnv } from '../providers/keys.js';
+import { PROVIDERS, consoleUrl, hasUsableEnvKey } from '../providers/registry.js';
+import { resolveKeyFromEnv, assertDirectApiKey } from '../providers/keys.js';
 import { listRemoteModels, mergeModelOptions } from '../providers/models.js';
 import { detectCodex, type CodexStatus } from '../providers/codex.js';
 import { BRAND } from '../brand.js';
@@ -26,7 +26,8 @@ export function providerOption(id: string): { label: string; value: string } {
   let hint: string;
   if (p.kind === 'delegate') hint = 'login ChatGPT · ไม่ใช้ API key';
   else if (!p.requiresKey) hint = 'local · ไม่ต้อง key';
-  else if (resolveKeyFromEnv(p.envVar, p.envFallbacks)) hint = '✓ เจอ key ใน env';
+  else if (hasUsableEnvKey(id)) hint = '✓ key ใน env ใช้ได้';
+  else if (resolveKeyFromEnv(p.envVar, p.envFallbacks)) hint = 'key ใน env ใช้ไม่ได้';
   else hint = 'ต้องมี API key';
   return { label: `${p.label}  —  ${hint}`, value: p.id };
 }
@@ -41,6 +42,7 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
   const [loadingModels, setLoadingModels] = useState(false);
   const [codexStatus, setCodexStatus] = useState<CodexStatus | null>(null);
   const [recheck, setRecheck] = useState(0);
+  const [keyError, setKeyError] = useState('');
 
   const cfg = provider ? PROVIDERS[provider] : undefined;
   const providerOptions = PROVIDER_ORDER.filter((id) => PROVIDERS[id]).map(providerOption);
@@ -84,7 +86,35 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
   const backToProvider = (): void => {
     setProvider('');
     setCodexStatus(null);
+    setKeyError('');
+    setKey('');
     setStep('provider');
+  };
+
+  // Esc บนทุก step (ยกเว้น provider) = ย้อนกลับไปเลือก provider — กัน dead-end ตอนเลือกผิด
+  // หรือ codex detect ค้าง (step codex-auth ตอน pending ไม่มีปุ่มอื่น แต่ Esc ออกได้เสมอ)
+  useInput((_input, key) => {
+    if (key.escape && step !== 'provider') backToProvider();
+  });
+
+  // ตรวจ API key ในขั้นใส่ key — ว่าง = ไม่ผ่าน, OAuth/format ผิด = บอก error (กัน setup จบทั้งที่ key ใช้ไม่ได้)
+  const submitKey = (raw: string): void => {
+    const k = raw.trim();
+    if (!k) {
+      setKeyError('วาง API key ก่อนค่ะ (กด Enter ทั้งที่ว่างไม่ได้) · Esc = กลับไปเลือก provider');
+      return;
+    }
+    if (cfg) {
+      try {
+        assertDirectApiKey(cfg, k); // reject OAuth/subscription token + format ผิด (เหมือน runtime)
+      } catch (e) {
+        setKeyError((e as Error).message.split('\n')[0]);
+        return;
+      }
+    }
+    setKeyError('');
+    setKey(k);
+    setStep('model');
   };
 
   return (
@@ -149,17 +179,12 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
 
       {step === 'key' && cfg && (
         <Box flexDirection="column">
-          <Text>2. วาง API key ของ {cfg.label}:</Text>
+          <Text>2. วาง API key ของ {cfg.label}: <Text color="gray">(Esc = กลับ)</Text></Text>
           {consoleUrl(provider) ? <Text color="cyan">   → เอา key ที่: {consoleUrl(provider)}</Text> : null}
           {cfg.keyExample ? <Text color="gray">   รูปแบบ key: {cfg.keyExample}</Text> : null}
           <Text color="gray">   (API key ตรงจาก console — ห้าม OAuth/subscription token · key จะเก็บแบบเข้ารหัสในเครื่อง)</Text>
-          <PasswordInput
-            placeholder={cfg.envVar}
-            onSubmit={(v) => {
-              setKey(v.trim());
-              setStep('model');
-            }}
-          />
+          <PasswordInput placeholder={cfg.envVar} onSubmit={submitKey} />
+          {keyError ? <Text color="red">   ✗ {keyError}</Text> : null}
         </Box>
       )}
 

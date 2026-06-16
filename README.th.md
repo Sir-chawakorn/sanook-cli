@@ -114,7 +114,7 @@ sanook trust remove
 ```
 
 - gateway bind ที่ `127.0.0.1` และต้องใช้ bearer token ยกเว้น `/health`; mutating tools ใน `sanook serve` เป็น `ask` โดย default และ opt-in unattended write ได้ด้วย `sanook config set permissionMode auto` หรือ `SANOOK_GATEWAY_ALLOW_WRITE=1`
-- session/memory/worklog redact API keys ก่อนบันทึก และปิด persistence ได้ด้วย `SANOOK_DISABLE_PERSISTENCE=1`
+- session/memory/prompt history/worklog redact API keys ก่อนบันทึก และปิด persistence ทั้งหมดได้ด้วย `SANOOK_DISABLE_PERSISTENCE=1`
 
 ## พัฒนา
 
