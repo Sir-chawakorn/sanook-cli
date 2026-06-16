@@ -54,7 +54,7 @@ A multi-agent review of the first-run + setup + REPL flow surfaced (and independ
 
 - **Provider menu**: each option now shows a one-line hint — `✓ key ใน env ใช้ได้`, `key ใน env ใช้ไม่ได้`, `local · ไม่ต้อง key`, `login ChatGPT · ไม่ใช้ API key`, or `ต้องมี API key` — and the list is ordered (popular cloud → others → local → Codex). The API-key step shows the expected key format.
 - **OpenAI Codex (ChatGPT plan)**: picking Codex used to skip straight past auth. It now runs a dedicated step that detects whether the `codex` CLI is installed and logged in (reads `~/.codex/auth.json` — robust inside sandboxes where `codex login status` can panic), and guides you: `npm i -g @openai/codex` → `codex login` → re-check, then continues automatically once you're signed in. No API key required.
-- **Codex runs**: `codex exec` now passes `--ask-for-approval never` (no hang waiting on approvals; safe under the default read-only sandbox) and removes `OPENAI_API_KEY` from the child env so it can't fight the ChatGPT-plan login (codex #2733/#3286). Verified the exact CLI surface against the official OpenAI Codex docs.
+- **Codex runs**: `codex exec` now runs through the current non-interactive JSON CLI surface, uses the requested sandbox (`read-only` by default, `workspace-write` in auto mode), and removes `OPENAI_API_KEY` from the child env so it can't fight the ChatGPT-plan login (codex #2733/#3286). Verified against the installed Codex CLI surface.
 
 ## 0.5.0
 

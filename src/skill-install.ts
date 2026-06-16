@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, readdir, rm, stat, lstat, copyFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir, rm, stat, lstat, copyFile, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, basename, resolve, sep, dirname } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -14,6 +14,7 @@ const USER_SKILLS = appHomePath('skills');
 const MAX_FILES = 300;
 const MAX_BYTES = 20 * 1024 * 1024; // 20MB ต่อ skill
 const MAX_MD = 2 * 1024 * 1024; // 2MB ต่อ SKILL.md จาก URL
+const SUPPORT_DIRS = new Set(['references', 'scripts', 'assets', 'templates']);
 
 export interface InstallResult {
   name: string;
@@ -35,7 +36,7 @@ interface Budget {
   bytes: number;
 }
 
-async function copyTreeSafe(srcDir: string, destDir: string, budget: Budget, depth = 2): Promise<void> {
+async function copyTreeSafe(srcDir: string, destDir: string, budget: Budget, depth = 2, atRoot = true): Promise<void> {
   if (depth < 0) return;
   let entries;
   try {
@@ -45,11 +46,12 @@ async function copyTreeSafe(srcDir: string, destDir: string, budget: Budget, dep
   }
   for (const e of entries) {
     if (e.name.startsWith('.')) continue; // skip .git/dotfiles
+    if (atRoot && e.name !== 'SKILL.md' && !SUPPORT_DIRS.has(e.name)) continue;
     const s = join(srcDir, e.name);
     const st = await lstat(s);
     if (st.isSymbolicLink()) continue; // ห้าม copy symlink (กัน planted symlink หลุด ~/.sanook)
     if (st.isDirectory()) {
-      await copyTreeSafe(s, join(destDir, e.name), budget, depth - 1);
+      await copyTreeSafe(s, join(destDir, e.name), budget, depth - 1, false);
     } else if (st.isFile()) {
       if (--budget.files < 0) throw new Error('skill มีไฟล์เยอะเกินไป');
       budget.bytes -= st.size;
@@ -60,7 +62,22 @@ async function copyTreeSafe(srcDir: string, destDir: string, budget: Budget, dep
   }
 }
 
-/** copy skill dir (SKILL.md + references/scripts ที่เป็น regular file) → ~/.sanook/skills/<name> */
+async function replaceSkillDir(name: string, populate: (dir: string) => Promise<void>): Promise<string> {
+  const dest = join(USER_SKILLS, name);
+  const tmp = join(USER_SKILLS, `.${name}.${randomUUID()}.tmp`);
+  await mkdir(USER_SKILLS, { recursive: true });
+  try {
+    await populate(tmp);
+    await rm(dest, { recursive: true, force: true });
+    await rename(tmp, dest);
+    return dest;
+  } catch (e) {
+    await rm(tmp, { recursive: true, force: true }).catch(() => {});
+    throw e;
+  }
+}
+
+/** copy skill dir (SKILL.md + allowed support dirs as regular files) → ~/.sanook/skills/<name> */
 async function installFromDir(srcDir: string): Promise<InstallResult> {
   const md = join(srcDir, 'SKILL.md');
   const stMd = await lstat(md);
@@ -68,10 +85,7 @@ async function installFromDir(srcDir: string): Promise<InstallResult> {
   const { meta } = parseFrontmatter(await readFile(md, 'utf8'));
   const name = meta.name || basename(srcDir);
   if (!isValidSkillName(name)) throw new Error(`ชื่อ skill ไม่ถูกต้อง: "${name}"`);
-  const dest = join(USER_SKILLS, name);
-  await rm(dest, { recursive: true, force: true });
-  await mkdir(dest, { recursive: true });
-  await copyTreeSafe(srcDir, dest, { files: MAX_FILES, bytes: MAX_BYTES });
+  const dest = await replaceSkillDir(name, (tmp) => copyTreeSafe(srcDir, tmp, { files: MAX_FILES, bytes: MAX_BYTES }));
   return { name, path: dest };
 }
 
@@ -80,10 +94,10 @@ async function installFromContent(content: string, fallbackName: string): Promis
   const { meta } = parseFrontmatter(content);
   const name = meta.name || fallbackName;
   if (!isValidSkillName(name)) throw new Error(`ชื่อ skill ไม่ถูกต้อง: "${name}"`);
-  const dest = join(USER_SKILLS, name);
-  await rm(dest, { recursive: true, force: true });
-  await mkdir(dest, { recursive: true });
-  await writeFile(join(dest, 'SKILL.md'), content);
+  const dest = await replaceSkillDir(name, async (tmp) => {
+    await mkdir(tmp, { recursive: true });
+    await writeFile(join(tmp, 'SKILL.md'), content);
+  });
   return { name, path: dest };
 }
 
@@ -99,6 +113,7 @@ async function installFromLocal(path: string, onLog?: (m: string) => void): Prom
       continue;
     }
     for (const e of entries) {
+      if (e.name.startsWith('.')) continue;
       if (e.isDirectory() && (await exists(join(root, e.name, 'SKILL.md')))) {
         try {
           out.push(await installFromDir(join(root, e.name)));

@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { addDoc, emptyIndex, bm25Search, indexStats } from './index-core.js';
 import {
   indexVaultFiles,
@@ -197,5 +200,37 @@ describe('vectorizeIndex — semantic sidecar build', () => {
     const idx = emptyIndex();
     addDoc(idx, { id: 'a', source: 'vault', title: '', text: 'one doc' });
     await expect(vectorizeIndex(idx, 'fake:model', async () => [])).rejects.toThrow(/embedding count mismatch/);
+  });
+});
+
+describe('reindex — semantic sidecar invalidation', () => {
+  let home: string;
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'sanook-reindex-home-'));
+    vi.stubEnv('HOME', home);
+    vi.stubEnv('SANOOK_EMBEDDING_MODEL', 'missing-provider');
+    vi.resetModules();
+  });
+
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    await rm(home, { recursive: true, force: true });
+  });
+
+  it('clears stale saved vectors when no embedding provider resolves', async () => {
+    const Embed = await import('./embed-store.js');
+    await Embed.saveVectors(Embed.buildVectorIndex('old:model', [{ id: 'stale-doc', vec: [1, 0] }]));
+    expect((await Embed.loadVectors()).ids).toEqual(['stale-doc']);
+
+    const { reindex } = await import('./indexer.js');
+    const report = await reindex(1234);
+
+    const cleared = await Embed.loadVectors();
+    expect(report.vectors).toBe(0);
+    expect(cleared.tag).toBe('');
+    expect(cleared.dim).toBe(0);
+    expect(cleared.ids).toEqual([]);
   });
 });

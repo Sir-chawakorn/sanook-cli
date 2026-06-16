@@ -15,6 +15,10 @@ export interface CodexStatus {
   reason?: string;
 }
 
+export function codexHome(): string {
+  return process.env.CODEX_HOME?.trim() || join(homedir(), '.codex');
+}
+
 /** เช็กว่า codex CLI ติดตั้ง + login ChatGPT แล้ว */
 export async function detectCodex(): Promise<CodexStatus> {
   const hasBinary = await new Promise<boolean>((resolve) => {
@@ -37,7 +41,7 @@ export async function detectCodex(): Promise<CodexStatus> {
     return { installed: false, loggedIn: false, reason: 'ไม่พบ codex CLI — ติดตั้ง: npm i -g @openai/codex' };
   }
   try {
-    const auth = JSON.parse(await readFile(join(homedir(), '.codex', 'auth.json'), 'utf8')) as {
+    const auth = JSON.parse(await readFile(join(codexHome(), 'auth.json'), 'utf8')) as {
       auth_mode?: string;
       tokens?: { access_token?: string };
     };

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { exactMatch, whitespaceFlexMatch, findMatch, editFileTool } from './edit.js';
@@ -203,5 +203,19 @@ describe('write / read / list tools', () => {
   it('glob block traversal/absolute pattern แม้ cwd อยู่ใน workspace', async () => {
     expect(await globTool.execute!({ pattern: '../*', cwd: '.' }, opts)).toMatch(/BLOCKED/);
     expect(await globTool.execute!({ pattern: '/tmp/*', cwd: '.' }, opts)).toMatch(/BLOCKED/);
+  });
+  it('glob filters protected paths even when explicitly matched', async () => {
+    await mkdir(join(dir, '.git'), { recursive: true });
+    await mkdir(join(dir, 'node_modules', 'pkg'), { recursive: true });
+    await writeFile(join(dir, '.git', 'config'), 'secret');
+    await writeFile(join(dir, 'node_modules', 'pkg', 'index.js'), 'secret');
+    await writeFile(join(dir, '.env'), 'SECRET=x');
+    await writeFile(join(dir, '.env.example'), 'SAFE=x');
+
+    const envOut = String(await globTool.execute!({ pattern: '.env*', cwd: dir }, opts));
+    expect(envOut).toContain('.env.example');
+    expect(envOut).not.toMatch(/(^|\n)\.env($|\n)/);
+    expect(await globTool.execute!({ pattern: '.git/**', cwd: dir }, opts)).toBe('(no matches)');
+    expect(await globTool.execute!({ pattern: 'node_modules/**', cwd: dir }, opts)).toBe('(no matches)');
   });
 });

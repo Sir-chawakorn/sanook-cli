@@ -25,7 +25,7 @@ import { activeFacts, effImportance, loadStore, type Fact } from '../memory-stor
 import { chunkMarkdown } from './chunk.js';
 import { addDoc, removeDoc, removeSource, type Doc, type InvertedIndex } from './index-core.js';
 import { loadIndex, saveIndex, type Manifest } from './store.js';
-import { buildVectorIndex, embedTexts, getEmbedder, saveVectors, type VectorIndex } from './embed-store.js';
+import { buildVectorIndex, embedTexts, getEmbedder, invalidateVectors, saveVectors, type VectorIndex } from './embed-store.js';
 
 /** injected filesystem boundary — real impl walks disk; tests pass an in-memory map. */
 export interface VaultFS {
@@ -330,14 +330,18 @@ export async function reindex(now: number = Date.now()): Promise<IndexReport> {
 
   let vectors = 0;
   const embedder = getEmbedder(process.env.SANOOK_EMBEDDING_MODEL ?? (await configEmbeddingModel()));
-  if (embedder) {
+  if (!embedder) {
+    await invalidateVectors().catch(() => {});
+  } else {
     try {
       const vi = await vectorizeIndex(index, embedder.tag, (texts) => embedTexts(embedder, texts));
       await saveVectors(vi);
       vectors = vi.ids.length;
     } catch {
       // Semantic search is optional. A provider/network failure must never break
-      // the BM25 floor; the engine will degrade until the next successful index.
+      // the BM25 floor. Clear stale vectors so hybrid/semantic cannot rank the
+      // freshly-saved BM25 index with embeddings from an older corpus.
+      await invalidateVectors(embedder.tag).catch(() => {});
     }
   }
 

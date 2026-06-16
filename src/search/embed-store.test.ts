@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   buildVectorIndex,
   cosineTopK,
@@ -92,5 +95,34 @@ describe('serialize round-trip', () => {
     const vi = buildVectorIndex('openai:text-embedding-3-small', [{ id: 'a', vec: [1, 0] }]);
     const restored = deserializeVectors(JSON.parse(JSON.stringify(serializeVectors(vi))));
     expect(restored.tag).not.toBe('mistral:mistral-embed'); // caller compares tag → re-embed
+  });
+});
+
+describe('vector fs store', () => {
+  let home: string;
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'sanook-vectors-home-'));
+    vi.stubEnv('HOME', home);
+    vi.resetModules();
+  });
+
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    await rm(home, { recursive: true, force: true });
+  });
+
+  it('invalidateVectors clears stale saved vectors while preserving the attempted tag', async () => {
+    const M = await import('./embed-store.js');
+
+    await M.saveVectors(M.buildVectorIndex('fake:model', [{ id: 'a', vec: [1, 0] }]));
+    expect((await M.loadVectors()).ids).toEqual(['a']);
+
+    await M.invalidateVectors('fake:model');
+    const cleared = await M.loadVectors();
+    expect(cleared.tag).toBe('fake:model');
+    expect(cleared.dim).toBe(0);
+    expect(cleared.ids).toEqual([]);
   });
 });

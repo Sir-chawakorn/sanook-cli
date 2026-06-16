@@ -99,7 +99,10 @@ export const globTool = tool({
     try {
       const out: string[] = [];
       for await (const f of glob(pattern, { cwd: base })) {
-        out.push(f);
+        const match = String(f);
+        const itemGuard = await checkReadPath(join(base, match));
+        if (!itemGuard.ok) continue;
+        out.push(match);
         if (out.length >= MAX_RESULTS) {
           out.push(`... [>${MAX_RESULTS} matches, truncated]`);
           break;

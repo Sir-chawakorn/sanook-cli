@@ -1,11 +1,14 @@
 import { EventEmitter } from 'node:events';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, afterEach, vi } from 'vitest';
 
 const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
 
 vi.mock('node:child_process', () => ({ spawn: spawnMock }));
 
-import { runCodex } from './codex.js';
+import { codexHome, detectCodex, runCodex } from './codex.js';
 
 type MockChild = EventEmitter & {
   stdin: EventEmitter & { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> };
@@ -110,5 +113,45 @@ describe('runCodex', () => {
 
     controller.abort();
     expect(child.kill).not.toHaveBeenCalled();
+  });
+});
+
+describe('detectCodex', () => {
+  afterEach(() => {
+    spawnMock.mockReset();
+    vi.unstubAllEnvs();
+  });
+
+  it('honors CODEX_HOME when checking ChatGPT login state', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sanook-codex-home-'));
+    try {
+      await mkdir(home, { recursive: true });
+      await writeFile(join(home, 'auth.json'), JSON.stringify({ auth_mode: 'chatgpt' }));
+      vi.stubEnv('CODEX_HOME', home);
+      const child = mockSpawnedCodex();
+
+      const statusPromise = detectCodex();
+      child.emit('close', 0);
+
+      await expect(statusPromise).resolves.toEqual({ installed: true, loggedIn: true, reason: undefined });
+      expect(codexHome()).toBe(home);
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it('reports installed but not logged in when CODEX_HOME has no auth file', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sanook-codex-home-'));
+    try {
+      vi.stubEnv('CODEX_HOME', home);
+      const child = mockSpawnedCodex();
+
+      const statusPromise = detectCodex();
+      child.emit('close', 0);
+
+      await expect(statusPromise).resolves.toMatchObject({ installed: true, loggedIn: false });
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
   });
 });

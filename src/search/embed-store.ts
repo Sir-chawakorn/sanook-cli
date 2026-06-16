@@ -161,6 +161,10 @@ export async function saveVectors(vi: VectorIndex): Promise<void> {
   }
 }
 
+export function invalidateVectors(tag = ''): Promise<void> {
+  return saveVectors(emptyVectors(tag));
+}
+
 export async function vectorsMtimeMs(): Promise<number> {
   try {
     return (await stat(VECTORS_PATH)).mtimeMs;
