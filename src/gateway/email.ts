@@ -500,6 +500,7 @@ export function startEmail(opts: EmailGatewayOpts): () => void {
           target: email.from,
           model: opts.model,
           prompt: emailPrompt(email),
+          userText: email.text,
           budgetUsd: opts.budgetUsd,
           permissionMode: opts.allowWrite === true ? 'auto' : 'ask',
         });

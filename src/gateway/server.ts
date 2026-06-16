@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { ModelMessage } from 'ai';
 import { listTasks, enqueueTask } from './ledger.js';
 import { parseSchedule } from './schedule.js';
+import { formatTarget, parseSendTarget } from './targets.js';
 import { tokenMatches } from './auth.js';
 import { runAgent } from '../loop.js';
 import { redactKey } from '../providers/keys.js';
@@ -22,6 +23,11 @@ export interface ServerOpts {
 function send(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'content-type': 'application/json' });
   res.end(JSON.stringify(body));
+}
+
+function sendRaw(res: ServerResponse, status: number, contentType: string, body: string): void {
+  res.writeHead(status, { 'content-type': contentType });
+  res.end(body);
 }
 
 function sendSse(res: ServerResponse, body: unknown): void {
@@ -46,6 +52,16 @@ export function parseOptionalSchedule(
   return schedule ? { schedule } : { schedule: null, invalid: String(value) };
 }
 
+export function parseOptionalDeliverTarget(value: unknown): { deliver?: string; invalid?: string } {
+  const deliverText = optionalString(value);
+  if (!deliverText) return {};
+  try {
+    return { deliver: formatTarget(parseSendTarget(deliverText)) };
+  } catch (e) {
+    return { invalid: (e as Error).message };
+  }
+}
+
 const MAX_BODY = 1_000_000; // 1MB กัน memory blowup
 
 /** error ที่พก HTTP status — ให้ client เห็น 400/413 (client error) แทน 500 (server error) */
@@ -59,14 +75,7 @@ class HttpError extends Error {
 }
 
 async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const c of req) {
-    size += (c as Buffer).length;
-    if (size > MAX_BODY) throw new HttpError(413, 'request body ใหญ่เกิน'); // Payload Too Large
-    chunks.push(c as Buffer);
-  }
-  const raw = Buffer.concat(chunks).toString('utf8');
+  const raw = await readRawBody(req);
   if (!raw) return {};
   let parsed: unknown;
   try {
@@ -75,6 +84,17 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
     throw new HttpError(400, 'invalid JSON body'); // Bad Request — ไม่ leak ข้อความ parser
   }
   return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+}
+
+async function readRawBody(req: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const c of req) {
+    size += (c as Buffer).length;
+    if (size > MAX_BODY) throw new HttpError(413, 'request body ใหญ่เกิน'); // Payload Too Large
+    chunks.push(c as Buffer);
+  }
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 /**
@@ -100,6 +120,70 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
   // /health = public (เช็คว่า process alive โดยไม่ต้องมี token)
   if (req.method === 'GET' && url.pathname === '/health') {
     return send(res, 200, { ok: true, service: BRAND.gatewayServiceName });
+  }
+
+  if (req.method === 'GET' && url.pathname === '/line/webhook/health') {
+    return send(res, 200, { status: 'ok', platform: 'line' });
+  }
+
+  if (req.method === 'GET' && url.pathname === '/sms/webhook/health') {
+    return send(res, 200, { status: 'ok', platform: 'sms' });
+  }
+
+  if (req.method === 'GET' && url.pathname === '/webhooks/health') {
+    return send(res, 200, { status: 'ok', platform: 'webhook' });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/line/webhook') {
+    const rawBody = await readRawBody(req);
+    const signature = Array.isArray(req.headers['x-line-signature']) ? req.headers['x-line-signature'][0] : req.headers['x-line-signature'];
+    const { readGatewayConfig, resolveLineConfig } = await import('./config.js');
+    const { handleLineWebhook } = await import('./line.js');
+    const result = await handleLineWebhook({
+      rawBody,
+      signature,
+      config: resolveLineConfig(await readGatewayConfig()),
+      model: opts.defaultModel,
+      budgetUsd: opts.budgetUsd,
+      permissionMode: opts.permissionMode ?? 'ask',
+      onLog: opts.onLog,
+    });
+    return send(res, result.status, result.body);
+  }
+
+  if (req.method === 'POST' && url.pathname === '/sms/webhook') {
+    const rawBody = await readRawBody(req);
+    const signature = Array.isArray(req.headers['x-twilio-signature']) ? req.headers['x-twilio-signature'][0] : req.headers['x-twilio-signature'];
+    const { readGatewayConfig, resolveSmsConfig } = await import('./config.js');
+    const { handleSmsWebhook } = await import('./sms.js');
+    const result = await handleSmsWebhook({
+      rawBody,
+      signature,
+      config: resolveSmsConfig(await readGatewayConfig()),
+      model: opts.defaultModel,
+      budgetUsd: opts.budgetUsd,
+      permissionMode: opts.permissionMode ?? 'ask',
+      onLog: opts.onLog,
+    });
+    return sendRaw(res, result.status, result.contentType, result.body);
+  }
+
+  if (req.method === 'POST' && url.pathname.startsWith('/webhooks/')) {
+    const routeName = decodeURIComponent(url.pathname.slice('/webhooks/'.length)).replace(/^\/+|\/+$/g, '');
+    const rawBody = await readRawBody(req);
+    const { readGatewayConfig, resolveWebhookConfig } = await import('./config.js');
+    const { handleWebhookRequest } = await import('./webhooks.js');
+    const result = await handleWebhookRequest({
+      routeName,
+      rawBody,
+      headers: req.headers,
+      config: resolveWebhookConfig(await readGatewayConfig()),
+      model: opts.defaultModel,
+      budgetUsd: opts.budgetUsd,
+      permissionMode: opts.permissionMode ?? 'ask',
+      onLog: opts.onLog,
+    });
+    return send(res, result.status, result.body);
   }
 
   // ทุก endpoint อื่น → bearer token
@@ -187,11 +271,14 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
     if (!spec) return send(res, 400, { error: 'ต้องมี spec' });
     const { schedule: sched, invalid } = parseOptionalSchedule(body.schedule, Date.now());
     if (invalid) return send(res, 400, { error: `schedule ไม่ถูกต้อง: ${invalid}` });
+    const { deliver, invalid: invalidDeliver } = parseOptionalDeliverTarget(body.deliver);
+    if (invalidDeliver) return send(res, 400, { error: invalidDeliver });
     const task = await enqueueTask({
       kind: sched?.recurring ? 'cron' : 'once',
       spec,
       schedule: sched?.recurring ? sched.normalized : undefined,
       model: optionalString(body.model),
+      deliver,
       runAt: sched?.runAt ?? Date.now(),
     });
     return send(res, 201, { task });

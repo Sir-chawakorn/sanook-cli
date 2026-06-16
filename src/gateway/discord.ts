@@ -139,6 +139,7 @@ export function startDiscord(opts: DiscordGatewayOpts): () => void {
           target: sessionTarget,
           model: opts.model,
           prompt: text,
+          userText: text,
           budgetUsd: opts.budgetUsd,
           permissionMode: opts.allowWrite === true ? 'auto' : 'ask',
         });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { optionalString, parseOptionalSchedule } from './server.js';
+import { optionalString, parseOptionalDeliverTarget, parseOptionalSchedule } from './server.js';
 
 describe('gateway server input normalization', () => {
   it('trims optional strings and drops blanks', () => {
@@ -19,5 +19,13 @@ describe('gateway server input normalization', () => {
       invalid: 'not a schedule',
     });
     expect(parseOptionalSchedule(' every 5m ', now).schedule?.normalized).toBe('every 5m');
+  });
+
+  it('normalizes optional delivery targets for /tasks', () => {
+    expect(parseOptionalDeliverTarget('   ')).toEqual({});
+    expect(parseOptionalDeliverTarget(undefined)).toEqual({});
+    expect(parseOptionalDeliverTarget(' Slack : C01ABC ')).toEqual({ deliver: 'slack:C01ABC' });
+    expect(parseOptionalDeliverTarget('line:U1234567890abcdef')).toEqual({ deliver: 'line:U1234567890abcdef' });
+    expect(parseOptionalDeliverTarget('sms:+15551234567')).toEqual({ deliver: 'sms:+15551234567' });
   });
 });

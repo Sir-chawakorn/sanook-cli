@@ -49,4 +49,33 @@ describe('gateway chat sessions', () => {
       suppressDelivery: true,
     });
   });
+
+  it('handles Hermes-style messaging slash commands without calling the model', async () => {
+    const { loadGatewaySession, runGatewayAgent } = await import('./session.js');
+    await runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: 'first', userText: 'first' });
+    vi.clearAllMocks();
+
+    const status = await runGatewayAgent({
+      platform: 'telegram',
+      target: '111',
+      model: 'sonnet',
+      prompt: 'Telegram 111:\n/status',
+      userText: '/status',
+    });
+    expect(status.suppressDelivery).toBe(false);
+    expect(status.text).toContain('Platform: telegram');
+    expect(status.text).toContain('Target: 111');
+    expect(status.text).toContain('Messages: 2');
+    expect(runAgent).not.toHaveBeenCalled();
+
+    await expect(
+      runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: 'Telegram 111:\n/reset', userText: '/reset' }),
+    ).resolves.toMatchObject({ text: 'เริ่มบทสนทนาใหม่แล้ว', messages: [] });
+    expect(await loadGatewaySession('telegram', '111')).toBeNull();
+
+    await expect(
+      runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: '/help', userText: '/help' }),
+    ).resolves.toMatchObject({ text: expect.stringContaining('/new') });
+    expect(runAgent).not.toHaveBeenCalled();
+  });
 });

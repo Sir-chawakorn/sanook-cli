@@ -128,14 +128,22 @@ gateway (อยู่ยาว 24/7 — HTTP loopback + cron):
   ${BRAND.cliName} gateway setup discord           ตั้งค่า Discord bot token + channel allowlist
   ${BRAND.cliName} gateway setup slack             ตั้งค่า Slack bot/app token + channel allowlist
   ${BRAND.cliName} gateway setup email             ตั้งค่า Email IMAP/SMTP + allowed senders
+  ${BRAND.cliName} gateway setup line              ตั้งค่า LINE Messaging API push target
+  ${BRAND.cliName} gateway setup sms               ตั้งค่า Twilio SMS webhook + allowlist
+  ${BRAND.cliName} gateway setup ntfy              ตั้งค่า ntfy topic push + subscribe
+  ${BRAND.cliName} gateway setup signal            ตั้งค่า Signal ผ่าน signal-cli HTTP daemon
+  ${BRAND.cliName} gateway setup webhooks          เปิด generic webhook routes + HMAC
   ${BRAND.cliName} gateway run [--port 8787]       เปิด gateway (เหมือน serve)
   ${BRAND.cliName} gateway start [--port 8787]     เปิด gateway เป็น background process
   ${BRAND.cliName} gateway stop|restart|install    จัดการ gateway service
   ${BRAND.cliName} gateway status                  ดู config/status gateway
-  ${BRAND.cliName} send --to telegram|discord|slack|email[:target] "msg" ส่งข้อความออก platform โดยไม่เรียก LLM
+  ${BRAND.cliName} send --to telegram|discord|slack|email|line|sms|ntfy|signal[:target] "msg" ส่งข้อความออก platform โดยไม่เรียก LLM
+  ${BRAND.cliName} webhook subscribe <route> [--prompt "..."] [--to telegram|slack|sms|ntfy|signal]
+                                           รับ event จาก GitHub/GitLab/Jira/Stripe แล้ว trigger agent/delivery
   ${BRAND.cliName} send --list [platform]          ดู messaging targets ที่ตั้งค่าไว้
   ${BRAND.cliName} serve [--port 8787]            เปิด gateway (OpenAI-compat /v1/chat/completions + scheduler)
-  ${BRAND.cliName} cron add "<when>" "<task>"     ตั้งงานล่วงหน้า (when: "every 30m" | "09:00" | ISO | now)
+  ${BRAND.cliName} cron add "<when>" "<task>" [--to <target>] [--model <model>]
+                                           ตั้งงานล่วงหน้า + ส่งผลลัพธ์กลับ messaging target ได้
   ${BRAND.cliName} cron list                      ดู task ทั้งหมด
   ${BRAND.cliName} cron rm <id>                   ลบ task
 
@@ -248,13 +256,31 @@ async function runAgentSetupSummary(): Promise<void> {
 }
 
 async function runGatewayStatus(): Promise<void> {
-  const { readGatewayConfig, redactGatewayConfig, resolveDiscordConfig, resolveEmailConfig, resolveSlackConfig, resolveTelegramConfig, gatewayConfigPath } =
-    await import('./gateway/config.js');
+  const {
+    readGatewayConfig,
+    redactGatewayConfig,
+    resolveDiscordConfig,
+    resolveEmailConfig,
+    resolveLineConfig,
+    resolveNtfyConfig,
+    resolveSignalConfig,
+    resolveSlackConfig,
+    resolveSmsConfig,
+    resolveTelegramConfig,
+    resolveWebhookConfig,
+    gatewayConfigPath,
+  } = await import('./gateway/config.js');
   const cfg = await readGatewayConfig();
   const telegram = resolveTelegramConfig(cfg);
   const discord = resolveDiscordConfig(cfg);
   const slack = resolveSlackConfig(cfg);
   const email = resolveEmailConfig(cfg);
+  const line = resolveLineConfig(cfg);
+  const sms = resolveSmsConfig(cfg);
+  const ntfy = resolveNtfyConfig(cfg);
+  const signal = resolveSignalConfig(cfg);
+  const webhooks = resolveWebhookConfig(cfg);
+  const { redactSignalId } = await import('./gateway/signal.js');
   console.log(`${BRAND.productName} gateway`);
   console.log(`  config:   ${gatewayConfigPath()}`);
   console.log(`  token:    ${appHomePath('gateway', 'token')} (HTTP bearer, auto-created on run)`);
@@ -287,6 +313,51 @@ async function runGatewayStatus(): Promise<void> {
     console.log(`    home address:    ${email.homeAddress ?? '(not set)'}`);
     console.log(`    allowed senders: ${email.allowedUsers.length ? email.allowedUsers.join(', ') : email.allowAllUsers ? '(all users)' : '(none)'}`);
   }
+  console.log(`  line:     ${line.channelAccessToken ? `configured via ${line.source}` : 'not configured'}`);
+  if (line.channelAccessToken) {
+    console.log(`    channel secret:  ${line.channelSecret ? 'set' : '(not set — needed for webhook replies)'}`);
+    console.log(`    home channel:    ${line.homeChannel ?? '(not set)'}`);
+    console.log(`    allowed users:   ${line.allowedUsers.length ? line.allowedUsers.join(', ') : line.allowAllUsers ? '(all users)' : '(none)'}`);
+    console.log(`    allowed groups:  ${line.allowedGroups.length ? line.allowedGroups.join(', ') : '(none)'}`);
+    console.log(`    allowed rooms:   ${line.allowedRooms.length ? line.allowedRooms.join(', ') : '(none)'}`);
+    console.log(`    public url:      ${line.publicUrl ?? '(not set)'}`);
+  }
+  console.log(`  sms:      ${sms.accountSid || sms.authToken || sms.phoneNumber ? `configured via ${sms.source}` : 'not configured'}`);
+  if (sms.accountSid || sms.authToken || sms.phoneNumber) {
+    console.log(`    account sid:     ${sms.accountSid ? 'set' : '(not set)'}`);
+    console.log(`    auth token:      ${sms.authToken ? 'set' : '(not set)'}`);
+    console.log(`    phone number:    ${sms.phoneNumber ?? '(not set)'}`);
+    console.log(`    home channel:    ${sms.homeChannel ?? '(not set)'}`);
+    console.log(`    allowed users:   ${sms.allowedUsers.length ? sms.allowedUsers.join(', ') : sms.allowAllUsers ? '(all users)' : '(none)'}`);
+    console.log(`    webhook url:     ${sms.webhookUrl ?? (sms.insecureNoSignature ? '(signature disabled)' : '(not set)')}`);
+  }
+  console.log(`  ntfy:     ${ntfy.topic || ntfy.token ? `configured via ${ntfy.source}` : 'not configured'}`);
+  if (ntfy.topic || ntfy.token) {
+    console.log(`    server url:      ${ntfy.serverUrl}`);
+    console.log(`    topic:           ${ntfy.topic ?? '(not set)'}`);
+    console.log(`    publish topic:   ${ntfy.publishTopic ?? '(same as topic)'}`);
+    console.log(`    home channel:    ${ntfy.homeChannel ?? '(not set)'}`);
+    console.log(`    allowed topics:  ${ntfy.allowedUsers.length ? ntfy.allowedUsers.join(', ') : ntfy.allowAllUsers ? '(all topics)' : '(none)'}`);
+    console.log(`    token:           ${ntfy.token ? 'set' : '(not set)'}`);
+    console.log(`    markdown:        ${ntfy.markdown ? 'yes' : 'no'}`);
+  }
+  console.log(`  signal:   ${signal.account ? `configured via ${signal.source}` : 'not configured'}`);
+  if (signal.account) {
+    console.log(`    http url:        ${signal.httpUrl}`);
+    console.log(`    account:         ${redactSignalId(signal.account)}`);
+    console.log(`    home channel:    ${redactSignalId(signal.homeChannel)}`);
+    console.log(
+      `    allowed users:   ${signal.allowedUsers.length ? signal.allowedUsers.map(redactSignalId).join(', ') : signal.allowAllUsers ? '(all users)' : '(none)'}`,
+    );
+    console.log(`    allowed groups:  ${signal.groupAllowedUsers.length ? signal.groupAllowedUsers.map(redactSignalId).join(', ') : '(none)'}`);
+    console.log(`    require mention: ${signal.requireMention ? 'yes' : 'no'}`);
+  }
+  console.log(`  webhooks: ${webhooks.enabled ? `enabled via ${webhooks.source}` : 'not enabled'} (${Object.keys(webhooks.routes).length} route${Object.keys(webhooks.routes).length === 1 ? '' : 's'})`);
+  if (webhooks.enabled) {
+    console.log(`    global secret:   ${webhooks.secret ? 'set' : '(not set)'}`);
+    console.log(`    public url:      ${webhooks.publicUrl ?? '(not set)'}`);
+    console.log(`    rate limit:      ${webhooks.rateLimitPerMinute}/minute`);
+  }
   console.log(`\nredacted config:\n${JSON.stringify(redactGatewayConfig(cfg), null, 2)}`);
 }
 
@@ -296,31 +367,52 @@ async function runGatewaySetup(args: string[]): Promise<void> {
   const rest = platformArgProvided ? args.slice(1) : args;
   if (!platform) {
     if (!process.stdin.isTTY) {
-      console.error(`ใช้: ${BRAND.cliName} gateway setup <telegram|discord|slack|email> [options]`);
+      console.error(`ใช้: ${BRAND.cliName} gateway setup <telegram|discord|slack|email|line|sms|ntfy|signal|webhooks> [options]`);
       process.exit(1);
     }
-    const { readGatewayConfig, resolveDiscordConfig, resolveEmailConfig, resolveSlackConfig, resolveTelegramConfig } = await import('./gateway/config.js');
+    const {
+      readGatewayConfig,
+      resolveDiscordConfig,
+      resolveEmailConfig,
+      resolveLineConfig,
+      resolveNtfyConfig,
+      resolveSignalConfig,
+      resolveSlackConfig,
+      resolveSmsConfig,
+      resolveTelegramConfig,
+      resolveWebhookConfig,
+    } = await import('./gateway/config.js');
     const cfg = await readGatewayConfig();
     const options = [
       { id: 'telegram', label: `Telegram ${resolveTelegramConfig(cfg).token ? '(configured)' : ''}` },
       { id: 'discord', label: `Discord ${resolveDiscordConfig(cfg).token ? '(configured)' : ''}` },
       { id: 'slack', label: `Slack ${resolveSlackConfig(cfg).botToken ? '(configured)' : ''}` },
       { id: 'email', label: `Email ${resolveEmailConfig(cfg).address ? '(configured)' : ''}` },
+      { id: 'line', label: `LINE ${resolveLineConfig(cfg).channelAccessToken ? '(configured)' : ''}` },
+      { id: 'sms', label: `SMS/Twilio ${resolveSmsConfig(cfg).accountSid ? '(configured)' : ''}` },
+      { id: 'ntfy', label: `ntfy ${resolveNtfyConfig(cfg).topic ? '(configured)' : ''}` },
+      { id: 'signal', label: `Signal ${resolveSignalConfig(cfg).account ? '(configured)' : ''}` },
+      { id: 'webhooks', label: `Webhooks ${resolveWebhookConfig(cfg).enabled ? '(configured)' : ''}` },
     ];
     console.log(`${BRAND.productName} gateway setup`);
     for (const [i, option] of options.entries()) console.log(`  ${i + 1}. ${option.label}`);
-    const answer = await askText('เลือก platform [1-4]: ');
+    const answer = await askText('เลือก platform [1-9]: ');
     const index = Number(answer || '1') - 1;
     platform = options[index]?.id;
   }
-  if (!platform || !['telegram', 'discord', 'slack', 'email'].includes(platform)) {
-    console.error(`ตอนนี้ setup อัตโนมัติรองรับ telegram / discord / slack / email — ได้ "${platform ?? ''}"`);
+  if (!platform || !['telegram', 'discord', 'slack', 'email', 'line', 'sms', 'ntfy', 'signal', 'webhooks'].includes(platform)) {
+    console.error(`ตอนนี้ setup อัตโนมัติรองรับ telegram / discord / slack / email / line / sms / ntfy / signal / webhooks — ได้ "${platform ?? ''}"`);
     process.exit(1);
   }
 
   if (platform === 'discord') return runDiscordGatewaySetup(rest);
   if (platform === 'slack') return runSlackGatewaySetup(rest);
   if (platform === 'email') return runEmailGatewaySetup(rest);
+  if (platform === 'line') return runLineGatewaySetup(rest);
+  if (platform === 'sms') return runSmsGatewaySetup(rest);
+  if (platform === 'ntfy') return runNtfyGatewaySetup(rest);
+  if (platform === 'signal') return runSignalGatewaySetup(rest);
+  if (platform === 'webhooks') return runWebhookGatewaySetup(rest);
 
   let token = argValue(rest, '--bot-token', '--token');
   let allowedRaw = argValue(rest, '--allowed-chats', '--chat-ids');
@@ -462,6 +554,304 @@ async function runSlackGatewaySetup(args: string[]): Promise<void> {
   console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to slack "hello"`);
 }
 
+async function runLineGatewaySetup(args: string[]): Promise<void> {
+  let channelAccessToken = argValue(args, '--channel-access-token', '--access-token', '--token');
+  let channelSecret = argValue(args, '--channel-secret', '--secret');
+  let homeChannel = argValue(args, '--home-channel', '--to');
+  let allowedUsersRaw = argValue(args, '--allowed-users');
+  let allowedGroupsRaw = argValue(args, '--allowed-groups');
+  let allowedRoomsRaw = argValue(args, '--allowed-rooms');
+  const publicUrl = argValue(args, '--public-url');
+  const allowAllUsers = args.includes('--allow-all-users');
+
+  if (!channelAccessToken) {
+    if (!process.stdin.isTTY) {
+      console.error(`ใช้: ${BRAND.cliName} gateway setup line --channel-access-token <token> --home-channel <U/C/R-id>`);
+      process.exit(1);
+    }
+    console.log(`${BRAND.productName} LINE setup`);
+    console.log('สร้าง LINE Messaging API channel แล้ววาง long-lived Channel access token ที่นี่');
+    channelAccessToken = await askText('LINE channel access token: ');
+  }
+  if (!channelSecret && process.stdin.isTTY) {
+    channelSecret = await askText('LINE channel secret (needed for webhook replies): ');
+  }
+  if (!homeChannel && !allowedUsersRaw && !allowedGroupsRaw && !allowedRoomsRaw && !allowAllUsers) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --home-channel <U/C/R-id> หรือ allowed list อย่างน้อยหนึ่งชุด เพื่อ fail-closed');
+      process.exit(1);
+    }
+    homeChannel = await askText('LINE home channel ID (U user / C group / R room): ');
+  }
+
+  const home = homeChannel?.trim();
+  const allowedUsers = parseStringCsv(allowedUsersRaw);
+  const allowedGroups = parseStringCsv(allowedGroupsRaw);
+  const allowedRooms = parseStringCsv(allowedRoomsRaw);
+  if (!allowAllUsers && !home && !allowedUsers.length && !allowedGroups.length && !allowedRooms.length) {
+    console.error('LINE setup ต้องมี home channel/allowlist อย่างน้อย 1 ค่า หรือระบุ --allow-all-users');
+    process.exit(1);
+  }
+  if (!channelAccessToken.trim()) {
+    console.error('LINE setup ต้องมี channel access token');
+    process.exit(1);
+  }
+
+  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
+  await patchGatewayConfig({
+    line: {
+      enabled: true,
+      channelAccessToken: channelAccessToken.trim(),
+      channelSecret: channelSecret?.trim() || undefined,
+      homeChannel: home || allowedUsers[0] || allowedGroups[0] || allowedRooms[0],
+      allowedUsers,
+      allowedGroups,
+      allowedRooms,
+      allowAllUsers,
+      publicUrl: publicUrl?.trim() || undefined,
+    },
+  });
+  console.log(`บันทึก LINE gateway config แล้ว: ${gatewayConfigPath()}`);
+  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to line "hello"`);
+}
+
+async function runSmsGatewaySetup(args: string[]): Promise<void> {
+  let accountSid = argValue(args, '--account-sid', '--sid');
+  let authToken = argValue(args, '--auth-token', '--token');
+  let phoneNumber = argValue(args, '--phone-number', '--from');
+  let homeChannel = argValue(args, '--home-channel', '--to');
+  let allowedRaw = argValue(args, '--allowed-users', '--allowed-numbers');
+  const homeChannelName = argValue(args, '--home-channel-name');
+  const webhookUrl = argValue(args, '--webhook-url');
+  const allowAllUsers = args.includes('--allow-all-users');
+  const insecureNoSignature = args.includes('--insecure-no-signature');
+
+  if (!accountSid) {
+    if (!process.stdin.isTTY) {
+      console.error(`ใช้: ${BRAND.cliName} gateway setup sms --account-sid <AC...> --auth-token <token> --phone-number <+1555...> --home-channel <+1555...> --webhook-url <https://.../sms/webhook>`);
+      process.exit(1);
+    }
+    console.log(`${BRAND.productName} SMS/Twilio setup`);
+    console.log('ใช้ Twilio Programmable Messaging; inbound webhook ต้องตั้ง URL เดียวกันใน Twilio Console');
+    accountSid = await askText('Twilio Account SID: ');
+  }
+  if (!authToken) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --auth-token <token>');
+      process.exit(1);
+    }
+    authToken = await askText('Twilio Auth Token: ');
+  }
+  if (!phoneNumber) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --phone-number <E.164 Twilio number>');
+      process.exit(1);
+    }
+    phoneNumber = await askText('Twilio phone number (+1555...): ');
+  }
+  if (!homeChannel && !allowedRaw && !allowAllUsers) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --home-channel <phone> หรือ --allowed-users <phone[,phone]> เพื่อ fail-closed');
+      process.exit(1);
+    }
+    homeChannel = await askText('Home/allowed phone number (+1555...): ');
+  }
+
+  const { normalizeSmsPhone } = await import('./gateway/sms.js');
+  const from = normalizeSmsPhone(phoneNumber);
+  const home = normalizeSmsPhone(homeChannel);
+  const allowedUsers = parseStringCsv(allowedRaw ?? home).map((phone) => normalizeSmsPhone(phone)).filter((phone): phone is string => Boolean(phone));
+  if (!accountSid.trim() || !authToken.trim() || !from) {
+    console.error('SMS setup ต้องมี account sid, auth token และ Twilio phone number');
+    process.exit(1);
+  }
+  if (!allowAllUsers && !home && !allowedUsers.length) {
+    console.error('SMS setup ต้องมี home channel/allowlist อย่างน้อย 1 ค่า หรือระบุ --allow-all-users');
+    process.exit(1);
+  }
+  if (!webhookUrl && !insecureNoSignature) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --webhook-url <https://.../sms/webhook> เพื่อ verify Twilio signature หรือ --insecure-no-signature สำหรับ local dev');
+      process.exit(1);
+    }
+    console.log('ยังไม่ได้ตั้ง webhook URL; inbound SMS จะไม่เริ่มจนกว่าจะตั้ง SMS_WEBHOOK_URL หรือรัน setup ใหม่พร้อม --webhook-url');
+  }
+
+  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
+  await patchGatewayConfig({
+    sms: {
+      enabled: true,
+      accountSid: accountSid.trim(),
+      authToken: authToken.trim(),
+      phoneNumber: from,
+      homeChannel: home || allowedUsers[0],
+      homeChannelName: homeChannelName?.trim() || undefined,
+      allowedUsers,
+      allowAllUsers,
+      webhookUrl: webhookUrl?.trim() || undefined,
+      insecureNoSignature,
+    },
+  });
+  console.log(`บันทึก SMS/Twilio gateway config แล้ว: ${gatewayConfigPath()}`);
+  console.log(`ตั้ง Twilio webhook เป็น: ${webhookUrl?.trim() || `http://127.0.0.1:<port>/sms/webhook`}`);
+  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to sms "hello"`);
+}
+
+async function runSignalGatewaySetup(args: string[]): Promise<void> {
+  const httpUrl = argValue(args, '--http-url', '--url')?.trim() || 'http://127.0.0.1:8080';
+  let account = argValue(args, '--account', '--phone-number');
+  let homeChannel = argValue(args, '--home-channel', '--to');
+  let allowedRaw = argValue(args, '--allowed-users', '--allowed-numbers');
+  let groupAllowedRaw = argValue(args, '--group-allowed-users', '--allowed-groups');
+  const homeChannelName = argValue(args, '--home-channel-name');
+  const allowAllUsers = args.includes('--allow-all-users');
+  const requireMention = args.includes('--require-mention');
+
+  if (!account) {
+    if (!process.stdin.isTTY) {
+      console.error(`ใช้: ${BRAND.cliName} gateway setup signal --account <+1555...> --home-channel <+1555...> [--http-url http://127.0.0.1:8080]`);
+      process.exit(1);
+    }
+    console.log(`${BRAND.productName} Signal setup`);
+    console.log('ต้องมี signal-cli daemon --http รันอยู่; Sanook ใช้ JSON-RPC /api/v1/rpc และ SSE /api/v1/events');
+    account = await askText('Signal account (+E.164): ');
+  }
+  if (!homeChannel && !allowedRaw && !groupAllowedRaw && !allowAllUsers) {
+    if (process.stdin.isTTY) {
+      homeChannel = await askText('Signal home/allowed user (+E.164 หรือ UUID; blank = account/Note to Self): ');
+    }
+    if (!homeChannel) homeChannel = account;
+  }
+  if (!allowedRaw && !allowAllUsers && homeChannel && !homeChannel.trim().toLowerCase().startsWith('group:')) {
+    allowedRaw = homeChannel;
+  }
+  if (!groupAllowedRaw && homeChannel?.trim().toLowerCase().startsWith('group:')) {
+    groupAllowedRaw = homeChannel;
+  }
+
+  const { normalizeSignalId } = await import('./gateway/signal.js');
+  const cleanAccount = normalizeSignalId(account);
+  const cleanHome = normalizeSignalId(homeChannel);
+  const allowedUsers = parseStringCsv(allowedRaw).map(normalizeSignalId).filter((id): id is string => Boolean(id));
+  const groupAllowedUsers = parseStringCsv(groupAllowedRaw)
+    .map((id) => {
+      if (id.trim() === '*') return '*';
+      const normalized = normalizeSignalId(id);
+      return normalized?.startsWith('group:') ? normalized : normalized ? `group:${normalized}` : undefined;
+    })
+    .filter((id): id is string => Boolean(id));
+  if (!cleanAccount) {
+    console.error('Signal setup ต้องมี account (+E.164 หรือ account id)');
+    process.exit(1);
+  }
+  if (!allowAllUsers && !cleanHome && !allowedUsers.length && !groupAllowedUsers.length) {
+    console.error('Signal setup ต้องมี home channel/allowlist อย่างน้อย 1 ค่า หรือระบุ --allow-all-users');
+    process.exit(1);
+  }
+
+  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
+  await patchGatewayConfig({
+    signal: {
+      enabled: true,
+      httpUrl,
+      account: cleanAccount,
+      homeChannel: cleanHome || allowedUsers[0] || groupAllowedUsers[0] || cleanAccount,
+      homeChannelName: homeChannelName?.trim() || undefined,
+      allowedUsers,
+      groupAllowedUsers,
+      allowAllUsers,
+      requireMention,
+    },
+  });
+  console.log(`บันทึก Signal gateway config แล้ว: ${gatewayConfigPath()}`);
+  console.log(`ตรวจ signal-cli daemon: ${httpUrl}/api/v1/check`);
+  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to signal "hello"`);
+}
+
+async function runNtfyGatewaySetup(args: string[]): Promise<void> {
+  let topic = argValue(args, '--topic');
+  const serverUrl = argValue(args, '--server-url') ?? argValue(args, '--url');
+  const token = argValue(args, '--token');
+  const publishTopic = argValue(args, '--publish-topic');
+  let homeChannel = argValue(args, '--home-channel', '--to');
+  let allowedRaw = argValue(args, '--allowed-users', '--allowed-topics');
+  const homeChannelName = argValue(args, '--home-channel-name');
+  const allowAllUsers = args.includes('--allow-all-users');
+  const markdown = args.includes('--markdown');
+
+  if (!topic) {
+    if (!process.stdin.isTTY) {
+      console.error(`ใช้: ${BRAND.cliName} gateway setup ntfy --topic <topic> [--token <tk_...|user:pass>]`);
+      process.exit(1);
+    }
+    console.log(`${BRAND.productName} ntfy setup`);
+    console.log('เลือก topic ยาว/เดายาก แล้ว subscribe topic นี้ใน ntfy mobile app หรือ self-hosted ntfy');
+    topic = await askText('ntfy topic: ');
+  }
+  const cleanTopic = topic.trim();
+  if (!cleanTopic) {
+    console.error('ntfy setup ต้องมี topic');
+    process.exit(1);
+  }
+  if (!homeChannel) homeChannel = cleanTopic;
+  if (!allowedRaw && !allowAllUsers) allowedRaw = cleanTopic;
+  const allowedUsers = parseStringCsv(allowedRaw);
+  if (!allowAllUsers && !allowedUsers.includes(cleanTopic) && homeChannel !== cleanTopic) {
+    console.error('ntfy setup ต้องมี topic ใน --allowed-users หรือใช้ --allow-all-users เพื่อรับ inbound');
+    process.exit(1);
+  }
+
+  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
+  await patchGatewayConfig({
+    ntfy: {
+      enabled: true,
+      serverUrl: serverUrl?.trim() || undefined,
+      topic: cleanTopic,
+      publishTopic: publishTopic?.trim() || undefined,
+      token: token?.trim() || undefined,
+      homeChannel: homeChannel?.trim() || cleanTopic,
+      homeChannelName: homeChannelName?.trim() || undefined,
+      allowedUsers,
+      allowAllUsers,
+      markdown,
+    },
+  });
+  console.log(`บันทึก ntfy gateway config แล้ว: ${gatewayConfigPath()}`);
+  console.log(`subscribe topic ในแอป ntfy: ${cleanTopic}`);
+  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to ntfy "hello"`);
+}
+
+async function runWebhookGatewaySetup(args: string[]): Promise<void> {
+  let secret = argValue(args, '--secret', '--webhook-secret');
+  const publicUrl = argValue(args, '--public-url');
+  const rateLimitRaw = argValue(args, '--rate-limit', '--rate-limit-per-minute');
+  const insecureNoAuth = args.includes('--insecure-no-auth');
+
+  if (!secret && !insecureNoAuth) {
+    if (process.stdin.isTTY) {
+      const { generateWebhookSecret } = await import('./gateway/webhooks.js');
+      console.log(`${BRAND.productName} Webhooks setup`);
+      console.log('ตั้ง global HMAC secret สำหรับ route ที่ไม่ได้ระบุ secret เอง');
+      secret = (await askText('Webhook global secret (blank = auto-generate): ')) || generateWebhookSecret();
+    } else {
+      const { generateWebhookSecret } = await import('./gateway/webhooks.js');
+      secret = generateWebhookSecret();
+    }
+  }
+  const rateLimitPerMinute = rateLimitRaw ? parsePort(rateLimitRaw, 30, 'webhook rate limit') : undefined;
+  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
+  await patchGatewayConfig({
+    webhooks: {
+      enabled: true,
+      secret: insecureNoAuth ? 'INSECURE_NO_AUTH' : secret?.trim(),
+      publicUrl: publicUrl?.trim() || undefined,
+      rateLimitPerMinute,
+    },
+  });
+  console.log(`บันทึก Webhooks gateway config แล้ว: ${gatewayConfigPath()}`);
+  console.log(`เพิ่ม route ได้ด้วย: ${BRAND.cliName} webhook subscribe github-issues --events issues --prompt "New issue: {issue.title}" --to telegram`);
+}
+
 function parsePort(raw: string | undefined, fallback: number, label: string): number {
   if (!raw) return fallback;
   const n = Number(raw);
@@ -599,12 +989,28 @@ async function runStatus(): Promise<void> {
   const parsed = parseSpec(cfg.model);
   const provider = PROVIDERS[parsed.provider];
   const keyReady = provider ? (!provider.requiresKey || Boolean(resolveKeyFromEnv(provider.envVar, provider.envFallbacks))) : false;
-  const { readGatewayConfig, resolveDiscordConfig, resolveEmailConfig, resolveSlackConfig, resolveTelegramConfig } = await import('./gateway/config.js');
+  const {
+    readGatewayConfig,
+    resolveDiscordConfig,
+    resolveEmailConfig,
+    resolveLineConfig,
+    resolveNtfyConfig,
+    resolveSignalConfig,
+    resolveSlackConfig,
+    resolveSmsConfig,
+    resolveTelegramConfig,
+    resolveWebhookConfig,
+  } = await import('./gateway/config.js');
   const gatewayConfig = await readGatewayConfig();
   const telegram = resolveTelegramConfig(gatewayConfig);
   const discord = resolveDiscordConfig(gatewayConfig);
   const slack = resolveSlackConfig(gatewayConfig);
   const email = resolveEmailConfig(gatewayConfig);
+  const line = resolveLineConfig(gatewayConfig);
+  const sms = resolveSmsConfig(gatewayConfig);
+  const ntfy = resolveNtfyConfig(gatewayConfig);
+  const signal = resolveSignalConfig(gatewayConfig);
+  const webhooks = resolveWebhookConfig(gatewayConfig);
   console.log(`${BRAND.productName} status`);
   console.log(`  version:   ${VERSION}`);
   console.log(`  model:     ${cfg.model}`);
@@ -618,6 +1024,11 @@ async function runStatus(): Promise<void> {
   console.log(`  discord:   ${discord.token ? `configured (${discord.allowedChannelIds.length} allowed channel${discord.allowedChannelIds.length === 1 ? '' : 's'})` : 'not configured'}`);
   console.log(`  slack:     ${slack.botToken ? `configured (${slack.allowedChannelIds.length} allowed channel${slack.allowedChannelIds.length === 1 ? '' : 's'})` : 'not configured'}`);
   console.log(`  email:     ${email.address ? `configured (${email.allowedUsers.length} allowed sender${email.allowedUsers.length === 1 ? '' : 's'})` : 'not configured'}`);
+  console.log(`  line:      ${line.channelAccessToken ? `configured (${line.allowedUsers.length + line.allowedGroups.length + line.allowedRooms.length} allowed target${line.allowedUsers.length + line.allowedGroups.length + line.allowedRooms.length === 1 ? '' : 's'})` : 'not configured'}`);
+  console.log(`  sms:       ${sms.accountSid && sms.authToken && sms.phoneNumber ? `configured (${sms.allowedUsers.length} allowed sender${sms.allowedUsers.length === 1 ? '' : 's'})` : 'not configured'}`);
+  console.log(`  ntfy:      ${ntfy.topic ? `configured (${ntfy.allowedUsers.length} allowed topic${ntfy.allowedUsers.length === 1 ? '' : 's'})` : 'not configured'}`);
+  console.log(`  signal:    ${signal.account ? `configured (${signal.allowedUsers.length} allowed user${signal.allowedUsers.length === 1 ? '' : 's'}, ${signal.groupAllowedUsers.length} group${signal.groupAllowedUsers.length === 1 ? '' : 's'})` : 'not configured'}`);
+  console.log(`  webhooks:  ${webhooks.enabled ? `enabled (${Object.keys(webhooks.routes).length} route${Object.keys(webhooks.routes).length === 1 ? '' : 's'})` : 'not enabled'}`);
   console.log(`  config:    ${appHomePath('config.json')}`);
 }
 
@@ -1227,6 +1638,10 @@ async function runSend(args: string[]): Promise<void> {
   ${BRAND.cliName} send --to discord[:channel_id[:thread_id]] "message"
   ${BRAND.cliName} send --to slack[:channel_id[:thread_ts]] "message"
   ${BRAND.cliName} send --to email[:recipient@example.com] --subject "[CI]" "message"
+  ${BRAND.cliName} send --to line[:U/C/R-id] "message"
+  ${BRAND.cliName} send --to sms[:+15558675310] "message"
+  ${BRAND.cliName} send --to ntfy[:topic] "message"
+  ${BRAND.cliName} send --to signal[:+15558675310|group:<id>] "message"
   ${BRAND.cliName} send --to slack --subject "[CI]" --file build.log
   echo "done" | ${BRAND.cliName} send --to telegram --quiet
   ${BRAND.cliName} send --list [platform] [--json]`);
@@ -1254,7 +1669,7 @@ async function runSend(args: string[]): Promise<void> {
 
   const to = argValue(args, '--to', '-t');
   if (!to) {
-    console.error(`ใช้: ${BRAND.cliName} send --to <telegram|discord|slack|email>[:target] "message"`);
+    console.error(`ใช้: ${BRAND.cliName} send --to <telegram|discord|slack|email|line|sms|ntfy|signal>[:target] "message"`);
     process.exit(2);
   }
   const file = argValue(args, '--file', '-f');
@@ -1268,118 +1683,18 @@ async function runSend(args: string[]): Promise<void> {
     process.exit(2);
   }
 
-  const { parseSendTarget, formatTarget } = await import('./gateway/targets.js');
-  let target;
+  const { parseSendTarget } = await import('./gateway/targets.js');
   try {
-    target = parseSendTarget(to);
+    parseSendTarget(to);
   } catch (e) {
     console.error((e as Error).message);
     process.exit(2);
   }
-  const { readGatewayConfig, resolveDiscordConfig, resolveEmailConfig, resolveSlackConfig, resolveTelegramConfig } = await import('./gateway/config.js');
-  const gatewayConfig = await readGatewayConfig();
+  const { deliverToTarget } = await import('./gateway/deliver.js');
   try {
-    if (target.platform === 'telegram') {
-      const telegram = resolveTelegramConfig(gatewayConfig);
-      if (!telegram.token) {
-        console.error(`ยังไม่ได้ตั้ง Telegram — รัน: ${BRAND.cliName} gateway setup telegram`);
-        process.exit(2);
-      }
-      const chatId = target.chatId ?? telegram.allowedChatIds[0];
-      if (!Number.isInteger(chatId)) {
-        console.error('ต้องระบุ chat id หรือมี allowed chat อย่างน้อย 1 ค่าใน gateway config');
-        process.exit(2);
-      }
-      if (telegram.allowedChatIds.length && !telegram.allowedChatIds.includes(chatId)) {
-        console.error(`chat ${chatId} ไม่อยู่ใน allowlist (${telegram.allowedChatIds.join(', ')})`);
-        process.exit(2);
-      }
-      const { sendTelegramMessage } = await import('./gateway/telegram.js');
-      const result = await sendTelegramMessage(telegram.token, chatId, message, target.threadId);
-      const resolvedTarget = formatTarget({ platform: 'telegram', chatId, threadId: target.threadId });
-      if (json) console.log(JSON.stringify({ ok: true, target: resolvedTarget, ...result }));
-      else if (!quiet) console.log(`sent ${resolvedTarget}`);
-      return;
-    }
-
-    if (target.platform === 'discord') {
-      const discord = resolveDiscordConfig(gatewayConfig);
-      if (!discord.token) {
-        console.error(`ยังไม่ได้ตั้ง Discord — รัน: ${BRAND.cliName} gateway setup discord`);
-        process.exit(2);
-      }
-      const channelId = target.thread ?? target.address ?? discord.defaultChannelId;
-      if (!channelId) {
-        console.error('ต้องระบุ Discord channel id หรือ default channel ใน gateway config');
-        process.exit(2);
-      }
-      const baseChannel = target.address ?? channelId;
-      if (discord.allowedChannelIds.length && !discord.allowedChannelIds.includes(baseChannel) && !discord.allowedChannelIds.includes(channelId)) {
-        console.error(`channel ${baseChannel} ไม่อยู่ใน allowlist (${discord.allowedChannelIds.join(', ')})`);
-        process.exit(2);
-      }
-      const { sendDiscordMessage } = await import('./gateway/discord.js');
-      const result = await sendDiscordMessage(discord.token, channelId, message);
-      const resolvedTarget = formatTarget({ platform: 'discord', address: target.address ?? channelId, thread: target.thread });
-      if (json) console.log(JSON.stringify({ ok: true, target: resolvedTarget, ...result }));
-      else if (!quiet) console.log(`sent ${resolvedTarget}`);
-      return;
-    }
-
-    if (target.platform === 'slack') {
-      const slack = resolveSlackConfig(gatewayConfig);
-      if (!slack.botToken) {
-        console.error(`ยังไม่ได้ตั้ง Slack — รัน: ${BRAND.cliName} gateway setup slack`);
-        process.exit(2);
-      }
-      const channelId = target.address ?? slack.defaultChannelId;
-      if (!channelId) {
-        console.error('ต้องระบุ Slack channel id หรือ default channel ใน gateway config');
-        process.exit(2);
-      }
-      if (slack.allowedChannelIds.length && !slack.allowedChannelIds.includes(channelId)) {
-        console.error(`channel ${channelId} ไม่อยู่ใน allowlist (${slack.allowedChannelIds.join(', ')})`);
-        process.exit(2);
-      }
-      const { sendSlackMessage } = await import('./gateway/slack.js');
-      const result = await sendSlackMessage(slack.botToken, channelId, message, target.thread);
-      const resolvedTarget = formatTarget({ platform: 'slack', address: channelId, thread: target.thread });
-      if (json) console.log(JSON.stringify({ ok: true, target: resolvedTarget, ...result }));
-      else if (!quiet) console.log(`sent ${resolvedTarget}`);
-      return;
-    }
-
-    if (target.platform === 'email') {
-      const email = resolveEmailConfig(gatewayConfig);
-      if (!email.address || !email.password || !email.smtpHost) {
-        console.error(`ยังไม่ได้ตั้ง Email — รัน: ${BRAND.cliName} gateway setup email`);
-        process.exit(2);
-      }
-      const toAddress = target.address ?? email.homeAddress;
-      if (!toAddress) {
-        console.error('ต้องระบุ email recipient หรือ home address ใน gateway config');
-        process.exit(2);
-      }
-      const lower = toAddress.toLowerCase();
-      if (!email.allowAllUsers && email.allowedUsers.length && !email.allowedUsers.includes(lower)) {
-        console.error(`email ${toAddress} ไม่อยู่ใน allowlist (${email.allowedUsers.join(', ')})`);
-        process.exit(2);
-      }
-      const { sendEmailMessage } = await import('./gateway/email.js');
-      const result = await sendEmailMessage(
-        { address: email.address, password: email.password, smtpHost: email.smtpHost, smtpPort: email.smtpPort, fromName: BRAND.productName },
-        toAddress,
-        message,
-        { subject: subject?.trim() || BRAND.productName },
-      );
-      const resolvedTarget = formatTarget({ platform: 'email', address: toAddress });
-      if (json) console.log(JSON.stringify({ ok: true, target: resolvedTarget, ...result }));
-      else if (!quiet) console.log(`sent ${resolvedTarget}`);
-      return;
-    }
-
-    console.error(`ยังไม่รองรับ platform "${target.platform}" — ตอนนี้รองรับ telegram / discord / slack / email`);
-    process.exit(2);
+    const result = await deliverToTarget(to, message, { subject });
+    if (json) console.log(JSON.stringify({ ok: true, ...result }));
+    else if (!quiet) console.log(`sent ${result.target}`);
   } catch (e) {
     const msg = redactKey((e as Error).message);
     if (json) console.log(JSON.stringify({ ok: false, error: msg }));
@@ -1388,16 +1703,216 @@ async function runSend(args: string[]): Promise<void> {
   }
 }
 
+async function runWebhook(args: string[]): Promise<void> {
+  const action = args[0] ?? 'list';
+  const rest = action === 'list' && args[0] !== 'list' ? args : args.slice(1);
+  const valueFlags = [
+    '--events',
+    '--prompt',
+    '--to',
+    '-t',
+    '--deliver',
+    '--deliver-chat-id',
+    '--chat-id',
+    '--secret',
+    '--description',
+    '--payload',
+    '--public-url',
+    '--rate-limit',
+    '--rate-limit-per-minute',
+  ];
+
+  if (args.includes('-h') || args.includes('--help') || action === 'help') {
+    console.log(`ใช้:
+  ${BRAND.cliName} webhook subscribe <route> [--events issues,push] [--prompt "..."] [--to telegram|slack:C01|sms|ntfy|signal]
+  ${BRAND.cliName} webhook subscribe <route> --deliver telegram --deliver-chat-id 123 --deliver-only --prompt "New event: {__raw__}"
+  ${BRAND.cliName} webhook list
+  ${BRAND.cliName} webhook remove <route>
+  ${BRAND.cliName} webhook test <route> --payload '{"event_type":"ping"}'
+
+signature headers:
+  GitHub:  X-Hub-Signature-256: sha256=<hmac>
+  GitLab:  X-Gitlab-Token: <secret>
+  Generic: X-Webhook-Signature: <hmac-hex>`);
+    return;
+  }
+
+  if (action === 'subscribe' || action === 'add') {
+    const name = positionalArgs(rest, valueFlags)[0];
+    if (!name) {
+      console.error(`ใช้: ${BRAND.cliName} webhook subscribe <route> [--prompt "..."] [--to <target>]`);
+      process.exit(2);
+    }
+    const { isValidWebhookRouteName, generateWebhookSecret } = await import('./gateway/webhooks.js');
+    if (!isValidWebhookRouteName(name)) {
+      console.error('route ต้องเป็น a-z/A-Z/0-9/_/- ความยาวไม่เกิน 64 และต้องขึ้นต้นด้วยตัวอักษรหรือตัวเลข');
+      process.exit(2);
+    }
+    const prompt = argValue(rest, '--prompt');
+    const description = argValue(rest, '--description');
+    const events = parseStringCsv(argValue(rest, '--events')).map((event) => event.trim()).filter(Boolean);
+    const deliver = webhookDeliverTarget(rest);
+    const deliverOnly = rest.includes('--deliver-only');
+    const insecureNoAuth = rest.includes('--insecure-no-auth');
+    const routeSecret = insecureNoAuth ? 'INSECURE_NO_AUTH' : (argValue(rest, '--secret')?.trim() || generateWebhookSecret());
+    const publicUrl = argValue(rest, '--public-url');
+    const rateLimitRaw = argValue(rest, '--rate-limit', '--rate-limit-per-minute');
+    const rateLimitPerMinute = rateLimitRaw ? parsePort(rateLimitRaw, 30, 'webhook route rate limit') : undefined;
+    if (deliverOnly && deliver === 'log') {
+      console.error('--deliver-only ต้องมี --to หรือ --deliver เป็น messaging target จริง');
+      process.exit(2);
+    }
+    if (deliver !== 'log') {
+      const { parseSendTarget } = await import('./gateway/targets.js');
+      try {
+        parseSendTarget(deliver);
+      } catch (e) {
+        console.error((e as Error).message);
+        process.exit(2);
+      }
+    }
+    const { patchGatewayConfig, readGatewayConfig } = await import('./gateway/config.js');
+    const current = await readGatewayConfig();
+    await patchGatewayConfig({
+      webhooks: {
+        enabled: true,
+        publicUrl: publicUrl?.trim() || current.webhooks?.publicUrl,
+        routes: {
+          [name]: {
+            events,
+            secret: routeSecret,
+            prompt: prompt?.trim() || undefined,
+            deliver,
+            deliverOnly,
+            description: description?.trim() || undefined,
+            rateLimitPerMinute,
+          },
+        },
+      },
+    });
+    const base = (publicUrl?.trim() || current.webhooks?.publicUrl || 'http://127.0.0.1:8787').replace(/\/+$/, '');
+    console.log(`เพิ่ม webhook route "${name}" แล้ว`);
+    console.log(`URL: ${base}/webhooks/${name}`);
+    console.log(`secret: ${routeSecret}`);
+    console.log(`test: ${BRAND.cliName} webhook test ${name} --payload '{"event_type":"ping"}'`);
+    return;
+  }
+
+  if (action === 'list' || action === undefined) {
+    const { readGatewayConfig, resolveWebhookConfig } = await import('./gateway/config.js');
+    const cfg = await readGatewayConfig();
+    const webhooks = resolveWebhookConfig(cfg);
+    const routes = Object.values(webhooks.routes);
+    if (!routes.length) {
+      console.log(`ยังไม่มี webhook route — เพิ่มด้วย: ${BRAND.cliName} webhook subscribe <route> --prompt "Event: {__raw__}"`);
+      return;
+    }
+    const base = (webhooks.publicUrl || 'http://127.0.0.1:8787').replace(/\/+$/, '');
+    for (const route of routes) {
+      const events = route.events.length ? route.events.join(',') : '*';
+      const mode = route.deliverOnly ? 'direct' : 'agent';
+      console.log(`${route.name.padEnd(20)} ${mode.padEnd(6)} events:${events.padEnd(12)} deliver:${route.deliver}  ${base}/webhooks/${route.name}`);
+    }
+    return;
+  }
+
+  if (action === 'remove' || action === 'rm') {
+    const name = positionalArgs(rest, valueFlags)[0];
+    if (!name) {
+      console.error(`ใช้: ${BRAND.cliName} webhook remove <route>`);
+      process.exit(2);
+    }
+    const { readGatewayConfig, writeGatewayConfig } = await import('./gateway/config.js');
+    const cfg = await readGatewayConfig();
+    if (!cfg.webhooks?.routes?.[name]) {
+      console.log(`ไม่พบ webhook route "${name}"`);
+      return;
+    }
+    const routes = { ...cfg.webhooks.routes };
+    delete routes[name];
+    await writeGatewayConfig({ ...cfg, webhooks: { ...cfg.webhooks, routes } });
+    console.log(`ลบ webhook route "${name}" แล้ว`);
+    return;
+  }
+
+  if (action === 'test') {
+    const name = positionalArgs(rest, valueFlags)[0];
+    if (!name) {
+      console.error(`ใช้: ${BRAND.cliName} webhook test <route> [--payload <json>]`);
+      process.exit(2);
+    }
+    const payload = argValue(rest, '--payload') ?? '{"event_type":"ping"}';
+    let rawBody: string;
+    let parsedPayload: unknown;
+    try {
+      parsedPayload = JSON.parse(payload);
+      rawBody = JSON.stringify(parsedPayload);
+    } catch {
+      console.error('--payload ต้องเป็น JSON object/string ที่ parse ได้');
+      process.exit(2);
+    }
+    const { readGatewayConfig, resolveWebhookConfig } = await import('./gateway/config.js');
+    const { handleWebhookRequest } = await import('./gateway/webhooks.js');
+    const cfg = resolveWebhookConfig(await readGatewayConfig());
+    const route = cfg.routes[name];
+    if (!route) {
+      console.error(`ไม่พบ webhook route "${name}"`);
+      process.exit(2);
+    }
+    const secret = route.secret || cfg.secret;
+    const eventType =
+      parsedPayload && typeof parsedPayload === 'object' && typeof (parsedPayload as Record<string, unknown>).event_type === 'string'
+        ? ((parsedPayload as Record<string, unknown>).event_type as string)
+        : 'ping';
+    const headers: Record<string, string> = { 'x-event-type': eventType };
+    if (secret && secret !== 'INSECURE_NO_AUTH') {
+      const { createHmac } = await import('node:crypto');
+      headers['x-webhook-signature'] = createHmac('sha256', secret).update(rawBody).digest('hex');
+      headers['x-request-id'] = `sanook-test-${Date.now()}`;
+    }
+    const appCfg = await loadConfig({});
+    const result = await handleWebhookRequest({
+      routeName: name,
+      rawBody,
+      headers,
+      config: cfg,
+      model: appCfg.model,
+      budgetUsd: appCfg.budgetUsd,
+      permissionMode: appCfg.permissionMode,
+      onLog: (m) => process.stderr.write(`${DIM}${m}${RESET}\n`),
+    });
+    console.log(JSON.stringify(result.body, null, 2));
+    if (result.status >= 400) process.exit(1);
+    return;
+  }
+
+  console.error(`ไม่รู้จัก: webhook ${action} — ใช้ subscribe / list / remove / test`);
+  process.exit(2);
+}
+
+function webhookDeliverTarget(args: string[]): string {
+  const direct = argValue(args, '--to', '-t')?.trim();
+  if (direct) return direct;
+  const deliver = argValue(args, '--deliver')?.trim();
+  if (!deliver || deliver === 'log') return 'log';
+  const chat = argValue(args, '--deliver-chat-id', '--chat-id')?.trim();
+  return chat ? `${deliver}:${chat}` : deliver;
+}
+
 /** sanook cron add "<when>" "<task>" | cron list | cron rm <id> */
 async function runCron(args: string[]): Promise<void> {
   const [action, ...rest] = args;
   const { listTasks, enqueueTask, removeTask } = await import('./gateway/ledger.js');
+  const valueFlags = ['--to', '-t', '--model', '-m'];
 
   if (action === 'add') {
-    const schedule = rest[0];
-    const spec = rest.slice(1).join(' ').trim();
+    const deliverRaw = argValue(rest, '--to', '-t')?.trim();
+    const model = argValue(rest, '--model', '-m');
+    const positionals = positionalArgs(rest, valueFlags);
+    const schedule = positionals[0];
+    const spec = positionals.slice(1).join(' ').trim();
     if (!schedule || !spec) {
-      console.error('ใช้: sanook cron add "<when>" "<task>"   (when: "every 30m" | "09:00" | ISO | now)');
+      console.error(`ใช้: ${BRAND.cliName} cron add "<when>" "<task>" [--to <target>] [--model <provider:model>]`);
       console.error('หมายเหตุ: when ที่มีช่องว่างต้องครอบ quote เช่น "every 30m"');
       process.exit(1);
     }
@@ -1410,14 +1925,29 @@ async function runCron(args: string[]): Promise<void> {
       }
       process.exit(1);
     }
+    let deliver: string | undefined;
+    if (deliverRaw) {
+      const { parseSendTarget, formatTarget } = await import('./gateway/targets.js');
+      try {
+        deliver = formatTarget(parseSendTarget(deliverRaw));
+      } catch (e) {
+        console.error((e as Error).message);
+        process.exit(2);
+      }
+    }
     const task = await enqueueTask({
       kind: sched.recurring ? 'cron' : 'once',
       spec,
       schedule: sched.recurring ? sched.normalized : undefined,
+      model,
+      deliver,
       runAt: sched.runAt,
     });
     const when = new Date(task.runAt).toLocaleString();
-    console.log(`เพิ่ม task ${task.id} — รัน ${when}${sched.recurring ? ` แล้วทุก ${sched.normalized}` : ''}`);
+    const extras = [task.deliver ? `ส่งไป ${task.deliver}` : undefined, task.model ? `model ${task.model}` : undefined]
+      .filter(Boolean)
+      .join(' · ');
+    console.log(`เพิ่ม task ${task.id} — รัน ${when}${sched.recurring ? ` แล้วทุก ${sched.normalized}` : ''}${extras ? ` · ${extras}` : ''}`);
     return;
   }
 
@@ -1439,7 +1969,8 @@ async function runCron(args: string[]): Promise<void> {
     }
     for (const t of tasks) {
       const next = new Date(t.runAt).toLocaleString();
-      console.log(`${t.id}  [${t.status}]  ${t.schedule ?? 'once'}  next:${next}  → ${t.spec.slice(0, 50)}`);
+      const extras = [t.deliver ? `to:${t.deliver}` : undefined, t.model ? `model:${t.model}` : undefined].filter(Boolean).join('  ');
+      console.log(`${t.id}  [${t.status}]  ${t.schedule ?? 'once'}  next:${next}${extras ? `  ${extras}` : ''}  → ${t.spec.slice(0, 50)}`);
     }
     return;
   }
@@ -2013,6 +2544,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'dump') return runDump(argv.slice(1));
   if (argv[0] === 'tools' && (argv.length === 1 || argv[1].startsWith('--'))) return runTools(argv.slice(1));
   if (argv[0] === 'send') return runSend(argv.slice(1));
+  if (argv[0] === 'webhook' || argv[0] === 'webhooks') return runWebhook(argv.slice(1));
 
   // subcommands: serve · cron — match เฉพาะรูปแบบที่ถูกต้อง กัน prompt unquoted ("serve coffee") misfire
   if (argv[0] === 'serve' && (argv.length === 1 || argv[1].startsWith('--'))) return runServe(argv.slice(1));

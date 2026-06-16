@@ -26,6 +26,26 @@ describe('messaging targets', () => {
       platform: 'email',
       address: 'owner@example.com',
     });
+    expect(parseSendTarget('line:U1234567890abcdef')).toMatchObject({
+      platform: 'line',
+      address: 'U1234567890abcdef',
+    });
+    expect(parseSendTarget('sms:+15551234567')).toMatchObject({
+      platform: 'sms',
+      address: '+15551234567',
+    });
+    expect(parseSendTarget('ntfy:sanook-topic')).toMatchObject({
+      platform: 'ntfy',
+      address: 'sanook-topic',
+    });
+    expect(parseSendTarget('signal:+1 (555) 123-4567')).toMatchObject({
+      platform: 'signal',
+      address: '+15551234567',
+    });
+    expect(parseSendTarget('signal:group:abcd1234')).toMatchObject({
+      platform: 'signal',
+      address: 'group:abcd1234',
+    });
   });
 
   it('rejects ambiguous or partial numeric targets', () => {
@@ -36,7 +56,11 @@ describe('messaging targets', () => {
     expect(() => parseSendTarget('telegram:123:')).toThrow('target');
     expect(() => parseSendTarget('telegram:1:2:3')).toThrow('target');
     expect(() => parseSendTarget('telegram:9007199254740993')).toThrow('ใหญ่เกินไป');
-    expect(() => parseSendTarget('sms:+15551234567')).toThrow('platform');
+    expect(() => parseSendTarget('email:owner@example.com:thread')).toThrow('ไม่รองรับ thread');
+    expect(() => parseSendTarget('line:U1234567890abcdef:thread')).toThrow('ไม่รองรับ thread');
+    expect(() => parseSendTarget('sms:+15551234567:thread')).toThrow('ไม่รองรับ thread');
+    expect(() => parseSendTarget('ntfy:sanook-topic:thread')).toThrow('ไม่รองรับ thread');
+    expect(() => parseSendTarget('signal:+15551234567:thread')).toThrow('ไม่รองรับ thread');
   });
 
   it('formats targets for user-facing output', () => {
@@ -62,7 +86,7 @@ describe('messaging targets', () => {
     expect(targets[0]).toMatchObject({ target: 'telegram', configured: false });
   });
 
-  it('lists configured Discord, Slack, and Email targets', () => {
+  it('lists configured Discord, Slack, Email, LINE, SMS, ntfy, and Signal targets', () => {
     expect(
       listConfiguredTargets({
         discord: {
@@ -78,7 +102,57 @@ describe('messaging targets', () => {
           homeAddress: 'owner@example.com',
           allowedUsers: ['owner@example.com'],
         },
+        line: {
+          channelAccessToken: 'line-token',
+          homeChannel: 'U1234567890abcdef',
+          allowedUsers: ['U1234567890abcdef'],
+          allowedGroups: ['C1234567890abcdef'],
+          allowedRooms: ['R1234567890abcdef'],
+        },
+        sms: {
+          accountSid: 'AC123',
+          authToken: 'twilio-token',
+          phoneNumber: '+15550000000',
+          homeChannel: '+15551234567',
+          homeChannelName: 'Owner',
+          allowedUsers: ['+15557654321'],
+        },
+        ntfy: {
+          topic: 'sanook-topic',
+          publishTopic: 'sanook-replies',
+          homeChannel: 'sanook-topic',
+          homeChannelName: 'Owner',
+          allowedUsers: ['sanook-topic', 'other-topic'],
+        },
+        signal: {
+          httpUrl: 'http://127.0.0.1:8080',
+          account: '+15550000000',
+          homeChannel: '+15551234567',
+          homeChannelName: 'Owner',
+          allowedUsers: ['+15557654321'],
+          groupAllowedUsers: ['group:abcd1234', '*'],
+        },
       }).map((t) => t.target),
-    ).toEqual(['discord', 'discord:111111111111111111', 'slack', 'slack:C01ABC', 'slack:C02DEF', 'email', 'email:owner@example.com']);
+    ).toEqual([
+      'discord',
+      'discord:111111111111111111',
+      'slack',
+      'slack:C01ABC',
+      'slack:C02DEF',
+      'email',
+      'email:owner@example.com',
+      'line',
+      'line:U1234567890abcdef',
+      'line:C1234567890abcdef',
+      'line:R1234567890abcdef',
+      'sms',
+      'sms:+15557654321',
+      'ntfy',
+      'ntfy:sanook-replies',
+      'ntfy:other-topic',
+      'signal',
+      'signal:+15557654321',
+      'signal:group:abcd1234',
+    ]);
   });
 });

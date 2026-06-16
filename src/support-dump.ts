@@ -77,16 +77,32 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
   const root = await projectRoot(cwd);
   const trust = await projectTrustStatus(root);
 
-  const { readGatewayConfig, resolveDiscordConfig, resolveEmailConfig, resolveSlackConfig, resolveTelegramConfig, gatewayConfigPath } = await import(
-    './gateway/config.js'
-  );
+  const {
+    readGatewayConfig,
+    resolveDiscordConfig,
+    resolveEmailConfig,
+    resolveLineConfig,
+    resolveNtfyConfig,
+    resolveSignalConfig,
+    resolveSlackConfig,
+    resolveSmsConfig,
+    resolveTelegramConfig,
+    resolveWebhookConfig,
+    gatewayConfigPath,
+  } = await import('./gateway/config.js');
   const { gatewayServiceStatus } = await import('./gateway/service.js');
   const { listConfiguredTargets } = await import('./gateway/targets.js');
+  const { redactSignalId } = await import('./gateway/signal.js');
   const gatewayConfig = await readGatewayConfig();
   const telegram = resolveTelegramConfig(gatewayConfig, env);
   const discord = resolveDiscordConfig(gatewayConfig, env);
   const slack = resolveSlackConfig(gatewayConfig, env);
   const email = resolveEmailConfig(gatewayConfig, env);
+  const line = resolveLineConfig(gatewayConfig, env);
+  const sms = resolveSmsConfig(gatewayConfig, env);
+  const ntfy = resolveNtfyConfig(gatewayConfig, env);
+  const signal = resolveSignalConfig(gatewayConfig, env);
+  const webhooks = resolveWebhookConfig(gatewayConfig, env);
   const service = await gatewayServiceStatus();
   const targets = listConfiguredTargets(gatewayConfig, env);
 
@@ -145,6 +161,11 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
   lines.push(`  discord: ${discord.token ? `configured via ${discord.source}` : 'not configured'}; enabled=${yesNo(discord.enabled)}; allowed=${discord.allowedChannelIds.length}; default=${valueOrUnset(discord.defaultChannelId)}; write=${yesNo(discord.allowWrite)}`);
   lines.push(`  slack: ${slack.botToken ? `configured via ${slack.source}` : 'not configured'}; enabled=${yesNo(slack.enabled)}; appToken=${yesNo(Boolean(slack.appToken))}; allowed=${slack.allowedChannelIds.length}; default=${valueOrUnset(slack.defaultChannelId)}; write=${yesNo(slack.allowWrite)}`);
   lines.push(`  email: ${email.address ? `configured via ${email.source}` : 'not configured'}; enabled=${yesNo(email.enabled)}; smtp=${valueOrUnset(email.smtpHost)}:${email.smtpPort}; imap=${valueOrUnset(email.imapHost)}:${email.imapPort}; allowed=${email.allowedUsers.length}; home=${valueOrUnset(email.homeAddress)}`);
+  lines.push(`  line: ${line.channelAccessToken ? `configured via ${line.source}` : 'not configured'}; enabled=${yesNo(line.enabled)}; allowed=${line.allowedUsers.length + line.allowedGroups.length + line.allowedRooms.length}; home=${valueOrUnset(line.homeChannel)}; secret=${yesNo(Boolean(line.channelSecret))}`);
+  lines.push(`  sms: ${sms.accountSid && sms.authToken && sms.phoneNumber ? `configured via ${sms.source}` : 'not configured'}; enabled=${yesNo(sms.enabled)}; allowed=${sms.allowedUsers.length}; home=${valueOrUnset(sms.homeChannel)}; webhook=${valueOrUnset(sms.webhookUrl)}; signature=${sms.insecureNoSignature ? 'disabled' : 'required'}`);
+  lines.push(`  ntfy: ${ntfy.topic || ntfy.token ? `configured via ${ntfy.source}` : 'not configured'}; enabled=${yesNo(ntfy.enabled)}; server=${valueOrUnset(ntfy.serverUrl)}; topic=${valueOrUnset(ntfy.topic)}; publish=${valueOrUnset(ntfy.publishTopic)}; allowed=${ntfy.allowedUsers.length}; home=${valueOrUnset(ntfy.homeChannel)}; token=${yesNo(Boolean(ntfy.token))}; markdown=${yesNo(ntfy.markdown)}`);
+  lines.push(`  signal: ${signal.account ? `configured via ${signal.source}` : 'not configured'}; enabled=${yesNo(signal.enabled)}; url=${valueOrUnset(signal.httpUrl)}; account=${redactSignalId(signal.account)}; allowed=${signal.allowedUsers.length}; groups=${signal.groupAllowedUsers.length}; home=${redactSignalId(signal.homeChannel)}; requireMention=${yesNo(signal.requireMention)}`);
+  lines.push(`  webhooks: ${webhooks.enabled ? `enabled via ${webhooks.source}` : 'not enabled'}; routes=${Object.keys(webhooks.routes).length}; secret=${yesNo(Boolean(webhooks.secret))}; public=${valueOrUnset(webhooks.publicUrl)}`);
   lines.push(`  send targets: ${targets.length}`);
   lines.push('');
 

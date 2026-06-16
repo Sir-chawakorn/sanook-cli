@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ModelMessage } from 'ai';
 import { appHomePath, persistenceEnabled } from '../brand.js';
@@ -23,6 +23,7 @@ export interface GatewayAgentRunOptions {
   target: string;
   model: string;
   prompt: string;
+  userText?: string;
   budgetUsd?: number;
   maxSteps?: number;
   permissionMode?: 'auto' | 'ask';
@@ -73,7 +74,64 @@ export async function saveGatewaySession(session: GatewaySession): Promise<void>
   await chmod(sessionPath(session.id), 0o600).catch(() => {});
 }
 
+export async function removeGatewaySession(platform: string, target: string): Promise<boolean> {
+  try {
+    await rm(sessionPath(gatewaySessionId(platform, target)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function gatewayCommandHelp(): string {
+  return [
+    'Messaging commands:',
+    '/new หรือ /reset — เริ่มบทสนทนาใหม่',
+    '/status — ดู session ปัจจุบัน',
+    '/help — ดูคำสั่งที่รองรับ',
+  ].join('\n');
+}
+
+async function handleGatewayCommand(opts: GatewayAgentRunOptions): Promise<GatewayAgentRunResult | null> {
+  const input = opts.userText?.trim();
+  if (!input?.startsWith('/')) return null;
+  const [command] = input.slice(1).trim().split(/\s+/);
+  const normalized = command?.toLowerCase();
+  if (!normalized) return null;
+
+  if (normalized === 'new' || normalized === 'reset') {
+    await removeGatewaySession(opts.platform, opts.target);
+    return { text: 'เริ่มบทสนทนาใหม่แล้ว', messages: [], suppressDelivery: false };
+  }
+
+  if (normalized === 'status') {
+    const existing = await loadGatewaySession(opts.platform, opts.target);
+    const turns = existing?.messages.length ?? 0;
+    const text = existing
+      ? [
+          `Session: ${existing.id}`,
+          `Platform: ${existing.platform}`,
+          `Target: ${existing.target}`,
+          `Model: ${existing.model}`,
+          `Messages: ${turns}`,
+          `Updated: ${existing.updated}`,
+        ].join('\n')
+      : `ยังไม่มี session สำหรับ ${opts.platform}:${opts.target}`;
+    return { text, messages: existing?.messages ?? [], suppressDelivery: false };
+  }
+
+  if (normalized === 'help') {
+    const existing = await loadGatewaySession(opts.platform, opts.target);
+    return { text: gatewayCommandHelp(), messages: existing?.messages ?? [], suppressDelivery: false };
+  }
+
+  return null;
+}
+
 export async function runGatewayAgent(opts: GatewayAgentRunOptions): Promise<GatewayAgentRunResult> {
+  const command = await handleGatewayCommand(opts);
+  if (command) return command;
+
   const existing = await loadGatewaySession(opts.platform, opts.target);
   const { text, messages } = await runAgent({
     model: opts.model,

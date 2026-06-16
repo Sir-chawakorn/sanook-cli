@@ -45,6 +45,11 @@ function normalizeOptionalModel(model: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function normalizeOptionalText(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 // ── low-level: read ตรงจากไฟล์ทุกครั้ง (ไม่ cache snapshot → ไม่มี stale-overwrite) ──
 async function readTasks(): Promise<Task[]> {
   try {
@@ -91,8 +96,11 @@ export async function dueTasks(now = Date.now()): Promise<Task[]> {
 export async function enqueueTask(t: NewTask): Promise<Task> {
   const task: Task = { id: randomUUID().slice(0, 8), status: 'queued', createdAt: Date.now(), ...t };
   const model = normalizeOptionalModel(t.model);
+  const deliver = normalizeOptionalText(t.deliver);
   if (model) task.model = model;
   else delete task.model;
+  if (deliver) task.deliver = deliver;
+  else delete task.deliver;
   await mutate((tasks) => {
     tasks.push(task);
     return { tasks, result: undefined };

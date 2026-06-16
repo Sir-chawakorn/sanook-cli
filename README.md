@@ -13,7 +13,7 @@ Bring your own key · 12 providers · MCP · a built-in **"second brain"** that 
 [![License](https://img.shields.io/badge/license-Apache--2.0-22c55e.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-541%20passing-22c55e.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-590%20passing-22c55e.svg)](#development)
 [![CI](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml)
 
 [Quickstart](#quickstart) · [Providers](#providers) · [Usage](#usage) · [Gateway](#gateway--scheduling) · [Skills](#skills) · [MCP](#mcp) · [Security](#security)
@@ -111,8 +111,8 @@ sanook dump                     # support snapshot; raw secrets are never printe
 | **Skills** | Built-in skills + install your own from a GitHub repo, URL, or local path. The agent can also author new skills after a repeatable task. |
 | **Custom commands** | Drop a `.sanook/commands/<name>.md` prompt template and call it as `/<name>` (project commands require trust). |
 | **Subagents** | A `task` tool spawns a fresh-context sub-agent for scoped exploration without bloating the main context — read-only by default, depth-guarded. |
-| **Gateway + cron** | `sanook gateway run` (alias: `sanook serve`) runs a long-lived daemon: a loopback OpenAI-compatible HTTP endpoint plus a cron scheduler. Ask it in plain language and it schedules itself. |
-| **Channels** | `sanook gateway setup telegram|discord|slack|email` stores messaging adapter config, and `sanook gateway run` starts Telegram long-polling, lightweight Discord Gateway / Slack Socket Mode adapters, and Email IMAP polling when configured. Chat history is persisted per platform target, and final responses of `[SILENT]`, `SILENT`, `NO_REPLY`, or `NO REPLY` are stored but not delivered. `sanook send --to telegram|discord|slack|email` sends outbound messages without spinning up the agent. |
+| **Gateway + cron** | `sanook gateway run` (alias: `sanook serve`) runs a long-lived daemon: a loopback OpenAI-compatible HTTP endpoint plus a cron scheduler. Scheduled tasks can use `--to` to deliver results back through the messaging gateway. |
+| **Channels** | `sanook gateway setup telegram|discord|slack|email|line|sms|ntfy|signal|webhooks` stores messaging adapter config, and `sanook gateway run` starts Telegram long-polling, lightweight Discord Gateway / Slack Socket Mode adapters, Email IMAP polling, LINE webhooks, Twilio SMS webhooks, ntfy topic streams, Signal via `signal-cli` HTTP/SSE, and generic event webhooks when configured. Chat history is persisted per platform target, and final responses of `[SILENT]`, `SILENT`, `NO_REPLY`, or `NO REPLY` are stored but not delivered. `sanook send --to telegram|discord|slack|email|line|sms|ntfy|signal`, `sanook webhook subscribe`, and `sanook cron add --to ...` use the same outbound delivery rules. |
 | **MCP** | Connect any Model Context Protocol server over **stdio or remote Streamable-HTTP** (filesystem, GitHub, Postgres, hosted servers, …) via `~/.sanook/mcp.json`. |
 | **Git** | Branch, uncommitted changes, and recent commits are injected automatically, with `git_status` / `git_diff` / `git_log` / `git_commit` tools. |
 | **Hooks** | Run your own command before/after any tool. A non-zero `PreToolUse` exit blocks the tool — enforce lint, format, or policy. |
@@ -212,6 +212,8 @@ sanook gateway restart
 sanook gateway install                         # write launchd/systemd helper file
 sanook serve --port 8787                       # compatibility alias
 sanook cron add "every 30m" "check the CI"     # also "09:00", an ISO time, or "now"
+sanook cron add "every 30m" "check the CI" --to slack:C01ABCDEF
+sanook cron add "09:00" "summarise calendar" --to email:owner@example.com --model openai:gpt-5.1
 sanook cron list
 sanook cron rm <id>
 ```
@@ -233,7 +235,7 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 
 ### Messaging channels
 
-Use the setup command, or set environment variables before `sanook gateway run`. Telegram uses long-polling (no public URL needed), Discord uses the Gateway websocket, Slack uses Socket Mode, and Email uses IMAP polling plus SMTP threaded replies.
+Use the setup command, or set environment variables before `sanook gateway run`. Telegram uses long-polling (no public URL needed), Discord uses the Gateway websocket, Slack uses Socket Mode, Email uses IMAP polling plus SMTP threaded replies, LINE uses the official Messaging API webhook + Reply/Push endpoints, SMS uses Twilio Programmable Messaging with `X-Twilio-Signature` validation, ntfy uses the HTTP JSON stream + publish API, Signal uses `signal-cli daemon --http` with JSON-RPC + Server-Sent Events, and generic Webhooks accept GitHub/GitLab/Jira/Stripe-style events with HMAC validation.
 
 ```bash
 sanook gateway setup                           # platform menu
@@ -242,14 +244,37 @@ sanook gateway setup discord --bot-token "$DISCORD_BOT_TOKEN" --channel 12345678
 sanook gateway setup slack --bot-token "$SLACK_BOT_TOKEN" --app-token "$SLACK_APP_TOKEN" --channel C01ABCDEF
 sanook gateway setup email --address bot@example.com --password "$EMAIL_PASSWORD" \
   --imap-host imap.example.com --smtp-host smtp.example.com --home-address owner@example.com
+sanook gateway setup line --channel-access-token "$LINE_CHANNEL_ACCESS_TOKEN" \
+  --channel-secret "$LINE_CHANNEL_SECRET" --home-channel U1234567890abcdef
+sanook gateway setup sms --account-sid "$TWILIO_ACCOUNT_SID" --auth-token "$TWILIO_AUTH_TOKEN" \
+  --phone-number "$TWILIO_PHONE_NUMBER" --home-channel +15551234567 \
+  --webhook-url https://your-tunnel.example.com/sms/webhook
+sanook gateway setup ntfy --topic sanook-yourname-2026 --token "$NTFY_TOKEN" --markdown
+sanook gateway setup signal --account +15550000000 --home-channel +15551234567 \
+  --http-url http://127.0.0.1:8080
+sanook gateway setup webhooks --secret "$WEBHOOK_SECRET" --public-url https://your-tunnel.example.com
+sanook webhook subscribe github-issues --events issues \
+  --prompt "New issue #{issue.number}: {issue.title}\n{issue.html_url}" --to slack:C01ABCDEF
+sanook webhook subscribe deploy-notify --events push --deliver-only \
+  --prompt "Push to {repository.full_name}: {head_commit.message}" --to sms
 sanook gateway run
 sanook send --to telegram "deploy finished"
 sanook send --to discord "deploy finished"
 sanook send --to slack:C01ABCDEF "deploy finished"
 sanook send --to email:owner@example.com --subject "[CI]" "deploy finished"
+sanook send --to line "deploy finished"
+sanook send --to sms "deploy finished"
+sanook send --to ntfy "deploy finished"
+sanook send --to signal "deploy finished"
+sanook cron add "every 30m" "check the CI" --to line
+sanook cron add "09:00" "daily check-in" --to sms
+sanook cron add "09:00" "daily check-in" --to ntfy
+sanook cron add "09:00" "daily check-in" --to signal
 sanook send --to telegram --subject "[CI]" --file build.log
 echo "RAM 92%" | sanook send --to telegram --quiet
 sanook send --to telegram:5222385839:17585 "threaded reply"
+sanook webhook list
+sanook webhook test github-issues --payload '{"event_type":"issues","issue":{"number":42,"title":"Test"}}'
 sanook send --list --json
 ```
 
@@ -258,10 +283,40 @@ Environment overrides still work:
 ```bash
 export TELEGRAM_BOT_TOKEN=123:abc
 export TELEGRAM_ALLOWED_CHATS=5222385839   # required — comma-separated chat ids
+export LINE_CHANNEL_ACCESS_TOKEN=xxx
+export LINE_HOME_CHANNEL=U1234567890abcdef
+export TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+export TWILIO_AUTH_TOKEN=xxx
+export TWILIO_PHONE_NUMBER=+15550000000
+export SMS_HOME_CHANNEL=+15551234567
+export SMS_WEBHOOK_URL=https://your-tunnel.example.com/sms/webhook
+export NTFY_TOPIC=sanook-yourname-2026
+export NTFY_ALLOWED_USERS=sanook-yourname-2026
+export NTFY_HOME_CHANNEL=sanook-yourname-2026
+export SIGNAL_HTTP_URL=http://127.0.0.1:8080
+export SIGNAL_ACCOUNT=+15550000000
+export SIGNAL_HOME_CHANNEL=+15551234567
+export SIGNAL_ALLOWED_USERS=+15551234567
+export SIGNAL_GROUP_ALLOWED_USERS=groupIdBase64
+export WEBHOOK_ENABLED=true
+export WEBHOOK_SECRET=xxx
+export WEBHOOK_PUBLIC_URL=https://your-tunnel.example.com
 sanook gateway run
 ```
 
-The channel is **fail-closed**: with no allowlist it refuses to start, it accepts private chats only, and it never leaks internal errors back to the sender. See [Security](#security).
+Messaging channels are **fail-closed** by default: configure a home target or allowlist before accepting remote users, and internal errors are redacted before they reach chat surfaces. See [Security](#security).
+
+Inside Telegram/Discord/Slack/Email/LINE/SMS/ntfy/Signal conversations, `/new` or `/reset` clears that platform/target history, `/status` shows the current messaging session, and `/help` lists the supported chat commands.
+
+For ntfy, the topic is the identity and trust boundary: use a long random topic, a private/reserved topic with `NTFY_TOKEN`, or a self-hosted ntfy server with ACLs. Sanook authorizes inbound ntfy messages by topic, not by the user-controlled notification title.
+
+For Signal, run `signal-cli daemon --http 127.0.0.1:8080` locally, set `SIGNAL_ACCOUNT`, and keep `SIGNAL_ALLOWED_USERS` or `SIGNAL_HOME_CHANNEL` set so inbound DMs fail closed. Groups are disabled unless explicitly listed in `SIGNAL_GROUP_ALLOWED_USERS` or set to `*`; group send targets use `signal:group:<groupId>`.
+
+For LINE inbound messages, expose the gateway through a tunnel and set the LINE Developers Console webhook URL to `https://<your-tunnel>/line/webhook`. Check the tunnel with `GET /line/webhook/health` first.
+
+For SMS inbound messages, expose the gateway through a tunnel and set the Twilio Messaging webhook URL to `https://<your-tunnel>/sms/webhook`. Set `SMS_WEBHOOK_URL` to that exact URL so Sanook can validate `X-Twilio-Signature`; check `GET /sms/webhook/health` first.
+
+For generic webhooks, create routes with `sanook webhook subscribe <route>` and point external services at `https://<your-tunnel>/webhooks/<route>`. Sanook accepts GitHub `X-Hub-Signature-256`, GitLab `X-Gitlab-Token`, or generic `X-Webhook-Signature`; check `GET /webhooks/health` first.
 
 ## Skills
 
@@ -399,6 +454,9 @@ Sanook runs shell commands and edits files, so safety is built into the core rat
 - **Gateway** — HTTP binds to `127.0.0.1` only and requires a bearer token on every non-health endpoint.
 - **Telegram** — fail-closed: a required allowlist, private-chat-only, per-chat rate-limiting, and generic error replies that never reveal internal paths.
 - **Email** — use a dedicated mailbox and app password; store only app passwords, require an allowlist/home address by default, and keep SMTP/IMAP credentials in `~/.sanook/gateway/config.json` (chmod 600).
+- **LINE** — use a long-lived Messaging API channel access token, keep a home/allowed target list by default, and store the token/secret in `~/.sanook/gateway/config.json` (chmod 600).
+- **ntfy** — treat the topic as a shared secret unless you protect it with ntfy auth/ACLs; Sanook requires `NTFY_ALLOWED_USERS`/home topic or `NTFY_ALLOW_ALL_USERS` before subscribing.
+- **Signal** — keep `signal-cli` HTTP bound to loopback, require DM allowlists by default, and enable groups only with `SIGNAL_GROUP_ALLOWED_USERS` (or `*` deliberately).
 
 Hardened across several adversarial security reviews covering command injection, prompt injection, concurrency, and credential leakage.
 

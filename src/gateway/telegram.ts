@@ -127,6 +127,7 @@ export function startTelegram(opts: TelegramOpts): () => void {
                 target: String(chat.id),
                 model: opts.model,
                 prompt: text,
+                userText: text,
                 budgetUsd: opts.budgetUsd,
                 // remote surface: default ask-mode + ไม่มี approve fn → mutate tools (bash/write/edit/MCP-write)
                 // ถูกปฏิเสธอัตโนมัติ (single-factor chat-id ไม่พอจะให้ RCE). opt-in: TELEGRAM_ALLOW_WRITE=1

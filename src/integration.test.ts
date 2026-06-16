@@ -134,6 +134,26 @@ describe('gateway (ledger + schedule_task tool)', () => {
     const id = list.split(/\s/)[0];
     expect(await cancelScheduledTool.execute!({ id }, opt)).toContain('ยกเลิก');
   });
+
+  it('schedule_task validates and lists delivery targets', async () => {
+    const { scheduleTaskTool, listScheduledTool, cancelScheduledTool } = await import('./tools/schedule.js');
+    const rejected = (await scheduleTaskTool.execute!(
+      { when: 'every 30m', task: 'ส่งรายงาน', deliver: 'sms:+15551234567:thread' },
+      opt,
+    )) as string;
+    expect(rejected).toContain('ตั้งปลายทางส่งผลลัพธ์ไม่ได้');
+
+    const added = (await scheduleTaskTool.execute!(
+      { when: 'every 30m', task: 'ส่งรายงาน', deliver: ' Slack : C01ABC ' },
+      opt,
+    )) as string;
+    expect(added).toContain('ส่งผลลัพธ์ไป slack:C01ABC');
+
+    const list = (await listScheduledTool.execute!({}, opt)) as string;
+    const row = list.split('\n').find((line) => line.includes('ส่งรายงาน'));
+    expect(row).toContain('to:slack:C01ABC');
+    expect(await cancelScheduledTool.execute!({ id: row!.split(/\s/)[0] }, opt)).toContain('ยกเลิก');
+  });
 });
 
 describe('providers (registry, no key needed)', () => {

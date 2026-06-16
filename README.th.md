@@ -68,14 +68,36 @@ sanook -c "ทำต่อจาก session ล่าสุดของ project 
 sanook --continue-any "ทำต่อจาก session ล่าสุดข้าม project"
 ```
 
+ตัวอย่างตั้งค่า messaging แบบ Hermes-style:
+
+```bash
+sanook gateway setup line --channel-access-token "$LINE_CHANNEL_ACCESS_TOKEN" \
+  --channel-secret "$LINE_CHANNEL_SECRET" --home-channel U1234567890abcdef
+sanook gateway setup sms --account-sid "$TWILIO_ACCOUNT_SID" --auth-token "$TWILIO_AUTH_TOKEN" \
+  --phone-number "$TWILIO_PHONE_NUMBER" --home-channel +15551234567 \
+  --webhook-url https://your-tunnel.example.com/sms/webhook
+sanook gateway setup ntfy --topic sanook-yourname-2026 --token "$NTFY_TOKEN" --markdown
+sanook gateway setup signal --account +15550000000 --home-channel +15551234567 \
+  --http-url http://127.0.0.1:8080
+sanook gateway setup webhooks --secret "$WEBHOOK_SECRET" --public-url https://your-tunnel.example.com
+sanook webhook subscribe github-issues --events issues \
+  --prompt "Issue #{issue.number}: {issue.title}" --to slack:C01ABCDEF
+sanook send --to sms "deploy finished"
+sanook send --to ntfy "deploy finished"
+sanook send --to signal "deploy finished"
+sanook cron add "09:00" "สรุปงานเช้านี้" --to ntfy
+```
+
+ใน Telegram/Discord/Slack/Email/LINE/SMS/ntfy/Signal พิมพ์ `/new` หรือ `/reset` เพื่อล้าง history ของ target นั้น, `/status` เพื่อดู session ปัจจุบัน และ `/help` เพื่อดูคำสั่งที่รองรับ
+
 ## ทำอะไรได้บ้าง
 
 - **BYOK + 12 providers** — Anthropic, Google, OpenAI, DeepSeek, xAI, Mistral, Groq, MiniMax, GLM, Ollama, LM Studio, Codex
 - **Hermes-style CLI** — `sanook setup`, `sanook model`, `sanook auth`, `sanook chat -q`, `sanook gateway`, `sanook status`, `sanook sessions`, `sanook dump`, `sanook tools`, `sanook send`
 - **Second brain** — `sanook brain init` สร้าง workspace Obsidian ให้ AI จำงานข้ามวัน
 - **Tools** — อ่าน/เขียน/แก้ไฟล์ · รัน bash · git · grep/glob พร้อม permission gate
-- **Gateway + cron** — `sanook gateway run` (alias: `sanook serve`) รัน 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram/Discord/Slack/Email
-- **Messaging setup/send** — `sanook gateway setup telegram|discord|slack|email` บันทึก token/allowlist หรือ SMTP/IMAP config; `sanook gateway run` เริ่ม Telegram long-polling, Discord Gateway, Slack Socket Mode และ Email IMAP polling + SMTP threaded replies เมื่อ config พร้อม; history ถูกเก็บต่อ platform/target และถ้าคำตอบสุดท้ายเป็น `[SILENT]`, `SILENT`, `NO_REPLY`, หรือ `NO REPLY` จะบันทึกไว้แต่ไม่ส่งกลับ; `sanook send --to telegram|discord|slack|email "..."` ส่งข้อความออกโดยไม่เรียก LLM
+- **Gateway + cron** — `sanook gateway run` (alias: `sanook serve`) รัน 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram/Discord/Slack/Email/LINE/SMS/ntfy/Signal/Webhooks; task ใช้ `--to` เพื่อส่งผลลัพธ์กลับไปยัง messaging target ได้
+- **Messaging setup/send** — `sanook gateway setup telegram|discord|slack|email|line|sms|ntfy|signal|webhooks` บันทึก token/allowlist หรือ SMTP/IMAP/LINE/Twilio/ntfy/Signal/Webhook config; `sanook gateway run` เริ่ม Telegram long-polling, Discord Gateway, Slack Socket Mode, Email IMAP polling + SMTP threaded replies, LINE webhook, Twilio SMS webhook, ntfy topic stream, Signal ผ่าน `signal-cli` HTTP/SSE และ generic webhooks เมื่อ config พร้อม; history ถูกเก็บต่อ platform/target และถ้าคำตอบสุดท้ายเป็น `[SILENT]`, `SILENT`, `NO_REPLY`, หรือ `NO REPLY` จะบันทึกไว้แต่ไม่ส่งกลับ; `sanook send --to telegram|discord|slack|email|line|sms|ntfy|signal "..."`, `sanook webhook subscribe` และ `sanook cron add --to ...` ใช้กฎส่งออกชุดเดียวกัน
 - **MCP + Skills** — ต่อ MCP server ได้ + มี built-in skills และติดตั้งเพิ่มได้
 - **Update ง่าย** — ใช้ `sanook update` เพื่ออัปเดต CLI เป็นเวอร์ชันล่าสุดจาก npm
 

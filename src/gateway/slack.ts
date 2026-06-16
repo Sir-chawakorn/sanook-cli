@@ -125,6 +125,7 @@ export async function startSlack(opts: SlackGatewayOpts): Promise<() => void> {
     }
     const threadTs = ev.thread_ts ?? ev.ts;
     const sessionTarget = `${channelId}:${ev.user ?? 'unknown'}`;
+    const userText = text.replace(/<@[A-Z0-9]+>/g, '').trim() || text;
     if (running.has(sessionTarget)) {
       void sendSlackMessage(opts.botToken, channelId, 'กำลังทำงานก่อนหน้าอยู่ รอสักครู่', threadTs).catch(() => {});
       return;
@@ -137,7 +138,8 @@ export async function startSlack(opts: SlackGatewayOpts): Promise<() => void> {
           platform: 'slack',
           target: sessionTarget,
           model: opts.model,
-          prompt: text.replace(/<@[A-Z0-9]+>/g, '').trim() || text,
+          prompt: userText,
+          userText,
           budgetUsd: opts.budgetUsd,
           permissionMode: opts.allowWrite === true ? 'auto' : 'ask',
         });
