@@ -5,7 +5,7 @@ import { loadOrCreateToken } from './auth.js';
 import { startServer } from './server.js';
 import { startScheduler } from './scheduler.js';
 import { appHomePath, BRAND, BRAND_ENV, envFlag } from '../brand.js';
-import { readGatewayConfig, resolveTelegramConfig } from './config.js';
+import { readGatewayConfig, resolveDiscordConfig, resolveEmailConfig, resolveSlackConfig, resolveTelegramConfig } from './config.js';
 
 const GATEWAY_DIR = appHomePath('gateway');
 const SERVE_LOCK = join(GATEWAY_DIR, 'serve.lock');
@@ -55,6 +55,9 @@ export async function startGateway(opts: GatewayOpts): Promise<() => void> {
 
   // Telegram channel (env หรือ ~/.sanook/gateway/config.json) — long-polling, ไม่ต้อง public URL
   let stopTelegram: (() => void) | undefined;
+  let stopDiscord: (() => void) | undefined;
+  let stopSlack: (() => void) | undefined;
+  let stopEmail: (() => void) | undefined;
   const gatewayConfig = await readGatewayConfig();
   const telegram = resolveTelegramConfig(gatewayConfig);
   if (telegram.enabled && telegram.token) {
@@ -70,12 +73,81 @@ export async function startGateway(opts: GatewayOpts): Promise<() => void> {
     // หมายเหตุ: log "เริ่มแล้ว" อยู่ใน startTelegram (success path) — ถ้า fail-closed จะ log "ไม่เริ่ม" แทน
   }
 
+  const discord = resolveDiscordConfig(gatewayConfig);
+  if (discord.enabled && discord.token) {
+    const { startDiscord } = await import('./discord.js');
+    try {
+      stopDiscord = startDiscord({
+        token: discord.token,
+        model: opts.model,
+        budgetUsd: opts.budgetUsd,
+        allowedChannelIds: discord.allowedChannelIds,
+        defaultChannelId: discord.defaultChannelId,
+        allowWrite: discord.allowWrite,
+        onLog: log,
+      });
+    } catch (e) {
+      log(`Discord ไม่เริ่ม: ${(e as Error).message}`);
+    }
+  }
+
+  const slack = resolveSlackConfig(gatewayConfig);
+  if (slack.enabled && slack.botToken) {
+    if (!slack.appToken) {
+      log('Slack ไม่เริ่ม: ต้องตั้ง SLACK_APP_TOKEN หรือ gateway setup slack --app-token สำหรับ Socket Mode');
+    } else {
+      const { startSlack } = await import('./slack.js');
+      try {
+        stopSlack = await startSlack({
+          botToken: slack.botToken,
+          appToken: slack.appToken,
+          model: opts.model,
+          budgetUsd: opts.budgetUsd,
+          allowedChannelIds: slack.allowedChannelIds,
+          defaultChannelId: slack.defaultChannelId,
+          allowWrite: slack.allowWrite,
+          onLog: log,
+        });
+      } catch (e) {
+        log(`Slack ไม่เริ่ม: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  const email = resolveEmailConfig(gatewayConfig);
+  if (email.enabled && email.address) {
+    if (!email.password || !email.imapHost || !email.smtpHost) {
+      log('Email ไม่เริ่ม: ต้องตั้ง password, imapHost และ smtpHost ให้ครบ');
+    } else {
+      const { startEmail } = await import('./email.js');
+      stopEmail = startEmail({
+        address: email.address,
+        password: email.password,
+        imapHost: email.imapHost,
+        imapPort: email.imapPort,
+        smtpHost: email.smtpHost,
+        smtpPort: email.smtpPort,
+        homeAddress: email.homeAddress,
+        allowedUsers: email.allowedUsers,
+        allowAllUsers: email.allowAllUsers,
+        pollIntervalSeconds: email.pollIntervalSeconds,
+        model: opts.model,
+        budgetUsd: opts.budgetUsd,
+        allowWrite: false,
+        onLog: log,
+      });
+    }
+  }
+
   log(`scheduler tick ทุก ${(opts.tickMs ?? 60_000) / 1000}s · token: ${appHomePath('gateway', 'token')} (chmod 600)`);
 
   return () => {
     stopServer();
     stopScheduler();
     stopTelegram?.();
+    stopDiscord?.();
+    stopSlack?.();
+    stopEmail?.();
     release(); // ปล่อย single-instance lock (sync — ทันก่อน process.exit ตัด event loop)
   };
 }

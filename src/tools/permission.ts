@@ -12,7 +12,7 @@ const DESTRUCTIVE_CMD =
 const PROTECTED_CMD_PATH =
   /(\$HOME|~)?\/?(\.ssh|\.aws|\.gnupg|\.sanook)(\/|\b)/i;
 const ENV_READ_CMD =
-  /(?:^|[\r\n;&|]\s*|\$\(\s*|`\s*)(?:(?:if|then|elif|while|until|do|time|command|builtin|exec)\s+)*(?:env\s+(?:-\S+\s+)*(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*)?(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*(cat|less|more|sed|awk|tail|head|grep|rg)\b/gi;
+  /(?:^|[\r\n;&|]\s*|\$\(\s*|[<>]\(\s*|`\s*)(?:(?:if|then|elif|while|until|do|time|command|builtin|exec)\s+)*(?:env\s+(?:-\S+\s+)*(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*)?(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*(cat|less|more|sed|awk|tail|head|grep|rg)\b/gi;
 
 const HOME = homedir();
 // ไฟล์ที่ห้ามเขียน (persistence backdoor): shell rc, git/npm config, ~/.sanook (token/mcp/hooks)

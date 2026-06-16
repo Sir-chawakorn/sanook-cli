@@ -13,7 +13,7 @@ Bring your own key · 12 providers · MCP · a built-in **"second brain"** that 
 [![License](https://img.shields.io/badge/license-Apache--2.0-22c55e.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-488%20passing-22c55e.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-541%20passing-22c55e.svg)](#development)
 [![CI](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml)
 
 [Quickstart](#quickstart) · [Providers](#providers) · [Usage](#usage) · [Gateway](#gateway--scheduling) · [Skills](#skills) · [MCP](#mcp) · [Security](#security)
@@ -53,7 +53,7 @@ The agent loop, BYOK, and MCP are table stakes now. What Sanook has that the big
 | Image / vision input | ✅ | ✅ | ✅ | ✅ |
 | Prompt caching | ✅ | ✅ | ✅ | ✅ |
 | **Durable cross-session memory** | ✅ | ❌ | ❌ | ❌ |
-| **Local gateway + cron + Telegram** | ✅ | ❌ | ❌ | ❌ |
+| **Local gateway + cron + messaging** | ✅ | ❌ | ❌ | ❌ |
 
 On raw benchmark scores the frontier vendors win — Sanook's bet is **portability + persistent memory**, not beating Opus on SWE-bench. Use whatever fits; this one remembers.
 
@@ -68,9 +68,13 @@ npm install -g sanook-cli
 > ⚠️ **`'sanook' is not recognized` / command not found?** You installed it locally — `npm i sanook-cli` (without `-g`) drops it into the current folder, **not on your PATH**, so the `sanook` command isn't found. Fix: reinstall with `npm install -g sanook-cli`, or just run it via **`npx sanook`** (uses the local copy you already installed).
 > Run **`npx sanook doctor`** to auto-diagnose Node version / PATH / install state and print the exact fix for your OS (incl. a safe Windows PATH one-liner).
 
-Set an API key (or run `sanook` with no task for the interactive setup wizard):
+Run the setup wizard (Hermes-style, Sanook-branded) or set an API key manually:
 
 ```bash
+sanook setup                    # provider + model wizard; offers to create a second brain
+sanook model                    # re-run provider/model setup later
+sanook auth add anthropic --api-key sk-ant-... --use
+
 export ANTHROPIC_API_KEY=sk-ant-...        # macOS / Linux
 setx ANTHROPIC_API_KEY "sk-ant-..."        # Windows (export won't work in cmd) — then open a NEW terminal
 
@@ -82,7 +86,13 @@ Run `sanook` with no task to drop into an interactive REPL. On the very first ru
 ```bash
 sanook                          # interactive REPL
 sanook "fix the failing test"   # one-shot, headless
+sanook chat -q "fix the failing test" --provider anthropic
+sanook -z "summarise the diff"  # one-shot, final output only
 sanook --json "..."             # JSONL output for CI / scripts
+sanook status                   # redacted provider/key/brain/gateway status
+sanook sessions                 # list saved sessions for this project
+sanook --resume <session_id> "continue here"
+sanook dump                     # support snapshot; raw secrets are never printed
 ```
 
 ## Features
@@ -95,13 +105,14 @@ sanook --json "..."             # JSONL output for CI / scripts
 | **Approval** | `ask` mode is the default and prompts `y/n` before any file write or shell command. `--yes` for auto-approve; headless ask-mode safely denies mutations when no approval UI exists. |
 | **Input** | Multiline editing, `↑`/`↓` persisted prompt history, readline keys (Ctrl-A/E/U/K/W), and `@file` mentions that inline a file's contents (or attach an **image** for vision-capable models). |
 | **Checkpoint** | A shadow-git snapshot is taken before each turn; `/rewind` restores the files **and** truncates the conversation — recoverable (it stashes the current state first). |
-| **Memory** | The agent writes its own notes (`remember`), recalls them across past sessions (`recall`), and `--continue` resumes the latest run for the current project. |
+| **Memory** | The agent writes its own notes (`remember`), recalls them across past sessions (`recall`), `--continue` resumes the latest run for the current project, `--resume <id>` resumes a specific run, and `sanook sessions` audits/exports/renames/prunes saved conversations. |
+| **Hermes-style CLI surfaces** | `sanook setup`, `sanook model`, `sanook auth`, `sanook chat -q`, `sanook gateway`, `sanook status`, `sanook sessions`, `sanook dump`, `sanook tools`, and `sanook send` provide familiar management entry points while staying Sanook-branded. |
 | **Repo map** | A lightweight symbol map of the repo (zero-dep, git-aware) is injected at session start so the agent picks the right files without blind grepping. |
 | **Skills** | Built-in skills + install your own from a GitHub repo, URL, or local path. The agent can also author new skills after a repeatable task. |
 | **Custom commands** | Drop a `.sanook/commands/<name>.md` prompt template and call it as `/<name>` (project commands require trust). |
 | **Subagents** | A `task` tool spawns a fresh-context sub-agent for scoped exploration without bloating the main context — read-only by default, depth-guarded. |
-| **Gateway + cron** | `sanook serve` runs a long-lived daemon: a loopback OpenAI-compatible HTTP endpoint plus a cron scheduler. Ask it in plain language and it schedules itself. |
-| **Channels** | A Telegram adapter (long-polling, no public URL) lets you drive the agent from your phone — locked down with a required allowlist and private-chat-only policy. |
+| **Gateway + cron** | `sanook gateway run` (alias: `sanook serve`) runs a long-lived daemon: a loopback OpenAI-compatible HTTP endpoint plus a cron scheduler. Ask it in plain language and it schedules itself. |
+| **Channels** | `sanook gateway setup telegram|discord|slack|email` stores messaging adapter config, and `sanook gateway run` starts Telegram long-polling, lightweight Discord Gateway / Slack Socket Mode adapters, and Email IMAP polling when configured. Chat history is persisted per platform target, and final responses of `[SILENT]`, `SILENT`, `NO_REPLY`, or `NO REPLY` are stored but not delivered. `sanook send --to telegram|discord|slack|email` sends outbound messages without spinning up the agent. |
 | **MCP** | Connect any Model Context Protocol server over **stdio or remote Streamable-HTTP** (filesystem, GitHub, Postgres, hosted servers, …) via `~/.sanook/mcp.json`. |
 | **Git** | Branch, uncommitted changes, and recent commits are injected automatically, with `git_status` / `git_diff` / `git_log` / `git_commit` tools. |
 | **Hooks** | Run your own command before/after any tool. A non-zero `PreToolUse` exit blocks the tool — enforce lint, format, or policy. |
@@ -133,22 +144,42 @@ A spec is an alias (`sonnet`), a `provider:model-id` pair (`openai:gpt-5.5`), or
 ```bash
 sanook models                 # list all providers
 sanook models anthropic       # curated ids (+ live verification if a key is set)
+sanook auth list              # redacted key status for every provider
+sanook auth status openai     # env/store/console details
 ```
 
 ## Usage
 
 ```
 sanook "<task>"          run one task (headless)
+sanook -z "<task>"       one-shot final output (script-friendly)
+sanook chat -q "<query>" Hermes-style direct query
 sanook                   interactive REPL
+sanook setup [section]   setup model/gateway/tools/agent/brain
+sanook model             choose provider + model
+sanook status            redacted install/config status
+sanook auth list         redacted provider key status
+sanook auth add openai --api-key <key> [--use]
+sanook sessions          list saved sessions for this project
+sanook sessions show <id>
+sanook sessions export <id> [--format json|markdown] [--output path]
+sanook sessions rename <id> <title>
+sanook sessions stats [--all]
+sanook sessions prune --keep N [--all] [--yes]
+sanook sessions rm <id>
+sanook dump [--show-keys] support dump (keys are still redacted)
 sanook -c "<task>"       resume the latest session for this project
+sanook --resume <id>     resume a specific saved session
 sanook --continue-any    resume the newest session across all projects
 sanook --plan "<task>"   plan mode (read-only)
 sanook --json "<task>"   JSONL output for scripts / CI
 sanook update            update the CLI to the latest npm release
 
   -m, --model <spec>     model or provider:model-id
+      --provider <id>    provider shortcut for `sanook chat`
   -b, --budget <usd>     stop when estimated cost exceeds this
   -y, --yes              auto-approve tool calls (skip ask-mode)
+      --yolo             alias for --yes
   -v, --version          print version
   -h, --help             show help
 ```
@@ -170,10 +201,16 @@ When you launch the interactive TUI with plain `sanook`, the CLI checks for upda
 
 ## Gateway & scheduling
 
-`sanook serve` starts a single long-lived process that hosts an HTTP API, a cron scheduler, and optional chat channels — all driving the same agent core.
+`sanook gateway run` starts a single long-lived foreground process that hosts an HTTP API, a cron scheduler, and optional chat channels — all driving the same agent core. `sanook gateway start` runs the same gateway in the background and records its pid/log path under `~/.sanook/gateway/`. `sanook serve` remains as a compatibility alias.
 
 ```bash
-sanook serve --port 8787                       # HTTP (127.0.0.1 only) + scheduler
+sanook gateway status                          # redacted gateway config + token path
+sanook gateway run --port 8787                 # HTTP (127.0.0.1 only) + scheduler
+sanook gateway start --port 8787               # background process + pid/log tracking
+sanook gateway stop
+sanook gateway restart
+sanook gateway install                         # write launchd/systemd helper file
+sanook serve --port 8787                       # compatibility alias
 sanook cron add "every 30m" "check the CI"     # also "09:00", an ISO time, or "now"
 sanook cron list
 sanook cron rm <id>
@@ -194,14 +231,34 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 | `POST` | `/v1/chat/completions` | run the agent (OpenAI-compatible) |
 | `GET` / `POST` | `/tasks` | list / enqueue scheduled tasks |
 
-### Telegram channel
+### Messaging channels
 
-Set two environment variables before `sanook serve` and the gateway adds a Telegram adapter via long-polling (no public URL needed):
+Use the setup command, or set environment variables before `sanook gateway run`. Telegram uses long-polling (no public URL needed), Discord uses the Gateway websocket, Slack uses Socket Mode, and Email uses IMAP polling plus SMTP threaded replies.
+
+```bash
+sanook gateway setup                           # platform menu
+sanook gateway setup telegram --bot-token 123:abc --allowed-chats 5222385839
+sanook gateway setup discord --bot-token "$DISCORD_BOT_TOKEN" --channel 123456789012345678
+sanook gateway setup slack --bot-token "$SLACK_BOT_TOKEN" --app-token "$SLACK_APP_TOKEN" --channel C01ABCDEF
+sanook gateway setup email --address bot@example.com --password "$EMAIL_PASSWORD" \
+  --imap-host imap.example.com --smtp-host smtp.example.com --home-address owner@example.com
+sanook gateway run
+sanook send --to telegram "deploy finished"
+sanook send --to discord "deploy finished"
+sanook send --to slack:C01ABCDEF "deploy finished"
+sanook send --to email:owner@example.com --subject "[CI]" "deploy finished"
+sanook send --to telegram --subject "[CI]" --file build.log
+echo "RAM 92%" | sanook send --to telegram --quiet
+sanook send --to telegram:5222385839:17585 "threaded reply"
+sanook send --list --json
+```
+
+Environment overrides still work:
 
 ```bash
 export TELEGRAM_BOT_TOKEN=123:abc
 export TELEGRAM_ALLOWED_CHATS=5222385839   # required — comma-separated chat ids
-sanook serve
+sanook gateway run
 ```
 
 The channel is **fail-closed**: with no allowlist it refuses to start, it accepts private chats only, and it never leaks internal errors back to the sender. See [Security](#security).
@@ -341,6 +398,7 @@ Sanook runs shell commands and edits files, so safety is built into the core rat
 - **Safe fallback** — provider fallback does not retry after a mutating tool call has already happened, avoiding duplicate side effects.
 - **Gateway** — HTTP binds to `127.0.0.1` only and requires a bearer token on every non-health endpoint.
 - **Telegram** — fail-closed: a required allowlist, private-chat-only, per-chat rate-limiting, and generic error replies that never reveal internal paths.
+- **Email** — use a dedicated mailbox and app password; store only app passwords, require an allowlist/home address by default, and keep SMTP/IMAP credentials in `~/.sanook/gateway/config.json` (chmod 600).
 
 Hardened across several adversarial security reviews covering command injection, prompt injection, concurrency, and credential leakage.
 

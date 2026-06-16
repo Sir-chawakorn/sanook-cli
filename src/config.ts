@@ -188,6 +188,21 @@ export async function readGlobalConfigRaw(): Promise<Record<string, unknown>> {
   return readJson(CONFIG_PATH);
 }
 
+/** path ของ auth.json (ใช้โชว์ใน CLI เท่านั้น; ห้าม print raw secret) */
+export function authConfigPath(): string {
+  return AUTH_PATH;
+}
+
+/** อ่าน auth.json ดิบแบบกรองเฉพาะ string values — caller ต้อง redact ก่อนโชว์ */
+export async function readStoredAuthRaw(): Promise<Record<string, string>> {
+  const raw = await readJson(AUTH_PATH);
+  const auth: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v === 'string') auth[k] = v;
+  }
+  return auth;
+}
+
 /** merge patch ลง config.json (สำหรับ `sanook config set`) */
 export async function patchGlobalConfig(patch: Record<string, unknown>): Promise<void> {
   await mkdir(CONFIG_DIR, { recursive: true });
@@ -199,16 +214,32 @@ export async function patchGlobalConfig(patch: Record<string, unknown>): Promise
 /** บันทึก API key ลง ~/.sanook/auth.json (chmod 0600) + set env ทันทีสำหรับ session นี้ */
 export async function saveKey(envVar: string, key: string): Promise<void> {
   await mkdir(CONFIG_DIR, { recursive: true });
-  let auth: Record<string, string> = {};
-  try {
-    auth = JSON.parse(await readFile(AUTH_PATH, 'utf8')) as Record<string, string>;
-  } catch {
-    /* ยังไม่มีไฟล์ */
-  }
+  const auth = await readStoredAuthRaw();
   auth[envVar] = key;
   await writeFile(AUTH_PATH, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
   await chmod(AUTH_PATH, 0o600); // เจ้าของอ่าน/เขียนเท่านั้น
   process.env[envVar] = key;
+}
+
+/** ลบ key ที่ Sanook เก็บไว้ใน auth.json (ไม่แตะ env จริงของ shell ภายนอก) */
+export async function removeStoredKey(envVar: string): Promise<boolean> {
+  await mkdir(CONFIG_DIR, { recursive: true });
+  const auth = await readStoredAuthRaw();
+  if (!(envVar in auth)) return false;
+  delete auth[envVar];
+  await writeFile(AUTH_PATH, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
+  await chmod(AUTH_PATH, 0o600).catch(() => {});
+  delete process.env[envVar];
+  return true;
+}
+
+/** ล้าง auth.json ที่ Sanook เก็บไว้ทั้งหมด */
+export async function clearStoredAuth(): Promise<void> {
+  await mkdir(CONFIG_DIR, { recursive: true });
+  const auth = await readStoredAuthRaw();
+  for (const envVar of Object.keys(auth)) delete process.env[envVar];
+  await writeFile(AUTH_PATH, '{}\n', { mode: 0o600 });
+  await chmod(AUTH_PATH, 0o600).catch(() => {});
 }
 
 /** โหลด key จาก auth.json เข้า env ตอน boot (ไม่ override env ที่ตั้งไว้แล้ว) */

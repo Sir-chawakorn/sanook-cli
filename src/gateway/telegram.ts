@@ -1,5 +1,5 @@
-import { runAgent } from '../loop.js';
 import { redactKey } from '../providers/keys.js';
+import { runGatewayAgent } from './session.js';
 
 // Telegram channel adapter — long-polling (ไม่ต้อง public URL, เหมาะ local 24/7 แบบ Hermes)
 // ⚠ remote surface ที่รัน agent ได้ → security: REQUIRED allowlist (fail-closed) + private chat only +
@@ -32,12 +32,29 @@ async function getUpdates(token: string, offset: number, signal: AbortSignal): P
   return j.result ?? [];
 }
 
-export async function sendTelegramMessage(token: string, chatId: number, text: string): Promise<void> {
-  await fetch(api(token, 'sendMessage'), {
+export interface TelegramSendResult {
+  messageId?: number;
+  chatId: number;
+}
+
+export async function sendTelegramMessage(
+  token: string,
+  chatId: number,
+  text: string,
+  threadId?: number,
+): Promise<TelegramSendResult> {
+  const r = await fetch(api(token, 'sendMessage'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 4096) }),
-  }).catch(() => {});
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: text.slice(0, 4096),
+      ...(threadId == null ? {} : { message_thread_id: threadId }),
+    }),
+  });
+  if (!r.ok) throw new Error(`Telegram sendMessage ${r.status}`);
+  const body = (await r.json().catch(() => ({}))) as { result?: { message_id?: number } };
+  return { chatId, messageId: body.result?.message_id };
 }
 
 /** allowlist — fail-closed: ว่าง = ปฏิเสธทุกคน (ต้องตั้ง TELEGRAM_ALLOWED_CHATS ชัดเจน) */
@@ -51,8 +68,10 @@ export function parseAllowedChats(raw: string | undefined): number[] {
   if (!raw) return [];
   return raw
     .split(',')
-    .map((s) => parseInt(s.trim(), 10))
-    .filter((n) => Number.isInteger(n));
+    .map((s) => s.trim())
+    .filter((s) => /^-?\d+$/.test(s))
+    .map(Number)
+    .filter((n) => Number.isSafeInteger(n));
 }
 
 /** start long-polling — คืน stop(). ไม่ start ถ้าไม่มี allowlist (fail-closed) */
@@ -103,16 +122,17 @@ export function startTelegram(opts: TelegramOpts): () => void {
           void (async () => {
             try {
               await sendTelegramMessage(opts.token, chat.id, '⏳ กำลังคิด…');
-              const { text: out } = await runAgent({
+              const out = await runGatewayAgent({
+                platform: 'telegram',
+                target: String(chat.id),
                 model: opts.model,
                 prompt: text,
-                maxSteps: 20,
                 budgetUsd: opts.budgetUsd,
                 // remote surface: default ask-mode + ไม่มี approve fn → mutate tools (bash/write/edit/MCP-write)
                 // ถูกปฏิเสธอัตโนมัติ (single-factor chat-id ไม่พอจะให้ RCE). opt-in: TELEGRAM_ALLOW_WRITE=1
                 permissionMode: opts.allowWrite === true ? 'auto' : 'ask',
               });
-              await sendTelegramMessage(opts.token, chat.id, out || '(ไม่มีผลลัพธ์)');
+              if (!out.suppressDelivery) await sendTelegramMessage(opts.token, chat.id, out.text || '(ไม่มีผลลัพธ์)');
             } catch (e) {
               // ไม่ส่ง internal detail ให้ remote — log ฝั่ง server เท่านั้น
               opts.onLog?.(`Telegram run error (${chat.id}): ${redactKey((e as Error).message)}`);

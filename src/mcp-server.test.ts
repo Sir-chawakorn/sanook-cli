@@ -81,9 +81,8 @@ describe('handle — JSON-RPC dispatch', () => {
 
 describe('stdio round-trip (real child, stdout stays protocol-clean)', () => {
   it('answers initialize + tools/list over a piped child; every stdout line is valid JSON-RPC', async () => {
-    const tsx = fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url));
     const bin = fileURLToPath(new URL('./bin.ts', import.meta.url));
-    const child = spawn(tsx, [bin, 'mcp', 'serve'], {
+    const child = spawn(process.execPath, ['--import', 'tsx', bin, 'mcp', 'serve'], {
       env: { ...process.env, HOME: tmpHome, SANOOK_DISABLE_PERSISTENCE: '1', SANOOK_DISABLE_UPDATE_CHECK: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
     });

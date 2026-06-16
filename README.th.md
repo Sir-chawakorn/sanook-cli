@@ -39,9 +39,13 @@ npm install -g sanook-cli
 > แก้: ลงใหม่ด้วย `npm install -g sanook-cli` · หรือเรียกผ่าน **`npx sanook`** (ใช้ตัวที่ลง local ไปแล้วได้เลย)
 > หรือรัน **`npx sanook doctor`** — ตรวจ Node/PATH/สถานะการติดตั้งให้ แล้วบอกคำสั่งแก้ที่ตรงกับ OS (มีบรรทัดแก้ PATH บน Windows แบบปลอดภัยให้ก็อปด้วย)
 
-ตั้ง API key (หรือรัน `sanook` เฉย ๆ ครั้งแรกจะมี setup wizard ให้เลือก provider + วาง key):
+เริ่มด้วย setup wizard แบบเป็นทางการ หรือจะตั้ง API key เองก็ได้:
 
 ```bash
+sanook setup                    # เลือก provider + model และเสนอสร้าง second brain
+sanook model                    # กลับมาเปลี่ยน provider/model ภายหลัง
+sanook auth add anthropic --api-key sk-ant-... --use
+
 # macOS / Linux
 export ANTHROPIC_API_KEY=sk-ant-...
 
@@ -54,6 +58,12 @@ setx ANTHROPIC_API_KEY "sk-ant-..."
 ```bash
 sanook                 # REPL (ครั้งแรก = setup wizard)
 sanook "อ่าน package.json แล้วบอกว่ามี dependencies อะไรบ้าง"
+sanook chat -q "อ่าน package.json แล้วสรุป dependencies" --provider anthropic
+sanook -z "สรุป diff นี้"     # one-shot เฉพาะคำตอบสุดท้าย เหมาะกับ script
+sanook status          # ดู provider/key/brain/gateway แบบ redact secret
+sanook sessions        # ดู saved sessions ของ project นี้
+sanook --resume <session_id> "ทำต่อจาก session นี้"
+sanook dump            # diagnostic/support snapshot โดยไม่โชว์ raw secret
 sanook -c "ทำต่อจาก session ล่าสุดของ project นี้"
 sanook --continue-any "ทำต่อจาก session ล่าสุดข้าม project"
 ```
@@ -61,9 +71,11 @@ sanook --continue-any "ทำต่อจาก session ล่าสุดข้
 ## ทำอะไรได้บ้าง
 
 - **BYOK + 12 providers** — Anthropic, Google, OpenAI, DeepSeek, xAI, Mistral, Groq, MiniMax, GLM, Ollama, LM Studio, Codex
+- **Hermes-style CLI** — `sanook setup`, `sanook model`, `sanook auth`, `sanook chat -q`, `sanook gateway`, `sanook status`, `sanook sessions`, `sanook dump`, `sanook tools`, `sanook send`
 - **Second brain** — `sanook brain init` สร้าง workspace Obsidian ให้ AI จำงานข้ามวัน
 - **Tools** — อ่าน/เขียน/แก้ไฟล์ · รัน bash · git · grep/glob พร้อม permission gate
-- **Gateway + cron** — `sanook serve` รันเป็น service 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram
+- **Gateway + cron** — `sanook gateway run` (alias: `sanook serve`) รัน 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram/Discord/Slack/Email
+- **Messaging setup/send** — `sanook gateway setup telegram|discord|slack|email` บันทึก token/allowlist หรือ SMTP/IMAP config; `sanook gateway run` เริ่ม Telegram long-polling, Discord Gateway, Slack Socket Mode และ Email IMAP polling + SMTP threaded replies เมื่อ config พร้อม; history ถูกเก็บต่อ platform/target และถ้าคำตอบสุดท้ายเป็น `[SILENT]`, `SILENT`, `NO_REPLY`, หรือ `NO REPLY` จะบันทึกไว้แต่ไม่ส่งกลับ; `sanook send --to telegram|discord|slack|email "..."` ส่งข้อความออกโดยไม่เรียก LLM
 - **MCP + Skills** — ต่อ MCP server ได้ + มี built-in skills และติดตั้งเพิ่มได้
 - **Update ง่าย** — ใช้ `sanook update` เพื่ออัปเดต CLI เป็นเวอร์ชันล่าสุดจาก npm
 
@@ -74,6 +86,16 @@ sanook -m sonnet "..."         # Claude
 sanook -m gemini "..."         # Gemini
 sanook -m glm:smart "..."      # GLM (z.ai Coding Plan)
 sanook -m ollama "..."         # local ไม่ต้องมี key
+sanook auth list               # ดู key/provider status แบบ redact secret
+sanook auth status openai      # ดู env/store/console ของ provider
+sanook sessions                # ดู session ที่บันทึกไว้ของ project นี้
+sanook sessions show <id>      # ดูรายละเอียด session แบบย่อ
+sanook sessions export <id> --format markdown --output session.md
+sanook sessions rename <id> "ชื่อ session"
+sanook sessions stats --all
+sanook sessions prune --keep 20 --yes
+sanook sessions rm <id>        # ลบ session
+sanook dump [--show-keys]      # support dump; key ยังถูก redact
 ```
 
 ตั้งค่า default model ได้ด้วย:

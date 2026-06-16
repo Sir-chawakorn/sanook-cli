@@ -6,6 +6,7 @@ export interface Args {
   prompt: string;
   planMode: boolean;
   yes: boolean;
+  resume?: string;
 }
 
 export function parseArgs(argv: string[]): Args {
@@ -15,6 +16,7 @@ export function parseArgs(argv: string[]): Args {
   let quiet = false;
   let planMode = false;
   let yes = false;
+  let resume: string | undefined;
   const rest: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -28,10 +30,11 @@ export function parseArgs(argv: string[]): Args {
       else if (v === 'final' || v === 'quiet') quiet = true;
       /* 'text' = default */
     } else if (a === '--plan') planMode = true;
-    else if (a === '--yes' || a === '-y') yes = true;
+    else if (a === '--yes' || a === '-y' || a === '--yolo' || a === '--dangerously-skip-permissions') yes = true;
+    else if (a === '--resume' || a === '-r') resume = argv[++i];
     else if (a === '-p' || a === '--print' || a === '-c' || a === '--continue' || a === '--continue-any') {
       /* -p headless flag · -c/--continue/--continue-any resume (handled in main) */
     } else rest.push(a);
   }
-  return { model, budget, json, quiet, prompt: rest.join(' ').trim(), planMode, yes };
+  return { model, budget, json, quiet, prompt: rest.join(' ').trim(), planMode, yes, resume };
 }

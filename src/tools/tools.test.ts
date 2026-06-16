@@ -73,6 +73,7 @@ describe('permission gate', () => {
     expect(checkBash("sed -n '1,20p' .env.example").ok).toBe(true);
     expect(checkBash('cat <.env.example').ok).toBe(true);
     expect(checkBash('grep API_KEY .env.example').ok).toBe(true);
+    expect(checkBash('diff <(cat .env.example) expected.txt').ok).toBe(true);
   });
   it('block reading secret .env variants through bash guard', () => {
     expect(checkBash('cat .env').ok).toBe(false);
@@ -110,6 +111,8 @@ describe('permission gate', () => {
     expect(checkBash('cat \\.env').ok).toBe(false);
     expect(checkBash('echo ok\ncat .env').ok).toBe(false);
     expect(checkBash('echo ok\r\ncat .env.local').ok).toBe(false);
+    expect(checkBash('diff <(cat .env) expected.txt').ok).toBe(false);
+    expect(checkBash('comm <(sed -n 1p .env.local) safe.txt').ok).toBe(false);
   });
   it('allow reader options that exclude protected env files or target .env.example', () => {
     expect(checkBash('grep -R --include=.env.example SAFE .').ok).toBe(true);
