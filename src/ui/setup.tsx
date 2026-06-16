@@ -42,6 +42,7 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
   const [loadingModels, setLoadingModels] = useState(false);
   const [codexStatus, setCodexStatus] = useState<CodexStatus | null>(null);
   const [recheck, setRecheck] = useState(0);
+  const [keyDraft, setKeyDraft] = useState('');
   const [keyError, setKeyError] = useState('');
 
   const cfg = provider ? PROVIDERS[provider] : undefined;
@@ -88,12 +89,17 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
     setCodexStatus(null);
     setKeyError('');
     setKey('');
+    setKeyDraft('');
     setStep('provider');
   };
 
   // Esc บนทุก step (ยกเว้น provider) = ย้อนกลับไปเลือก provider — กัน dead-end ตอนเลือกผิด
   // หรือ codex detect ค้าง (step codex-auth ตอน pending ไม่มีปุ่มอื่น แต่ Esc ออกได้เสมอ)
   useInput((_input, key) => {
+    if (key.return && step === 'key' && !keyDraft.trim()) {
+      setKeyError('วาง API key ก่อนค่ะ (กด Enter ทั้งที่ว่างไม่ได้) · Esc = กลับไปเลือก provider');
+      return;
+    }
     if (key.escape && step !== 'provider') backToProvider();
   });
 
@@ -114,6 +120,7 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
     }
     setKeyError('');
     setKey(k);
+    setKeyDraft(k);
     setStep('model');
   };
 
@@ -183,7 +190,14 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
           {consoleUrl(provider) ? <Text color="cyan">   → เอา key ที่: {consoleUrl(provider)}</Text> : null}
           {cfg.keyExample ? <Text color="gray">   รูปแบบ key: {cfg.keyExample}</Text> : null}
           <Text color="gray">   (API key ตรงจาก console — ห้าม OAuth/subscription token · key จะเก็บแบบเข้ารหัสในเครื่อง)</Text>
-          <PasswordInput placeholder={cfg.envVar} onSubmit={submitKey} />
+          <PasswordInput
+            placeholder={cfg.envVar}
+            onChange={(v) => {
+              setKeyDraft(v);
+              if (keyError) setKeyError('');
+            }}
+            onSubmit={submitKey}
+          />
           {keyError ? <Text color="red">   ✗ {keyError}</Text> : null}
         </Box>
       )}

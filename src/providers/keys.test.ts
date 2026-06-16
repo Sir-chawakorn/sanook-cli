@@ -1,7 +1,20 @@
-import { describe, it, expect } from 'vitest';
-import { assertDirectApiKey, redactKey } from './keys.js';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { assertDirectApiKey, redactKey, resolveKeyFromEnv } from './keys.js';
 
 const anthropic = { label: 'Anthropic', keyFormat: /^sk-ant-api\d{2}-/, oauthRejectPrefixes: ['sk-ant-oat'] };
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+describe('resolveKeyFromEnv', () => {
+  it('trims env values and skips whitespace-only values before trying fallbacks', () => {
+    vi.stubEnv('SANOOK_PRIMARY_KEY', '   ');
+    vi.stubEnv('SANOOK_FALLBACK_KEY', '  sk-from-fallback  ');
+
+    expect(resolveKeyFromEnv('SANOOK_PRIMARY_KEY', ['SANOOK_FALLBACK_KEY'])).toBe('sk-from-fallback');
+  });
+});
 
 describe('assertDirectApiKey (BYOK / OAuth-reject compliance)', () => {
   it('reject OAuth/subscription token (กันบัญชีโดนแบน)', () => {

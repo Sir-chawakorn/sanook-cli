@@ -9,7 +9,7 @@
 /** อ่าน API key จาก env (หลัก + fallbacks) — keychain เป็น enhancement ทีหลัง */
 export function resolveKeyFromEnv(envVar: string, fallbacks: readonly string[] = []): string | undefined {
   for (const name of [envVar, ...fallbacks]) {
-    const v = process.env[name];
+    const v = process.env[name]?.trim();
     if (v) return v;
   }
   return undefined;

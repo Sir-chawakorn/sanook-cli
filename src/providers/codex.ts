@@ -70,8 +70,8 @@ export interface RunCodexOptions {
  * tolerant ต่อ malformed JSONL (codex bug #15451: --json ถูก ignore เมื่อมี tools active)
  */
 export async function runCodex(opts: RunCodexOptions): Promise<{ text: string; threadId?: string }> {
-  // --ask-for-approval never: รัน non-interactive ไม่ค้างรอ approval (ปลอดภัยเพราะ default sandbox = read-only)
-  const args = ['exec', '--skip-git-repo-check', '--sandbox', opts.sandbox ?? 'read-only', '--ask-for-approval', 'never', '--json'];
+  // `codex exec` is already non-interactive; sandbox controls whether generated commands may write.
+  const args = ['exec', '--skip-git-repo-check', '--sandbox', opts.sandbox ?? 'read-only', '--json'];
   if (opts.model) args.push('-m', opts.model);
   if (opts.resumeThreadId) args.push('resume', opts.resumeThreadId);
   args.push('-'); // prompt via stdin
@@ -86,8 +86,41 @@ export async function runCodex(opts: RunCodexOptions): Promise<{ text: string; t
     let finalText = '';
     let threadId: string | undefined;
     let buf = '';
+    let stderr = '';
+    let aborted = false;
 
-    opts.signal?.addEventListener('abort', () => p.kill());
+    const handleStdoutLine = (line: string) => {
+      const t = line.trim();
+      if (!t) return;
+      if (!t.startsWith('{')) {
+        // plain stdout fallback (JSONL ถูก ignore) — เก็บเป็น final text
+        finalText += (finalText ? '\n' : '') + t;
+        opts.onEvent?.({ type: 'text', text: finalText });
+        return;
+      }
+      try {
+        const ev = JSON.parse(t) as { type?: string; thread_id?: string; item?: { type?: string; text?: string }; usage?: unknown };
+        if (ev.type === 'thread.started' && ev.thread_id) {
+          threadId = ev.thread_id;
+          opts.onEvent?.({ type: 'thread', threadId });
+        } else if (ev.type === 'item.completed' && ev.item?.type === 'agent_message') {
+          finalText = ev.item.text ?? finalText;
+          opts.onEvent?.({ type: 'text', text: finalText });
+        } else if (ev.type === 'turn.completed') {
+          opts.onEvent?.({ type: 'usage', usage: ev.usage });
+        }
+      } catch {
+        // malformed JSON line — ข้าม
+      }
+    };
+
+    const abortHandler = () => {
+      aborted = true;
+      p.kill();
+    };
+    const cleanupAbortHandler = () => opts.signal?.removeEventListener('abort', abortHandler);
+    if (opts.signal?.aborted) abortHandler();
+    else opts.signal?.addEventListener('abort', abortHandler, { once: true });
     // codex อาจตายระหว่างรับ prompt → write ลง stdin ที่ปิดแล้ว = EPIPE; ถ้าไม่ดัก = crash ทั้ง CLI
     // (close handler ด้านล่าง reject error ที่อ่านรู้เรื่องแทน)
     p.stdin.on('error', () => {});
@@ -99,35 +132,26 @@ export async function runCodex(opts: RunCodexOptions): Promise<{ text: string; t
       const lines = buf.split('\n');
       buf = lines.pop() ?? '';
       for (const line of lines) {
-        const t = line.trim();
-        if (!t) continue;
-        if (!t.startsWith('{')) {
-          // plain stdout fallback (JSONL ถูก ignore) — เก็บเป็น final text
-          finalText += (finalText ? '\n' : '') + t;
-          opts.onEvent?.({ type: 'text', text: finalText });
-          continue;
-        }
-        try {
-          const ev = JSON.parse(t) as { type?: string; thread_id?: string; item?: { type?: string; text?: string }; usage?: unknown };
-          if (ev.type === 'thread.started' && ev.thread_id) {
-            threadId = ev.thread_id;
-            opts.onEvent?.({ type: 'thread', threadId });
-          } else if (ev.type === 'item.completed' && ev.item?.type === 'agent_message') {
-            finalText = ev.item.text ?? finalText;
-            opts.onEvent?.({ type: 'text', text: finalText });
-          } else if (ev.type === 'turn.completed') {
-            opts.onEvent?.({ type: 'usage', usage: ev.usage });
-          }
-        } catch {
-          // malformed JSON line — ข้าม
-        }
+        handleStdoutLine(line);
       }
     });
 
-    p.on('error', (err) => reject(new Error(`เรียก codex ไม่ได้: ${err.message}`)));
+    p.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+      if (stderr.length > 4000) stderr = stderr.slice(-4000);
+    });
+
+    p.on('error', (err) => {
+      cleanupAbortHandler();
+      reject(new Error(`เรียก codex ไม่ได้: ${err.message}`));
+    });
     p.on('close', (code) => {
-      if (code === 0) resolve({ text: finalText.trim(), threadId });
-      else reject(new Error(`codex exec จบด้วย exit code ${code}`));
+      cleanupAbortHandler();
+      handleStdoutLine(buf);
+      buf = '';
+      if (aborted) reject(new Error(`codex exec ถูกยกเลิก${stderr.trim() ? `: ${stderr.trim()}` : ''}`));
+      else if (code === 0) resolve({ text: finalText.trim(), threadId });
+      else reject(new Error(`codex exec จบด้วย exit code ${code}${stderr.trim() ? `: ${stderr.trim()}` : ''}`));
     });
   });
 }
