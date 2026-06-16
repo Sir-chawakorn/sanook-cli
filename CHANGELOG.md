@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.2
 
 ### Whole-codebase audit — confirmed bugs fixed across the CLI
 
