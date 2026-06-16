@@ -13,7 +13,7 @@ Bring your own key · 12 providers · MCP · a built-in **"second brain"** that 
 [![License](https://img.shields.io/badge/license-Apache--2.0-22c55e.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-663%20passing-22c55e.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-698%20passing-22c55e.svg)](#development)
 [![CI](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml)
 
 [Quickstart](#quickstart) · [Providers](#providers) · [Usage](#usage) · [Gateway](#gateway--scheduling) · [Skills](#skills) · [MCP](#mcp) · [Security](#security)
@@ -112,7 +112,7 @@ sanook dump                     # support snapshot; raw secrets are never printe
 | **Custom commands** | Drop a `.sanook/commands/<name>.md` prompt template and call it as `/<name>` (project commands require trust). |
 | **Subagents** | A `task` tool spawns a fresh-context sub-agent for scoped exploration without bloating the main context — read-only by default, depth-guarded. |
 | **Gateway + cron** | `sanook gateway run` (alias: `sanook serve`) runs a long-lived daemon: a loopback OpenAI-compatible HTTP endpoint plus a cron scheduler. Scheduled tasks can use `--to` to deliver results back through the messaging gateway. |
-| **Channels** | `sanook gateway setup telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|teams|webhooks` stores messaging adapter config, and `sanook gateway run` starts Telegram long-polling, lightweight Discord Gateway / Slack Socket Mode / Mattermost REST+WebSocket adapters, Home Assistant state-change WebSocket filters, Email IMAP polling, LINE webhooks, Twilio SMS webhooks, ntfy topic streams, Signal via `signal-cli` HTTP/SSE, WhatsApp Cloud webhooks, Matrix Client-Server sync, and generic event webhooks when configured. Chat/event history is persisted per platform target, and final responses of `[SILENT]`, `SILENT`, `NO_REPLY`, or `NO REPLY` are stored but not delivered. `sanook send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|teams`, `sanook webhook subscribe`, and `sanook cron add --to ...` use the same outbound delivery rules. |
+| **Channels** | `sanook gateway setup telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|bluebubbles|wecom|weixin|yuanbao|qqbot|teams|webhooks` stores messaging adapter config, and `sanook gateway run` starts Telegram long-polling, lightweight Discord Gateway / Slack Socket Mode / Mattermost REST+WebSocket adapters, Home Assistant state-change WebSocket filters, Email IMAP polling, LINE webhooks, Twilio SMS webhooks, ntfy topic streams, Signal via `signal-cli` HTTP/SSE, WhatsApp Cloud webhooks, Matrix Client-Server sync, and generic event webhooks when configured. Chat/event history is persisted per platform target, and final responses of `[SILENT]`, `SILENT`, `NO_REPLY`, or `NO REPLY` are stored but not delivered. `sanook send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|bluebubbles|wecom|weixin|qqbot|teams`, `sanook webhook subscribe`, and `sanook cron add --to ...` use the same outbound delivery rules. Yuanbao currently has Hermes-compatible setup/status/target listing and sign-token helpers; direct send remains pending WebSocket/protobuf parity. |
 | **MCP** | Connect any Model Context Protocol server over **stdio or remote Streamable-HTTP** (filesystem, GitHub, Postgres, hosted servers, …) via `~/.sanook/mcp.json`. |
 | **Git** | Branch, uncommitted changes, and recent commits are injected automatically, with `git_status` / `git_diff` / `git_log` / `git_commit` tools. |
 | **Hooks** | Run your own command before/after any tool. A non-zero `PreToolUse` exit blocks the tool — enforce lint, format, or policy. |
@@ -235,7 +235,7 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 
 ### Messaging channels
 
-Use the setup command, or set environment variables before `sanook gateway run`. Telegram uses long-polling (no public URL needed), Discord uses the Gateway websocket, Slack uses Socket Mode, Mattermost uses REST API v4 plus websocket events, Home Assistant uses `/api/websocket` for watched `state_changed` events plus REST `persistent_notification.create` for replies, Email uses IMAP polling plus SMTP threaded replies, LINE uses the official Messaging API webhook + Reply/Push endpoints, SMS uses Twilio Programmable Messaging with `X-Twilio-Signature` validation, ntfy uses the HTTP JSON stream + publish API, Signal uses `signal-cli daemon --http` with JSON-RPC + Server-Sent Events, WhatsApp Cloud uses Meta's official webhook + Graph Messages API, Matrix uses the Matrix Client-Server sync/send API, Feishu/Lark uses tenant access tokens plus `im/v1/messages`, DingTalk uses OpenAPI robot sends or signed custom robot webhooks, Google Chat uses incoming webhooks or service-account Chat REST API sends with Pub/Sub config saved for future inbound, Microsoft Teams supports Incoming Webhook delivery and Graph chat/channel delivery, and generic Webhooks accept GitHub/GitLab/Jira/Stripe-style events with HMAC validation.
+Use the setup command, or set environment variables before `sanook gateway run`. Telegram uses long-polling (no public URL needed), Discord uses the Gateway websocket, Slack uses Socket Mode, Mattermost uses REST API v4 plus websocket events, Home Assistant uses `/api/websocket` for watched `state_changed` events plus REST `persistent_notification.create` for replies, Email uses IMAP polling plus SMTP threaded replies, LINE uses the official Messaging API webhook + Reply/Push endpoints, SMS uses Twilio Programmable Messaging with `X-Twilio-Signature` validation, ntfy uses the HTTP JSON stream + publish API, Signal uses `signal-cli daemon --http` with JSON-RPC + Server-Sent Events, WhatsApp Cloud uses Meta's official webhook + Graph Messages API, Matrix uses the Matrix Client-Server sync/send API, Feishu/Lark uses tenant access tokens plus `im/v1/messages`, DingTalk uses OpenAPI robot sends or signed custom robot webhooks, Google Chat uses incoming webhooks or service-account Chat REST API sends with Pub/Sub config saved for future inbound, BlueBubbles/iMessage uses the BlueBubbles REST API for outbound text with Hermes-compatible webhook settings saved for inbound parity, WeCom uses the Enterprise WeChat AI Bot WebSocket gateway for outbound markdown delivery, Weixin/personal WeChat uses Tencent iLink `sendmessage` for proactive text delivery, Yuanbao stores Tencent Yuanbao bot credentials and can build Hermes-compatible sign-token requests while WebSocket/protobuf delivery is still pending, QQ Bot uses the Official QQ Bot API v2 token + REST send endpoints for proactive C2C/group/guild delivery, Microsoft Teams supports Incoming Webhook delivery and Graph chat/channel delivery, and generic Webhooks accept GitHub/GitLab/Jira/Stripe-style events with HMAC validation.
 
 ```bash
 sanook gateway setup                           # platform menu
@@ -272,6 +272,16 @@ sanook gateway setup dingtalk --webhook-url "$DINGTALK_WEBHOOK_URL" \
 sanook gateway setup googlechat --service-account-json "$GOOGLE_CHAT_SERVICE_ACCOUNT_JSON" \
   --home-channel spaces/AAAA --allowed-spaces spaces/AAAA
 sanook gateway setup googlechat --incoming-webhook-url "$GOOGLE_CHAT_INCOMING_WEBHOOK_URL"
+sanook gateway setup bluebubbles --server-url http://localhost:1234 --password "$BLUEBUBBLES_PASSWORD" \
+  --home-channel user@example.com --allowed-users user@example.com,+15551234567
+sanook gateway setup wecom --bot-id "$WECOM_BOT_ID" --secret "$WECOM_SECRET" \
+  --home-channel user_id_1 --allowed-users user_id_1,user_id_2
+sanook gateway setup weixin --account-id "$WEIXIN_ACCOUNT_ID" --token "$WEIXIN_TOKEN" \
+  --home-channel user/user_id_1 --allowed-users user_id_1,user_id_2
+sanook gateway setup yuanbao --app-id "$YUANBAO_APP_ID" --app-secret "$YUANBAO_APP_SECRET" \
+  --home-channel direct:user_account_1 --allowed-users user_account_1,user_account_2
+sanook gateway setup qqbot --app-id "$QQ_APP_ID" --client-secret "$QQ_CLIENT_SECRET" \
+  --home-channel user/openid_1 --allowed-users openid_1,openid_2
 sanook gateway setup teams --incoming-webhook-url "$TEAMS_INCOMING_WEBHOOK_URL"
 sanook gateway setup teams --delivery-mode graph --graph-access-token "$TEAMS_GRAPH_ACCESS_TOKEN" \
   --chat-id '19:chatid@thread.v2'
@@ -300,6 +310,14 @@ sanook send --to dingtalk "deploy finished"
 sanook send --to dingtalk:user/manager "deploy finished"
 sanook send --to googlechat "deploy finished"
 sanook send --to googlechat:spaces/AAAA/threads/thread-1 "threaded update"
+sanook send --to bluebubbles "deploy finished"
+sanook send --to bluebubbles:'iMessage;-;user@example.com' "deploy finished"
+sanook send --to wecom "deploy finished"
+sanook send --to wecom:user/user_id_1 "deploy finished"
+sanook send --to weixin "deploy finished"
+sanook send --to weixin:group/group_id_1@chatroom "deploy finished"
+sanook send --to qqbot "deploy finished"
+sanook send --to qqbot:group/group_openid_1 "deploy finished"
 sanook send --to teams "deploy finished"
 sanook send --to teams:'19:chatid@thread.v2' "deploy finished"
 sanook cron add "every 30m" "check the CI" --to line
@@ -313,6 +331,10 @@ sanook cron add "09:00" "daily check-in" --to matrix
 sanook cron add "09:00" "daily check-in" --to feishu
 sanook cron add "09:00" "daily check-in" --to dingtalk
 sanook cron add "09:00" "daily check-in" --to googlechat
+sanook cron add "09:00" "daily check-in" --to bluebubbles
+sanook cron add "09:00" "daily check-in" --to wecom
+sanook cron add "09:00" "daily check-in" --to weixin
+sanook cron add "09:00" "daily check-in" --to qqbot
 sanook cron add "09:00" "daily check-in" --to teams
 sanook send --to telegram --subject "[CI]" --file build.log
 echo "RAM 92%" | sanook send --to telegram --quiet
@@ -403,6 +425,16 @@ For Feishu/Lark, create an internal app, give it message send permission, instal
 For DingTalk, create an app with the Robot capability and copy the Client ID/AppKey, Client Secret/AppSecret, and robot code. Configure `DINGTALK_CLIENT_ID`, `DINGTALK_CLIENT_SECRET`, `DINGTALK_ROBOT_CODE`, and `DINGTALK_HOME_CHANNEL` (`openConversationId`) for OpenAPI sends, or use `DINGTALK_WEBHOOK_URL` + `DINGTALK_WEBHOOK_SECRET` for a custom robot webhook. Cron/send uses `dingtalk`, `dingtalk:<conversationId>`, or `dingtalk:user/<userId>`.
 
 For Google Chat, use `GOOGLE_CHAT_INCOMING_WEBHOOK_URL` for the fastest proactive send path, or configure `GOOGLE_CHAT_SERVICE_ACCOUNT_JSON` plus `GOOGLE_CHAT_HOME_CHANNEL` (`spaces/...`) for Chat REST API delivery. Hermes-style Pub/Sub fields (`GOOGLE_CHAT_PROJECT_ID`, `GOOGLE_CHAT_SUBSCRIPTION_NAME`, `GOOGLE_CHAT_ALLOWED_USERS`) are saved now for inbound parity work. Cron/send uses `googlechat`, `googlechat:spaces/...`, or `googlechat:spaces/.../threads/...`.
+
+For BlueBubbles/iMessage, run a BlueBubbles Server and configure `BLUEBUBBLES_SERVER_URL`, `BLUEBUBBLES_PASSWORD`, and `BLUEBUBBLES_HOME_CHANNEL` (chat GUID, email, or `+E.164` phone). Sanook resolves email/phone targets through `/api/v1/chat/query`, sends text via `/api/v1/message/text`, and keeps Hermes-style webhook fields (`BLUEBUBBLES_WEBHOOK_HOST`, `BLUEBUBBLES_WEBHOOK_PORT`, `BLUEBUBBLES_WEBHOOK_PATH`, mention gating) ready for inbound parity work.
+
+For WeCom, create an AI Bot in the WeCom Admin Console and configure `WECOM_BOT_ID`, `WECOM_SECRET`, and `WECOM_HOME_CHANNEL`. Sanook opens the AI Bot WebSocket gateway, authenticates with `aibot_subscribe`, then sends markdown via `aibot_send_msg`. Cron/send uses `wecom`, `wecom:user/<userId>`, or `wecom:group/<groupId>`.
+
+For Weixin/personal WeChat, configure the Tencent iLink bot `WEIXIN_ACCOUNT_ID`, `WEIXIN_TOKEN`, and `WEIXIN_HOME_CHANNEL` obtained from iLink/QR pairing. Sanook sends text through `https://ilinkai.weixin.qq.com/ilink/bot/sendmessage` with Hermes-compatible `WEIXIN_DM_POLICY`, `WEIXIN_GROUP_POLICY`, and allowlist settings. Cron/send uses `weixin`, `weixin:user/<userId>`, or `weixin:group/<groupId>`. QR login wizard, long-poll inbound, context-token persistence, and encrypted media CDN upload/download remain future gateway-run parity work.
+
+For Yuanbao, configure `YUANBAO_APP_ID`, `YUANBAO_APP_SECRET`, `YUANBAO_WS_URL`, and `YUANBAO_API_DOMAIN` from Tencent Yuanbao bot settings. Sanook stores Hermes-compatible access policies (`YUANBAO_DM_POLICY`, `YUANBAO_GROUP_POLICY`, `YUANBAO_DM_ALLOW_FROM`, `YUANBAO_GROUP_ALLOW_FROM`), lists `yuanbao`, `yuanbao:direct/<account>`, and `yuanbao:group/<group_code>` targets, and includes a sign-token helper for `/api/v5/robotLogic/sign-token`. Direct delivery is intentionally not marked ready until WebSocket + protobuf dispatch parity lands.
+
+For QQ Bot, register an app at `q.qq.com` and configure `QQ_APP_ID`, `QQ_CLIENT_SECRET`, and `QQBOT_HOME_CHANNEL`. Sanook exchanges credentials at `https://bots.qq.com/app/getAppAccessToken`, then sends through Official QQ Bot API v2 endpoints. Cron/send uses `qqbot`, `qqbot:user/<openid>`, `qqbot:group/<groupOpenId>`, or `qqbot:guild/<channelId>`. WebSocket inbound, voice STT, and interactive keyboard parity remain future gateway-run work.
 
 For Microsoft Teams, use `TEAMS_DELIVERY_MODE=incoming_webhook` with a channel Incoming Webhook for simple proactive send/cron delivery, or `TEAMS_DELIVERY_MODE=graph` with `TEAMS_GRAPH_ACCESS_TOKEN` plus `TEAMS_CHAT_ID` or `TEAMS_TEAM_ID` + `TEAMS_CHANNEL_ID`. Teams chat IDs can contain colons, so quote explicit targets such as `teams:'19:chatid@thread.v2'` in shells.
 

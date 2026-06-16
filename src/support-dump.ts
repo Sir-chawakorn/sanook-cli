@@ -79,6 +79,7 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
 
   const {
     readGatewayConfig,
+    resolveBlueBubblesConfig,
     resolveDingTalkConfig,
     resolveDiscordConfig,
     resolveEmailConfig,
@@ -89,13 +90,17 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
     resolveMattermostConfig,
     resolveMatrixConfig,
     resolveNtfyConfig,
+    resolveQQBotConfig,
     resolveSignalConfig,
     resolveSlackConfig,
     resolveSmsConfig,
     resolveTelegramConfig,
     resolveTeamsConfig,
+    resolveWeComConfig,
+    resolveWeixinConfig,
     resolveWhatsAppConfig,
     resolveWebhookConfig,
+    resolveYuanbaoConfig,
     gatewayConfigPath,
   } = await import('./gateway/config.js');
   const { gatewayServiceStatus } = await import('./gateway/service.js');
@@ -118,6 +123,11 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
   const feishu = resolveFeishuConfig(gatewayConfig, env);
   const dingtalk = resolveDingTalkConfig(gatewayConfig, env);
   const googleChat = resolveGoogleChatConfig(gatewayConfig, env);
+  const bluebubbles = resolveBlueBubblesConfig(gatewayConfig, env);
+  const wecom = resolveWeComConfig(gatewayConfig, env);
+  const weixin = resolveWeixinConfig(gatewayConfig, env);
+  const yuanbao = resolveYuanbaoConfig(gatewayConfig, env);
+  const qqbot = resolveQQBotConfig(gatewayConfig, env);
   const teams = resolveTeamsConfig(gatewayConfig, env);
   const webhooks = resolveWebhookConfig(gatewayConfig, env);
   const service = await gatewayServiceStatus();
@@ -189,6 +199,11 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
   lines.push(`  feishu: ${feishu.appId || feishu.appSecret ? `configured via ${feishu.source}` : 'not configured'}; enabled=${yesNo(feishu.enabled)}; domain=${feishu.domain}; base=${valueOrUnset(feishu.baseUrl)}; appId=${yesNo(Boolean(feishu.appId))}; secret=${yesNo(Boolean(feishu.appSecret))}; verifyToken=${yesNo(Boolean(feishu.verificationToken))}; encryptKey=${yesNo(Boolean(feishu.encryptKey))}; allowedChats=${feishu.allowedChats.length}; home=${valueOrUnset(feishu.homeChannel)}; allowedUsers=${feishu.allowedUsers.length}`);
   lines.push(`  dingtalk: ${dingtalk.clientId || dingtalk.clientSecret || dingtalk.webhookUrl ? `configured via ${dingtalk.source}` : 'not configured'}; enabled=${yesNo(dingtalk.enabled)}; api=${valueOrUnset(dingtalk.apiBaseUrl)}; clientId=${yesNo(Boolean(dingtalk.clientId))}; secret=${yesNo(Boolean(dingtalk.clientSecret))}; robot=${yesNo(Boolean(dingtalk.robotCode))}; webhook=${yesNo(Boolean(dingtalk.webhookUrl))}; webhookSecret=${yesNo(Boolean(dingtalk.webhookSecret))}; allowedUsers=${dingtalk.allowedUsers.length}; allowedChats=${dingtalk.allowedChats.length}; freeChats=${dingtalk.freeResponseChats.length}; home=${valueOrUnset(dingtalk.homeChannel)}; requireMention=${yesNo(dingtalk.requireMention)}`);
   lines.push(`  googlechat: ${googleChat.serviceAccountJson || googleChat.incomingWebhookUrl ? `configured via ${googleChat.source}` : 'not configured'}; enabled=${yesNo(googleChat.enabled)}; project=${valueOrUnset(googleChat.projectId)}; subscription=${yesNo(Boolean(googleChat.subscriptionName))}; serviceAccount=${yesNo(Boolean(googleChat.serviceAccountJson))}; webhook=${yesNo(Boolean(googleChat.incomingWebhookUrl))}; allowedUsers=${googleChat.allowedUsers.length}; allowedSpaces=${googleChat.allowedSpaces.length}; freeSpaces=${googleChat.freeResponseSpaces.length}; home=${valueOrUnset(googleChat.homeChannel)}; flow=${googleChat.maxMessages}/${googleChat.maxBytes}`);
+  lines.push(`  bluebubbles: ${bluebubbles.serverUrl || bluebubbles.password ? `configured via ${bluebubbles.source}` : 'not configured'}; enabled=${yesNo(bluebubbles.enabled)}; server=${valueOrUnset(bluebubbles.serverUrl)}; password=${yesNo(Boolean(bluebubbles.password))}; webhook=${bluebubbles.webhookHost}:${bluebubbles.webhookPort}${bluebubbles.webhookPath}; allowed=${bluebubbles.allowedUsers.length}; home=${valueOrUnset(bluebubbles.homeChannel)}; requireMention=${yesNo(bluebubbles.requireMention)}`);
+  lines.push(`  wecom: ${wecom.botId || wecom.secret ? `configured via ${wecom.source}` : 'not configured'}; enabled=${yesNo(wecom.enabled)}; websocket=${valueOrUnset(wecom.websocketUrl)}; botId=${yesNo(Boolean(wecom.botId))}; secret=${yesNo(Boolean(wecom.secret))}; dmPolicy=${wecom.dmPolicy}; groupPolicy=${wecom.groupPolicy}; allowedUsers=${wecom.allowedUsers.length}; allowedGroups=${wecom.allowedGroups.length}; home=${valueOrUnset(wecom.homeChannel)}`);
+  lines.push(`  weixin: ${weixin.accountId || weixin.token ? `configured via ${weixin.source}` : 'not configured'}; enabled=${yesNo(weixin.enabled)}; base=${valueOrUnset(weixin.baseUrl)}; account=${yesNo(Boolean(weixin.accountId))}; token=${yesNo(Boolean(weixin.token))}; dmPolicy=${weixin.dmPolicy}; groupPolicy=${weixin.groupPolicy}; allowedUsers=${weixin.allowedUsers.length}; groupUsers=${weixin.groupAllowedUsers.length}; home=${valueOrUnset(weixin.homeChannel)}; splitMultiline=${yesNo(weixin.splitMultilineMessages)}`);
+  lines.push(`  yuanbao: ${yuanbao.appId || yuanbao.appSecret ? `configured via ${yuanbao.source}` : 'not configured'}; enabled=${yesNo(yuanbao.enabled)}; ws=${valueOrUnset(yuanbao.wsUrl)}; api=${valueOrUnset(yuanbao.apiDomain)}; appId=${yesNo(Boolean(yuanbao.appId))}; secret=${yesNo(Boolean(yuanbao.appSecret))}; botId=${valueOrUnset(yuanbao.botId)}; dmPolicy=${yuanbao.dmPolicy}; groupPolicy=${yuanbao.groupPolicy}; allowedUsers=${yuanbao.allowedUsers.length}; groupUsers=${yuanbao.groupAllowedUsers.length}; home=${valueOrUnset(yuanbao.homeChannel)}; routeEnv=${valueOrUnset(yuanbao.routeEnv)}; delivery=pending-websocket-protobuf`);
+  lines.push(`  qqbot: ${qqbot.appId || qqbot.clientSecret ? `configured via ${qqbot.source}` : 'not configured'}; enabled=${yesNo(qqbot.enabled)}; api=${valueOrUnset(qqbot.apiBaseUrl)}; appId=${yesNo(Boolean(qqbot.appId))}; secret=${yesNo(Boolean(qqbot.clientSecret))}; dmPolicy=${qqbot.dmPolicy}; groupPolicy=${qqbot.groupPolicy}; allowedUsers=${qqbot.allowedUsers.length}; groupUsers=${qqbot.groupAllowedUsers.length}; allowedChannels=${qqbot.allowedChannels.length}; home=${valueOrUnset(qqbot.homeChannel)}; markdown=${yesNo(qqbot.markdownSupport)}`);
   lines.push(`  teams: ${teams.incomingWebhookUrl || teams.graphAccessToken || teams.clientId ? `configured via ${teams.source}` : 'not configured'}; enabled=${yesNo(teams.enabled)}; mode=${teams.deliveryMode}; webhook=${yesNo(Boolean(teams.incomingWebhookUrl))}; graphToken=${yesNo(Boolean(teams.graphAccessToken))}; chat=${valueOrUnset(teams.chatId)}; teamChannel=${teams.teamId && teams.channelId ? 'set' : '(not set)'}; home=${valueOrUnset(teams.homeChannel)}; botApp=${teams.clientId && teams.tenantId ? 'set' : '(not set)'}; allowed=${teams.allowedUsers.length}; port=${teams.port}`);
   lines.push(`  webhooks: ${webhooks.enabled ? `enabled via ${webhooks.source}` : 'not enabled'}; routes=${Object.keys(webhooks.routes).length}; secret=${yesNo(Boolean(webhooks.secret))}; public=${valueOrUnset(webhooks.publicUrl)}`);
   lines.push(`  send targets: ${targets.length}`);

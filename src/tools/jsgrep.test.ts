@@ -32,6 +32,23 @@ describe('jsGrep (ripgrep-less fallback)', () => {
     expect(out).toContain('JS fallback'); // hint to install ripgrep
   });
 
+  it('returns matches in deterministic path order', async () => {
+    await writeFile(join(dir, 'z-order.ts'), 'orderedNeedle in z\n');
+    await mkdir(join(dir, 'm-order'), { recursive: true });
+    await writeFile(join(dir, 'm-order', 'a.ts'), 'orderedNeedle in nested\n');
+    await writeFile(join(dir, 'a-order.ts'), 'orderedNeedle in a\n');
+
+    const matches = (await jsGrep('orderedNeedle', dir, '.'))
+      .split('\n')
+      .filter((line) => line.includes('orderedNeedle'));
+
+    expect(matches).toEqual([
+      'a-order.ts:1:orderedNeedle in a',
+      'm-order/a.ts:1:orderedNeedle in nested',
+      'z-order.ts:1:orderedNeedle in z',
+    ]);
+  });
+
   it('skips ignored dirs (node_modules) and binary files', async () => {
     const out = await jsGrep('needleHere', dir, '.');
     expect(out).not.toContain('node_modules');

@@ -959,6 +959,435 @@ describe('gateway config', () => {
     });
   });
 
+  it('persists, resolves, and redacts BlueBubbles gateway config', async () => {
+    await C.patchGatewayConfig({
+      bluebubbles: {
+        enabled: true,
+        serverUrl: ' http://mac.local:1234 ',
+        password: 'bluebubbles-password',
+        webhookHost: ' 0.0.0.0 ',
+        webhookPort: 8765,
+        webhookPath: ' /imessage-events ',
+        homeChannel: ' chat;home-guid ',
+        homeChannelName: 'Owner iMessage',
+        allowedUsers: [' user@example.com ', '', ' +15551234567 '],
+        allowAllUsers: false,
+        requireMention: true,
+        mentionPatterns: [' sanook ', ' @agent '],
+        sendReadReceipts: false,
+      },
+    });
+
+    const cfg = await C.readGatewayConfig();
+    expect(cfg.bluebubbles).toMatchObject({
+      serverUrl: 'http://mac.local:1234',
+      password: 'bluebubbles-password',
+      webhookHost: '0.0.0.0',
+      webhookPort: 8765,
+      webhookPath: '/imessage-events',
+      homeChannel: 'chat;home-guid',
+      homeChannelName: 'Owner iMessage',
+      allowedUsers: ['user@example.com', '+15551234567'],
+      allowAllUsers: false,
+      requireMention: true,
+      mentionPatterns: ['sanook', '@agent'],
+      sendReadReceipts: false,
+    });
+
+    expect(C.resolveBlueBubblesConfig(cfg, {} as NodeJS.ProcessEnv)).toMatchObject({
+      serverUrl: 'http://mac.local:1234',
+      password: 'bluebubbles-password',
+      webhookHost: '0.0.0.0',
+      webhookPort: 8765,
+      webhookPath: '/imessage-events',
+      homeChannel: 'chat;home-guid',
+      homeChannelName: 'Owner iMessage',
+      allowedUsers: ['user@example.com', '+15551234567'],
+      allowAllUsers: false,
+      requireMention: true,
+      mentionPatterns: ['sanook', '@agent'],
+      sendReadReceipts: false,
+      source: 'config',
+    });
+
+    expect(
+      C.resolveBlueBubblesConfig(cfg, {
+        BLUEBUBBLES_SERVER_URL: 'http://env-mac.local:1234',
+        BLUEBUBBLES_PASSWORD: 'env-bluebubbles-password',
+        BLUEBUBBLES_WEBHOOK_HOST: '127.0.0.1',
+        BLUEBUBBLES_WEBHOOK_PORT: '9876',
+        BLUEBUBBLES_WEBHOOK_PATH: '/env-imessage-events',
+        BLUEBUBBLES_HOME_CHANNEL: 'env@example.com',
+        BLUEBUBBLES_HOME_CHANNEL_NAME: 'Env iMessage',
+        BLUEBUBBLES_ALLOWED_USERS: 'env@example.com,+15557654321',
+        BLUEBUBBLES_ALLOW_ALL_USERS: 'true',
+        BLUEBUBBLES_REQUIRE_MENTION: 'false',
+        BLUEBUBBLES_MENTION_PATTERNS: '["sanook","@env-agent"]',
+        BLUEBUBBLES_SEND_READ_RECEIPTS: 'true',
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({
+      serverUrl: 'http://env-mac.local:1234',
+      password: 'env-bluebubbles-password',
+      webhookHost: '127.0.0.1',
+      webhookPort: 9876,
+      webhookPath: '/env-imessage-events',
+      homeChannel: 'env@example.com',
+      homeChannelName: 'Env iMessage',
+      allowedUsers: ['env@example.com', '+15557654321'],
+      allowAllUsers: true,
+      requireMention: false,
+      mentionPatterns: ['sanook', '@env-agent'],
+      sendReadReceipts: true,
+      source: 'env',
+    });
+
+    expect(C.redactGatewayConfig(cfg).bluebubbles).toMatchObject({
+      password: '<secret:BLUEBUBBLES_PASSWORD>',
+    });
+  });
+
+  it('persists, resolves, and redacts WeCom gateway config', async () => {
+    await C.patchGatewayConfig({
+      wecom: {
+        enabled: true,
+        botId: ' bot-1 ',
+        secret: 'wecom-secret',
+        websocketUrl: ' wss://openws.work.weixin.qq.com/ ',
+        homeChannel: ' user-1 ',
+        homeChannelName: 'Owner WeCom',
+        allowedUsers: [' user-1 ', '', ' user-2 '],
+        allowedGroups: [' group-1 '],
+        dmPolicy: 'allowlist',
+        groupPolicy: 'allowlist',
+      },
+    });
+
+    const cfg = await C.readGatewayConfig();
+    expect(cfg.wecom).toMatchObject({
+      botId: 'bot-1',
+      secret: 'wecom-secret',
+      websocketUrl: 'wss://openws.work.weixin.qq.com/',
+      homeChannel: 'user-1',
+      homeChannelName: 'Owner WeCom',
+      allowedUsers: ['user-1', 'user-2'],
+      allowedGroups: ['group-1'],
+      dmPolicy: 'allowlist',
+      groupPolicy: 'allowlist',
+    });
+
+    expect(C.resolveWeComConfig(cfg, {} as NodeJS.ProcessEnv)).toMatchObject({
+      botId: 'bot-1',
+      secret: 'wecom-secret',
+      websocketUrl: 'wss://openws.work.weixin.qq.com/',
+      homeChannel: 'user-1',
+      homeChannelName: 'Owner WeCom',
+      allowedUsers: ['user-1', 'user-2'],
+      allowedGroups: ['group-1'],
+      dmPolicy: 'allowlist',
+      groupPolicy: 'allowlist',
+      source: 'config',
+    });
+
+    expect(
+      C.resolveWeComConfig(cfg, {
+        WECOM_BOT_ID: 'env-bot',
+        WECOM_SECRET: 'env-secret',
+        WECOM_WEBSOCKET_URL: 'ws://127.0.0.1:8765/ws',
+        WECOM_HOME_CHANNEL: 'env-user',
+        WECOM_HOME_CHANNEL_NAME: 'Env WeCom',
+        WECOM_ALLOWED_USERS: 'env-user,env-user-2',
+        WECOM_GROUP_ALLOW_FROM: 'env-group',
+        WECOM_DM_POLICY: 'open',
+        WECOM_GROUP_POLICY: 'disabled',
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({
+      botId: 'env-bot',
+      secret: 'env-secret',
+      websocketUrl: 'ws://127.0.0.1:8765/ws',
+      homeChannel: 'env-user',
+      homeChannelName: 'Env WeCom',
+      allowedUsers: ['env-user', 'env-user-2'],
+      allowedGroups: ['env-group'],
+      dmPolicy: 'open',
+      groupPolicy: 'disabled',
+      source: 'env',
+    });
+
+    expect(C.redactGatewayConfig(cfg).wecom).toMatchObject({
+      secret: '<secret:WECOM_SECRET>',
+    });
+  });
+
+  it('persists, resolves, and redacts Weixin gateway config', async () => {
+    await C.patchGatewayConfig({
+      weixin: {
+        enabled: true,
+        accountId: ' wx-account-1 ',
+        token: 'weixin-token',
+        baseUrl: ' https://ilinkai.weixin.qq.com/ ',
+        cdnBaseUrl: ' https://novac2c.cdn.weixin.qq.com/c2c/ ',
+        homeChannel: ' user/user-1 ',
+        homeChannelName: 'Owner Weixin',
+        allowedUsers: [' user-1 ', '', ' user-2 '],
+        groupAllowedUsers: [' group-1@chatroom '],
+        allowAllUsers: false,
+        dmPolicy: 'allowlist',
+        groupPolicy: 'allowlist',
+        splitMultilineMessages: true,
+      },
+    });
+
+    const cfg = await C.readGatewayConfig();
+    expect(cfg.weixin).toMatchObject({
+      accountId: 'wx-account-1',
+      token: 'weixin-token',
+      baseUrl: 'https://ilinkai.weixin.qq.com/',
+      cdnBaseUrl: 'https://novac2c.cdn.weixin.qq.com/c2c/',
+      homeChannel: 'user/user-1',
+      homeChannelName: 'Owner Weixin',
+      allowedUsers: ['user-1', 'user-2'],
+      groupAllowedUsers: ['group-1@chatroom'],
+      dmPolicy: 'allowlist',
+      groupPolicy: 'allowlist',
+      splitMultilineMessages: true,
+    });
+
+    expect(C.resolveWeixinConfig(cfg, {} as NodeJS.ProcessEnv)).toMatchObject({
+      accountId: 'wx-account-1',
+      token: 'weixin-token',
+      baseUrl: 'https://ilinkai.weixin.qq.com',
+      cdnBaseUrl: 'https://novac2c.cdn.weixin.qq.com/c2c',
+      homeChannel: 'user/user-1',
+      homeChannelName: 'Owner Weixin',
+      allowedUsers: ['user-1', 'user-2'],
+      groupAllowedUsers: ['group-1@chatroom'],
+      dmPolicy: 'allowlist',
+      groupPolicy: 'allowlist',
+      splitMultilineMessages: true,
+      source: 'config',
+    });
+
+    expect(
+      C.resolveWeixinConfig(cfg, {
+        WEIXIN_ACCOUNT_ID: 'env-account',
+        WEIXIN_TOKEN: 'env-token',
+        WEIXIN_BASE_URL: 'https://env.weixin.example.com/',
+        WEIXIN_CDN_BASE_URL: 'https://env-cdn.weixin.example.com/c2c/',
+        WEIXIN_HOME_CHANNEL: 'group/env-group@chatroom',
+        WEIXIN_HOME_CHANNEL_NAME: 'Env Weixin',
+        WEIXIN_ALLOWED_USERS: 'env-user,env-user-2',
+        WEIXIN_GROUP_ALLOWED_USERS: 'env-group@chatroom',
+        WEIXIN_ALLOW_ALL_USERS: 'true',
+        WEIXIN_DM_POLICY: 'open',
+        WEIXIN_GROUP_POLICY: 'disabled',
+        WEIXIN_SPLIT_MULTILINE_MESSAGES: 'true',
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({
+      accountId: 'env-account',
+      token: 'env-token',
+      baseUrl: 'https://env.weixin.example.com',
+      cdnBaseUrl: 'https://env-cdn.weixin.example.com/c2c',
+      homeChannel: 'group/env-group@chatroom',
+      homeChannelName: 'Env Weixin',
+      allowedUsers: ['env-user', 'env-user-2'],
+      groupAllowedUsers: ['env-group@chatroom'],
+      allowAllUsers: true,
+      dmPolicy: 'open',
+      groupPolicy: 'disabled',
+      splitMultilineMessages: true,
+      source: 'env',
+    });
+
+    expect(C.redactGatewayConfig(cfg).weixin).toMatchObject({
+      token: '<secret:WEIXIN_TOKEN>',
+    });
+  });
+
+  it('persists, resolves, and redacts Yuanbao gateway config', async () => {
+    await C.patchGatewayConfig({
+      yuanbao: {
+        enabled: true,
+        appId: ' yb-app-1 ',
+        appSecret: 'yuanbao-secret',
+        botId: ' yb-bot-1 ',
+        wsUrl: ' wss://bot-wss.yuanbao.tencent.com/wss/connection/ ',
+        apiDomain: ' https://bot.yuanbao.tencent.com/ ',
+        routeEnv: ' staging ',
+        homeChannel: ' direct:user-1 ',
+        homeChannelName: 'Owner Yuanbao',
+        allowedUsers: [' user-1 ', '', ' user-2 '],
+        groupAllowedUsers: [' group-1 '],
+        allowAllUsers: false,
+        dmPolicy: 'allowlist',
+        groupPolicy: 'allowlist',
+      },
+    });
+
+    const cfg = await C.readGatewayConfig();
+    expect(cfg.yuanbao).toMatchObject({
+      appId: 'yb-app-1',
+      appSecret: 'yuanbao-secret',
+      botId: 'yb-bot-1',
+      wsUrl: 'wss://bot-wss.yuanbao.tencent.com/wss/connection/',
+      apiDomain: 'https://bot.yuanbao.tencent.com/',
+      routeEnv: 'staging',
+      homeChannel: 'direct:user-1',
+      homeChannelName: 'Owner Yuanbao',
+      allowedUsers: ['user-1', 'user-2'],
+      groupAllowedUsers: ['group-1'],
+      dmPolicy: 'allowlist',
+      groupPolicy: 'allowlist',
+    });
+
+    expect(C.resolveYuanbaoConfig(cfg, {} as NodeJS.ProcessEnv)).toMatchObject({
+      appId: 'yb-app-1',
+      appSecret: 'yuanbao-secret',
+      botId: 'yb-bot-1',
+      wsUrl: 'wss://bot-wss.yuanbao.tencent.com/wss/connection/',
+      apiDomain: 'https://bot.yuanbao.tencent.com',
+      routeEnv: 'staging',
+      homeChannel: 'direct:user-1',
+      homeChannelName: 'Owner Yuanbao',
+      allowedUsers: ['user-1', 'user-2'],
+      groupAllowedUsers: ['group-1'],
+      dmPolicy: 'allowlist',
+      groupPolicy: 'allowlist',
+      source: 'config',
+    });
+
+    expect(
+      C.resolveYuanbaoConfig(cfg, {
+        YUANBAO_APP_ID: 'env-yb-app',
+        YUANBAO_APP_SECRET: 'env-yb-secret',
+        YUANBAO_BOT_ID: 'env-yb-bot',
+        YUANBAO_WS_URL: 'wss://env-yuanbao.example.com/wss',
+        YUANBAO_API_DOMAIN: 'https://env-yuanbao.example.com/',
+        YUANBAO_ROUTE_ENV: 'sandbox',
+        YUANBAO_HOME_CHANNEL: 'group:env-group',
+        YUANBAO_HOME_CHANNEL_NAME: 'Env Yuanbao',
+        YUANBAO_DM_ALLOW_FROM: 'env-user,env-user-2',
+        YUANBAO_GROUP_ALLOW_FROM: 'env-group',
+        YUANBAO_ALLOW_ALL_USERS: 'true',
+        YUANBAO_DM_POLICY: 'open',
+        YUANBAO_GROUP_POLICY: 'disabled',
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({
+      appId: 'env-yb-app',
+      appSecret: 'env-yb-secret',
+      botId: 'env-yb-bot',
+      wsUrl: 'wss://env-yuanbao.example.com/wss',
+      apiDomain: 'https://env-yuanbao.example.com',
+      routeEnv: 'sandbox',
+      homeChannel: 'group:env-group',
+      homeChannelName: 'Env Yuanbao',
+      allowedUsers: ['env-user', 'env-user-2'],
+      groupAllowedUsers: ['env-group'],
+      allowAllUsers: true,
+      dmPolicy: 'open',
+      groupPolicy: 'disabled',
+      source: 'env',
+    });
+
+    expect(C.redactGatewayConfig(cfg).yuanbao).toMatchObject({
+      appSecret: '<secret:YUANBAO_APP_SECRET>',
+    });
+  });
+
+  it('persists, resolves, and redacts QQBot gateway config', async () => {
+    await C.patchGatewayConfig({
+      qqbot: {
+        enabled: true,
+        appId: ' app-1 ',
+        clientSecret: 'qq-secret',
+        apiBaseUrl: ' https://api.sgroup.qq.com/ ',
+        tokenUrl: ' https://bots.qq.com/app/getAppAccessToken ',
+        portalHost: ' q.qq.com ',
+        homeChannel: ' user/openid-1 ',
+        homeChannelName: 'Owner QQ',
+        allowedUsers: [' openid-1 ', '', ' openid-2 '],
+        groupAllowedUsers: [' group-1 '],
+        allowedChannels: [' channel-1 '],
+        allowAllUsers: false,
+        dmPolicy: 'allowlist',
+        groupPolicy: 'allowlist',
+        markdownSupport: true,
+      },
+    });
+
+    const cfg = await C.readGatewayConfig();
+    expect(cfg.qqbot).toMatchObject({
+      appId: 'app-1',
+      clientSecret: 'qq-secret',
+      apiBaseUrl: 'https://api.sgroup.qq.com/',
+      tokenUrl: 'https://bots.qq.com/app/getAppAccessToken',
+      portalHost: 'q.qq.com',
+      homeChannel: 'user/openid-1',
+      homeChannelName: 'Owner QQ',
+      allowedUsers: ['openid-1', 'openid-2'],
+      groupAllowedUsers: ['group-1'],
+      allowedChannels: ['channel-1'],
+      dmPolicy: 'allowlist',
+      groupPolicy: 'allowlist',
+      markdownSupport: true,
+    });
+
+    expect(C.resolveQQBotConfig(cfg, {} as NodeJS.ProcessEnv)).toMatchObject({
+      appId: 'app-1',
+      clientSecret: 'qq-secret',
+      apiBaseUrl: 'https://api.sgroup.qq.com/',
+      tokenUrl: 'https://bots.qq.com/app/getAppAccessToken',
+      portalHost: 'q.qq.com',
+      homeChannel: 'user/openid-1',
+      homeChannelName: 'Owner QQ',
+      allowedUsers: ['openid-1', 'openid-2'],
+      groupAllowedUsers: ['group-1'],
+      allowedChannels: ['channel-1'],
+      dmPolicy: 'allowlist',
+      groupPolicy: 'allowlist',
+      markdownSupport: true,
+      source: 'config',
+    });
+
+    expect(
+      C.resolveQQBotConfig(cfg, {
+        QQ_APP_ID: 'env-app',
+        QQ_CLIENT_SECRET: 'env-secret',
+        QQBOT_API_BASE_URL: 'https://env-api.example.com',
+        QQBOT_TOKEN_URL: 'https://env-token.example.com/token',
+        QQ_PORTAL_HOST: 'sandbox.q.qq.com',
+        QQBOT_HOME_CHANNEL: 'group/env-group',
+        QQBOT_HOME_CHANNEL_NAME: 'Env QQ',
+        QQ_ALLOWED_USERS: 'env-user,env-user-2',
+        QQ_GROUP_ALLOWED_USERS: 'env-group',
+        QQBOT_ALLOWED_CHANNELS: 'env-channel',
+        QQ_ALLOW_ALL_USERS: 'true',
+        QQ_DM_POLICY: 'open',
+        QQ_GROUP_POLICY: 'disabled',
+        QQBOT_MARKDOWN_SUPPORT: 'true',
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({
+      appId: 'env-app',
+      clientSecret: 'env-secret',
+      apiBaseUrl: 'https://env-api.example.com',
+      tokenUrl: 'https://env-token.example.com/token',
+      portalHost: 'sandbox.q.qq.com',
+      homeChannel: 'group/env-group',
+      homeChannelName: 'Env QQ',
+      allowedUsers: ['env-user', 'env-user-2'],
+      groupAllowedUsers: ['env-group'],
+      allowedChannels: ['env-channel'],
+      allowAllUsers: true,
+      dmPolicy: 'open',
+      groupPolicy: 'disabled',
+      markdownSupport: true,
+      source: 'env',
+    });
+
+    expect(C.redactGatewayConfig(cfg).qqbot).toMatchObject({
+      clientSecret: '<secret:QQ_CLIENT_SECRET>',
+    });
+  });
+
   it('persists, resolves, and redacts Matrix gateway config', async () => {
     await C.patchGatewayConfig({
       matrix: {
@@ -1105,6 +1534,88 @@ describe('gateway config', () => {
       appSecret: '<secret:FEISHU_APP_SECRET>',
       verificationToken: '<secret:FEISHU_VERIFICATION_TOKEN>',
       encryptKey: '<secret:FEISHU_ENCRYPT_KEY>',
+    });
+  });
+
+  it('persists, resolves, and redacts BlueBubbles gateway config', async () => {
+    await C.patchGatewayConfig({
+      bluebubbles: {
+        enabled: true,
+        serverUrl: ' http://localhost:1234/ ',
+        password: 'bluebubbles-secret',
+        webhookHost: ' 127.0.0.1 ',
+        webhookPort: 8645,
+        webhookPath: ' bluebubbles-webhook ',
+        homeChannel: ' user@example.com ',
+        homeChannelName: 'Owner iMessage',
+        allowedUsers: [' user@example.com ', '+15551234567'],
+        requireMention: true,
+        mentionPatterns: ['(?i)^amos\\b'],
+        sendReadReceipts: false,
+      },
+    });
+
+    const cfg = await C.readGatewayConfig();
+    expect(cfg.bluebubbles).toMatchObject({
+      serverUrl: 'http://localhost:1234/',
+      password: 'bluebubbles-secret',
+      webhookHost: '127.0.0.1',
+      webhookPort: 8645,
+      webhookPath: 'bluebubbles-webhook',
+      homeChannel: 'user@example.com',
+      allowedUsers: ['user@example.com', '+15551234567'],
+      mentionPatterns: ['(?i)^amos\\b'],
+      sendReadReceipts: false,
+    });
+
+    expect(C.resolveBlueBubblesConfig(cfg, {} as NodeJS.ProcessEnv)).toMatchObject({
+      serverUrl: 'http://localhost:1234/',
+      password: 'bluebubbles-secret',
+      webhookHost: '127.0.0.1',
+      webhookPort: 8645,
+      webhookPath: 'bluebubbles-webhook',
+      homeChannel: 'user@example.com',
+      homeChannelName: 'Owner iMessage',
+      allowedUsers: ['user@example.com', '+15551234567'],
+      requireMention: true,
+      mentionPatterns: ['(?i)^amos\\b'],
+      sendReadReceipts: false,
+      source: 'config',
+    });
+
+    expect(
+      C.resolveBlueBubblesConfig(cfg, {
+        BLUEBUBBLES_SERVER_URL: 'http://env.local:1234',
+        BLUEBUBBLES_PASSWORD: 'env-secret',
+        BLUEBUBBLES_WEBHOOK_HOST: '0.0.0.0',
+        BLUEBUBBLES_WEBHOOK_PORT: '9999',
+        BLUEBUBBLES_WEBHOOK_PATH: '/env-hook',
+        BLUEBUBBLES_HOME_CHANNEL: '+15550000000',
+        BLUEBUBBLES_HOME_CHANNEL_NAME: 'Env iMessage',
+        BLUEBUBBLES_ALLOWED_USERS: 'user@example.com,+15550000000',
+        BLUEBUBBLES_ALLOW_ALL_USERS: 'true',
+        BLUEBUBBLES_REQUIRE_MENTION: 'true',
+        BLUEBUBBLES_MENTION_PATTERNS: '["(?i)^sanook\\\\b"]',
+        BLUEBUBBLES_SEND_READ_RECEIPTS: 'true',
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({
+      serverUrl: 'http://env.local:1234',
+      password: 'env-secret',
+      webhookHost: '0.0.0.0',
+      webhookPort: 9999,
+      webhookPath: '/env-hook',
+      homeChannel: '+15550000000',
+      homeChannelName: 'Env iMessage',
+      allowedUsers: ['user@example.com', '+15550000000'],
+      allowAllUsers: true,
+      requireMention: true,
+      mentionPatterns: ['(?i)^sanook\\b'],
+      sendReadReceipts: true,
+      source: 'env',
+    });
+
+    expect(C.redactGatewayConfig(cfg).bluebubbles).toMatchObject({
+      password: '<secret:BLUEBUBBLES_PASSWORD>',
     });
   });
 });

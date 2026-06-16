@@ -59,7 +59,7 @@ export async function jsGrep(pattern: string, base: string, target: string): Pro
     } catch {
       return;
     }
-    for (const e of entries) {
+    for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
       if (out.length >= MAX_RESULTS) return;
       if (e.isDirectory()) {
         if (!FALLBACK_IGNORE.has(e.name) && !e.name.startsWith('.')) await walk(join(dir, e.name));

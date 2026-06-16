@@ -48,6 +48,11 @@ describe('support dump', () => {
     const rawDingTalkWebhookSecret = 'dingtalk-webhook-secret-1234567890';
     const rawGoogleChatServiceAccount = '/secret/google-chat-sa.json';
     const rawGoogleChatWebhook = 'https://chat.googleapis.com/v1/spaces/AAAA/messages?key=raw-secret&token=raw-token';
+    const rawBlueBubblesPassword = 'bluebubbles-password-secret-1234567890';
+    const rawWeComSecret = 'wecom-secret-1234567890';
+    const rawWeixinToken = 'weixin-token-secret-1234567890';
+    const rawYuanbaoSecret = 'yuanbao-secret-1234567890';
+    const rawQQBotSecret = 'qqbot-client-secret-1234567890';
     const rawTeamsWebhook = 'https://example.webhook.office.com/webhookb2/raw-secret';
     const rawTeamsGraphToken = 'teams-graph-token-secret-1234567890';
     const rawTeamsClientSecret = 'teams-client-secret-1234567890';
@@ -129,6 +134,61 @@ describe('support dump', () => {
             allowedSpaces: ['spaces/AAAA'],
             freeResponseSpaces: ['spaces/FREE'],
           },
+          bluebubbles: {
+            serverUrl: 'http://localhost:1234',
+            password: rawBlueBubblesPassword,
+            webhookHost: '127.0.0.1',
+            webhookPort: 8645,
+            webhookPath: '/bluebubbles-webhook',
+            homeChannel: 'user@example.com',
+            allowedUsers: ['user@example.com'],
+          },
+          wecom: {
+            botId: 'bot-1',
+            secret: rawWeComSecret,
+            websocketUrl: 'wss://openws.work.weixin.qq.com',
+            homeChannel: 'user-1',
+            allowedUsers: ['user-1'],
+            allowedGroups: ['group-1'],
+            dmPolicy: 'allowlist',
+            groupPolicy: 'allowlist',
+          },
+          weixin: {
+            accountId: 'wx-account-1',
+            token: rawWeixinToken,
+            baseUrl: 'https://ilinkai.weixin.qq.com',
+            homeChannel: 'user/user-1',
+            allowedUsers: ['user-1'],
+            groupAllowedUsers: ['group-1@chatroom'],
+            dmPolicy: 'allowlist',
+            groupPolicy: 'allowlist',
+            splitMultilineMessages: true,
+          },
+          yuanbao: {
+            appId: 'yb-app-1',
+            appSecret: rawYuanbaoSecret,
+            botId: 'yb-bot-1',
+            wsUrl: 'wss://bot-wss.yuanbao.tencent.com/wss/connection',
+            apiDomain: 'https://bot.yuanbao.tencent.com',
+            routeEnv: 'staging',
+            homeChannel: 'direct:user-1',
+            allowedUsers: ['user-1'],
+            groupAllowedUsers: ['group-1'],
+            dmPolicy: 'allowlist',
+            groupPolicy: 'allowlist',
+          },
+          qqbot: {
+            appId: 'qq-app-1',
+            clientSecret: rawQQBotSecret,
+            apiBaseUrl: 'https://api.sgroup.qq.com',
+            homeChannel: 'user/openid-1',
+            allowedUsers: ['openid-1'],
+            groupAllowedUsers: ['group-openid-1'],
+            allowedChannels: ['channel-1'],
+            dmPolicy: 'allowlist',
+            groupPolicy: 'allowlist',
+            markdownSupport: true,
+          },
           teams: {
             deliveryMode: 'graph',
             incomingWebhookUrl: rawTeamsWebhook,
@@ -188,6 +248,26 @@ describe('support dump', () => {
     expect(out).toContain('googlechat: configured via config');
     expect(out).toContain('serviceAccount=yes');
     expect(out).toContain('allowedSpaces=1');
+    expect(out).toContain('bluebubbles: configured via config');
+    expect(out).toContain('password=yes');
+    expect(out).toContain('wecom: configured via config');
+    expect(out).toContain('botId=yes');
+    expect(out).toContain('secret=yes');
+    expect(out).toContain('allowedGroups=1');
+    expect(out).toContain('weixin: configured via config');
+    expect(out).toContain('account=yes');
+    expect(out).toContain('token=yes');
+    expect(out).toContain('splitMultiline=yes');
+    expect(out).toContain('yuanbao: configured via config');
+    expect(out).toContain('botId=yb-bot-1');
+    expect(out).toContain('groupUsers=1');
+    expect(out).toContain('routeEnv=staging');
+    expect(out).toContain('delivery=pending-websocket-protobuf');
+    expect(out).toContain('qqbot: configured via config');
+    expect(out).toContain('appId=yes');
+    expect(out).toContain('groupUsers=1');
+    expect(out).toContain('allowedChannels=1');
+    expect(out).toContain('markdown=yes');
     expect(out).toContain('teams: configured via config');
     expect(out).toContain('mode=graph');
     expect(out).toContain('graphToken=yes');
@@ -216,6 +296,11 @@ describe('support dump', () => {
     expect(out).not.toContain(rawDingTalkWebhookSecret);
     expect(out).not.toContain(rawGoogleChatServiceAccount);
     expect(out).not.toContain(rawGoogleChatWebhook);
+    expect(out).not.toContain(rawBlueBubblesPassword);
+    expect(out).not.toContain(rawWeComSecret);
+    expect(out).not.toContain(rawWeixinToken);
+    expect(out).not.toContain(rawYuanbaoSecret);
+    expect(out).not.toContain(rawQQBotSecret);
     expect(out).not.toContain(rawTeamsWebhook);
     expect(out).not.toContain(rawTeamsGraphToken);
     expect(out).not.toContain(rawTeamsClientSecret);

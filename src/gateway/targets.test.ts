@@ -99,6 +99,46 @@ describe('messaging targets', () => {
       platform: 'googlechat',
       address: 'https://chat.googleapis.com/v1/spaces/AAAA/messages?key=k&token=t',
     });
+    expect(parseSendTarget('imessage:iMessage;-;user@example.com')).toMatchObject({
+      platform: 'bluebubbles',
+      address: 'iMessage;-;user@example.com',
+    });
+    expect(parseSendTarget('blue-bubbles:user@example.com')).toMatchObject({
+      platform: 'bluebubbles',
+      address: 'user@example.com',
+    });
+    expect(parseSendTarget('work-wechat:user/user-1')).toMatchObject({
+      platform: 'wecom',
+      address: 'user/user-1',
+    });
+    expect(parseSendTarget('enterprise-wechat:group/group-1')).toMatchObject({
+      platform: 'wecom',
+      address: 'group/group-1',
+    });
+    expect(parseSendTarget('wechat:user/user-1')).toMatchObject({
+      platform: 'weixin',
+      address: 'user/user-1',
+    });
+    expect(parseSendTarget('wx:group/group-1@chatroom')).toMatchObject({
+      platform: 'weixin',
+      address: 'group/group-1@chatroom',
+    });
+    expect(parseSendTarget('yb:direct/user-1')).toMatchObject({
+      platform: 'yuanbao',
+      address: 'direct/user-1',
+    });
+    expect(parseSendTarget('yuanbao:group/group-1')).toMatchObject({
+      platform: 'yuanbao',
+      address: 'group/group-1',
+    });
+    expect(parseSendTarget('qq:user/openid-1')).toMatchObject({
+      platform: 'qqbot',
+      address: 'user/openid-1',
+    });
+    expect(parseSendTarget('qq-bot:group/group-1')).toMatchObject({
+      platform: 'qqbot',
+      address: 'group/group-1',
+    });
     expect(parseSendTarget('teams:19:chatid@thread.v2')).toMatchObject({
       platform: 'teams',
       address: '19:chatid@thread.v2',
@@ -124,6 +164,11 @@ describe('messaging targets', () => {
     expect(() => parseSendTarget('matrix:not-a-room')).toThrow('Matrix target');
     expect(() => parseSendTarget('feishu:oc_abc:thread')).toThrow('ไม่รองรับ thread');
     expect(() => parseSendTarget('googlechat:not-a-space')).toThrow('Google Chat target');
+    expect(() => parseSendTarget('bluebubbles:user name@example.com')).toThrow('BlueBubbles target');
+    expect(() => parseSendTarget('wecom:user name')).toThrow('WeCom target');
+    expect(() => parseSendTarget('weixin:user name')).toThrow('Weixin target');
+    expect(() => parseSendTarget('yuanbao:direct/user name')).toThrow('Yuanbao target');
+    expect(() => parseSendTarget('qqbot:user name')).toThrow('QQBot target');
   });
 
   it('formats targets for user-facing output', () => {
@@ -167,7 +212,7 @@ describe('messaging targets', () => {
     ]);
   });
 
-  it('lists configured Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, Matrix, Feishu, DingTalk, Google Chat, and Teams targets', () => {
+  it('lists configured Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, Matrix, Feishu, DingTalk, Google Chat, BlueBubbles, and Teams targets', () => {
     expect(
       listConfiguredTargets({
         discord: {
@@ -265,6 +310,46 @@ describe('messaging targets', () => {
           homeChannelName: 'Owner',
           allowedSpaces: ['spaces/AAAA', 'spaces/BBBB'],
         },
+        bluebubbles: {
+          serverUrl: 'http://localhost:1234',
+          password: 'bb-secret',
+          homeChannel: 'user@example.com',
+          homeChannelName: 'Owner',
+          allowedUsers: ['user@example.com', '+15551234567'],
+        },
+        wecom: {
+          botId: 'bot-1',
+          secret: 'wecom-secret',
+          homeChannel: 'user-1',
+          homeChannelName: 'Owner',
+          allowedUsers: ['user-1', 'user-2'],
+          allowedGroups: ['group-1'],
+        },
+        weixin: {
+          accountId: 'wx-account-1',
+          token: 'weixin-token',
+          homeChannel: 'user/user-1',
+          homeChannelName: 'Owner',
+          allowedUsers: ['user-1', 'user-2'],
+          groupAllowedUsers: ['group-1@chatroom'],
+        },
+        yuanbao: {
+          appId: 'yb-app-1',
+          appSecret: 'yuanbao-secret',
+          homeChannel: 'direct:user-1',
+          homeChannelName: 'Owner',
+          allowedUsers: ['user-1', 'user-2'],
+          groupAllowedUsers: ['group-1'],
+        },
+        qqbot: {
+          appId: 'app-1',
+          clientSecret: 'qq-secret',
+          homeChannel: 'user/openid-1',
+          homeChannelName: 'Owner',
+          allowedUsers: ['openid-1', 'openid-2'],
+          groupAllowedUsers: ['group-1'],
+          allowedChannels: ['channel-1'],
+        },
         teams: {
           deliveryMode: 'graph',
           graphAccessToken: 'teams-graph-token',
@@ -307,6 +392,21 @@ describe('messaging targets', () => {
       'dingtalk:user/manager',
       'googlechat',
       'googlechat:spaces/BBBB',
+      'bluebubbles',
+      'bluebubbles:+15551234567',
+      'wecom',
+      'wecom:user/user-2',
+      'wecom:group/group-1',
+      'weixin',
+      'weixin:user/user-2',
+      'weixin:group/group-1@chatroom',
+      'yuanbao',
+      'yuanbao:direct:user-2',
+      'yuanbao:group:group-1',
+      'qqbot',
+      'qqbot:user/openid-2',
+      'qqbot:group/group-1',
+      'qqbot:guild/channel-1',
       'teams',
     ]);
   });

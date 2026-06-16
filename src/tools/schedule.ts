@@ -19,7 +19,7 @@ export const scheduleTaskTool = tool({
     deliver: z
       .string()
       .optional()
-      .describe('ปลายทางส่งผลลัพธ์ เช่น telegram, telegram:123, discord:channel, slack:C01, mattermost:channel, homeassistant:notification_id, email:owner@example.com, line:U123, sms:+15551234567, ntfy:topic, signal:+15551234567, whatsapp:15551234567, matrix:!room:server, feishu:oc_xxx, dingtalk:cidxxx, googlechat:spaces/AAA, teams'),
+      .describe('ปลายทางส่งผลลัพธ์ เช่น telegram, telegram:123, discord:channel, slack:C01, mattermost:channel, homeassistant:notification_id, email:owner@example.com, line:U123, sms:+15551234567, ntfy:topic, signal:+15551234567, whatsapp:15551234567, matrix:!room:server, feishu:oc_xxx, dingtalk:cidxxx, googlechat:spaces/AAA, bluebubbles:user@example.com, wecom:user/userid, weixin:user/userid, yuanbao:direct/userid, qqbot:user/openid, teams'),
   }),
   execute: async ({ when, task, model, deliver }) => {
     const sched = parseSchedule(when, Date.now());

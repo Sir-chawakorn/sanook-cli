@@ -3,8 +3,55 @@ import { deliverToTarget } from './deliver.js';
 
 const CLEAN_ENV = {} as NodeJS.ProcessEnv;
 
+type WeComSocketListener = (event: { data?: string }) => void;
+
+class MockWeComWebSocket {
+  static instances: MockWeComWebSocket[] = [];
+
+  readonly sent: string[] = [];
+  readyState = 0;
+  private readonly listeners = new Map<string, Set<WeComSocketListener>>();
+
+  constructor(readonly url: string) {
+    MockWeComWebSocket.instances.push(this);
+    queueMicrotask(() => {
+      this.readyState = 1;
+      this.emit('open', {});
+    });
+  }
+
+  addEventListener(type: string, listener: WeComSocketListener): void {
+    const listeners = this.listeners.get(type) ?? new Set<WeComSocketListener>();
+    listeners.add(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  removeEventListener(type: string, listener: WeComSocketListener): void {
+    this.listeners.get(type)?.delete(listener);
+  }
+
+  send(data: string): void {
+    this.sent.push(data);
+    const payload = JSON.parse(data) as { cmd?: string; headers?: { req_id?: string } };
+    queueMicrotask(() => {
+      this.emit('message', {
+        data: JSON.stringify({ cmd: payload.cmd, headers: { req_id: payload.headers?.req_id }, body: { errcode: 0 } }),
+      });
+    });
+  }
+
+  close(): void {
+    this.readyState = 3;
+  }
+
+  private emit(type: string, event: { data?: string }): void {
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+  }
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  MockWeComWebSocket.instances = [];
 });
 
 describe('gateway delivery helper', () => {
@@ -635,6 +682,311 @@ describe('gateway delivery helper', () => {
         env: CLEAN_ENV,
       }),
     ).rejects.toThrow('ไม่อยู่ใน allowlist');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('delivers to configured BlueBubbles iMessage targets', async () => {
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      if (String(url).includes('/api/v1/chat/query')) {
+        return new Response(
+          JSON.stringify({
+            status: 200,
+            data: [{ guid: 'iMessage;-;user@example.com', chatIdentifier: 'user@example.com' }],
+          }),
+        );
+      }
+      expect(String(url)).toBe('http://localhost:1234/api/v1/message/text?password=bb-secret');
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        chatGuid: 'iMessage;-;user@example.com',
+        message: 'hello bluebubbles',
+      });
+      return new Response(JSON.stringify({ status: 200, data: { guid: 'msg-bb-1' } }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('imessage', 'hello bluebubbles', {
+        config: {
+          bluebubbles: {
+            serverUrl: 'http://localhost:1234',
+            password: 'bb-secret',
+            homeChannel: 'user@example.com',
+            allowedUsers: ['user@example.com'],
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'bluebubbles',
+      target: 'bluebubbles:user@example.com',
+      to: 'user@example.com',
+      messageIds: ['msg-bb-1'],
+      messageCount: 1,
+    });
+  });
+
+  it('normalizes BlueBubbles chat prefixes before checking delivery allowlists', async () => {
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      expect(String(url)).toBe('http://localhost:1234/api/v1/message/text?password=bb-secret');
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        chatGuid: 'iMessage;-;user@example.com',
+        message: 'hello prefixed bluebubbles',
+      });
+      return new Response(JSON.stringify({ status: 200, data: { guid: 'msg-bb-prefixed' } }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('bluebubbles:chat/iMessage;-;user@example.com', 'hello prefixed bluebubbles', {
+        config: {
+          bluebubbles: {
+            serverUrl: 'http://localhost:1234',
+            password: 'bb-secret',
+            allowedUsers: ['iMessage;-;user@example.com'],
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'bluebubbles',
+      target: 'bluebubbles:iMessage;-;user@example.com',
+      to: 'iMessage;-;user@example.com',
+      messageIds: ['msg-bb-prefixed'],
+      messageCount: 1,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects BlueBubbles targets outside configured allowlists before sending', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('bluebubbles:other@example.com', 'hello bluebubbles', {
+        config: {
+          bluebubbles: {
+            serverUrl: 'http://localhost:1234',
+            password: 'bb-secret',
+            homeChannel: 'user@example.com',
+            allowedUsers: ['user@example.com'],
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).rejects.toThrow('ไม่อยู่ใน allowlist');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('delivers to configured WeCom AI Bot targets', async () => {
+    vi.stubGlobal('WebSocket', MockWeComWebSocket);
+
+    await expect(
+      deliverToTarget('wecom:user/user-1', 'hello wecom', {
+        config: {
+          wecom: {
+            botId: 'bot-1',
+            secret: 'wecom-secret',
+            homeChannel: 'user-1',
+            allowedUsers: ['user-1'],
+            dmPolicy: 'allowlist',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'wecom',
+      target: 'wecom:user/user-1',
+      to: 'user/user-1',
+      messageCount: 1,
+    });
+
+    const socket = MockWeComWebSocket.instances[0];
+    expect(socket.url).toBe('wss://openws.work.weixin.qq.com');
+    expect(JSON.parse(socket.sent[0])).toMatchObject({ cmd: 'aibot_subscribe', body: { bot_id: 'bot-1' } });
+    expect(JSON.parse(socket.sent[1])).toMatchObject({
+      cmd: 'aibot_send_msg',
+      body: { chatid: 'user-1', msgtype: 'markdown', markdown: { content: 'hello wecom' } },
+    });
+  });
+
+  it('rejects WeCom targets outside configured allowlists before opening WebSocket', async () => {
+    vi.stubGlobal('WebSocket', MockWeComWebSocket);
+
+    await expect(
+      deliverToTarget('wecom:user/other-user', 'hello wecom', {
+        config: {
+          wecom: {
+            botId: 'bot-1',
+            secret: 'wecom-secret',
+            homeChannel: 'user-1',
+            allowedUsers: ['user-1'],
+            dmPolicy: 'allowlist',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).rejects.toThrow('ไม่อยู่ใน allowlist');
+
+    expect(MockWeComWebSocket.instances).toHaveLength(0);
+  });
+
+  it('delivers to configured Weixin iLink targets', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ ret: 0 })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('weixin:user/user-1', 'hello weixin', {
+        config: {
+          weixin: {
+            accountId: 'wx-account-1',
+            token: 'wx-token',
+            homeChannel: 'user/user-1',
+            allowedUsers: ['user-1'],
+            dmPolicy: 'allowlist',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'weixin',
+      target: 'weixin:user/user-1',
+      to: 'user-1',
+      messageCount: 1,
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toBe('https://ilinkai.weixin.qq.com/ilink/bot/sendmessage');
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+      msg: {
+        to_user_id: 'user-1',
+        item_list: [{ type: 1, text_item: { text: 'hello weixin' } }],
+      },
+    });
+  });
+
+  it('rejects Weixin targets outside configured allowlists before sending', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('weixin:user/other-user', 'hello weixin', {
+        config: {
+          weixin: {
+            accountId: 'wx-account-1',
+            token: 'wx-token',
+            homeChannel: 'user/user-1',
+            allowedUsers: ['user-1'],
+            dmPolicy: 'allowlist',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).rejects.toThrow('ไม่อยู่ใน allowlist');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('requires Yuanbao credentials before attempting delivery', async () => {
+    await expect(
+      deliverToTarget('yuanbao:direct/user-1', 'hello yuanbao', {
+        config: {},
+        env: CLEAN_ENV,
+      }),
+    ).rejects.toThrow('gateway setup yuanbao');
+  });
+
+  it('marks Yuanbao direct delivery pending until WebSocket/protobuf parity is implemented', async () => {
+    await expect(
+      deliverToTarget('yuanbao:direct/user-1', 'hello yuanbao', {
+        config: {
+          yuanbao: {
+            appId: 'yb-app-1',
+            appSecret: 'yb-secret',
+            homeChannel: 'direct:user-1',
+            allowedUsers: ['user-1'],
+            dmPolicy: 'allowlist',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).rejects.toThrow('WebSocket + protobuf dispatch parity');
+  });
+
+  it('delivers to configured QQBot official API targets', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'qq-token' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'qq-msg-1' })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('qqbot:user/openid-1', 'hello qqbot', {
+        config: {
+          qqbot: {
+            appId: 'app-1',
+            clientSecret: 'qq-secret',
+            homeChannel: 'user/openid-1',
+            allowedUsers: ['openid-1'],
+            dmPolicy: 'allowlist',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'qqbot',
+      target: 'qqbot:user/openid-1',
+      to: 'user/openid-1',
+      messageIds: ['qq-msg-1'],
+      messageCount: 1,
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toBe('https://bots.qq.com/app/getAppAccessToken');
+    expect(fetchMock.mock.calls[1][0]).toBe('https://api.sgroup.qq.com/v2/users/openid-1/messages');
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({
+      content: 'hello qqbot',
+      msg_type: 0,
+    });
+  });
+
+  it('rejects QQBot targets outside configured allowlists before fetching a token', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('qqbot:user/other-openid', 'hello qqbot', {
+        config: {
+          qqbot: {
+            appId: 'app-1',
+            clientSecret: 'qq-secret',
+            homeChannel: 'user/openid-1',
+            allowedUsers: ['openid-1'],
+            dmPolicy: 'allowlist',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).rejects.toThrow('ไม่อยู่ใน allowlist');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not let a QQBot C2C home channel authorize same-valued guild delivery', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('qqbot:guild/channel-1', 'hello qqbot', {
+        config: {
+          qqbot: {
+            appId: 'app-1',
+            clientSecret: 'qq-secret',
+            homeChannel: 'user/channel-1',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).rejects.toThrow('allowed channels');
 
     expect(fetchMock).not.toHaveBeenCalled();
   });

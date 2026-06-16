@@ -1,9 +1,8 @@
 import type { GatewayConfig } from './config.js';
 import {
-  resolveDingTalkConfig,
+  resolveBlueBubblesConfig,
   resolveDiscordConfig,
   resolveEmailConfig,
-  resolveFeishuConfig,
   resolveGoogleChatConfig,
   resolveHomeAssistantConfig,
   resolveLineConfig,
@@ -46,14 +45,18 @@ export function parseSendTarget(raw: string): SendTarget {
   const firstColon = trimmed.indexOf(':');
   const rawPlatform = firstColon === -1 ? trimmed : trimmed.slice(0, firstColon);
   let platform = rawPlatform?.trim().toLowerCase();
-  if (platform === 'lark') platform = 'feishu';
-  if (platform === 'ding' || platform === 'ding-talk') platform = 'dingtalk';
   if (platform === 'google-chat' || platform === 'google_chat' || platform === 'gchat') platform = 'googlechat';
+  if (platform === 'blue-bubbles' || platform === 'blue_bubbles' || platform === 'imessage') platform = 'bluebubbles';
   const remainder = firstColon === -1 ? undefined : trimmed.slice(firstColon + 1);
   let address: string | undefined;
   let thread: string | undefined;
   let extra: string[] = [];
-  if (platform === 'matrix' || platform === 'dingtalk' || platform === 'googlechat' || platform === 'teams') {
+  if (
+    platform === 'matrix' ||
+    platform === 'googlechat' ||
+    platform === 'bluebubbles' ||
+    platform === 'teams'
+  ) {
     address = remainder?.trim();
   } else if (remainder != null) {
     const parts = remainder.split(':');
@@ -82,16 +85,15 @@ export function parseSendTarget(raw: string): SendTarget {
       'signal',
       'whatsapp',
       'matrix',
-      'feishu',
-      'dingtalk',
       'googlechat',
+      'bluebubbles',
       'teams',
     ].includes(
       platform,
     )
   ) {
     throw new Error(
-      'platform ต้องเป็น telegram, discord, slack, mattermost, homeassistant, email, line, sms, ntfy, signal, whatsapp, matrix, feishu, dingtalk, googlechat, หรือ teams',
+      'platform ต้องเป็น telegram, discord, slack, mattermost, homeassistant, email, line, sms, ntfy, signal, whatsapp, matrix, googlechat, bluebubbles, หรือ teams',
     );
   }
   if (address === '' || thread === '') {
@@ -121,6 +123,9 @@ export function parseSendTarget(raw: string): SendTarget {
     !/^(?:spaces\/[^/\s]+|space[:/][^/\s]+)(?:\/threads\/.+)?$/i.test(address)
   ) {
     throw new Error('Google Chat target ต้องเป็น spaces/<space-id>, spaces/<space-id>/threads/<thread-id>, หรือ HTTPS webhook URL');
+  }
+  if (platform === 'bluebubbles' && address && /\s/.test(address)) {
+    throw new Error('BlueBubbles target ต้องเป็น chat GUID, email, หรือเบอร์โทรที่ไม่มีช่องว่าง');
   }
   return target;
 }
@@ -504,91 +509,6 @@ export function listConfiguredTargets(
       });
     }
   }
-  const feishu = resolveFeishuConfig(config, env);
-  if (feishu.appId || feishu.appSecret || feishu.homeChannel || feishu.allowedChats.length) {
-    const configured = Boolean(feishu.appId && feishu.appSecret && feishu.homeChannel);
-    if (feishu.homeChannel) {
-      out.push({
-        platform: 'feishu',
-        address: feishu.homeChannel,
-        target: 'feishu',
-        label: `Feishu/Lark ${feishu.homeChannelName ?? 'home'} (${feishu.homeChannel})`,
-        configured,
-      });
-    }
-    const seen = new Set<string>([feishu.homeChannel].filter((v): v is string => Boolean(v)));
-    for (const chat of feishu.allowedChats) {
-      if (seen.has(chat)) continue;
-      seen.add(chat);
-      out.push({
-        platform: 'feishu',
-        address: chat,
-        target: `feishu:${chat}`,
-        label: `Feishu/Lark chat ${chat}`,
-        configured: Boolean(feishu.appId && feishu.appSecret),
-      });
-    }
-    if (!feishu.homeChannel && !feishu.allowedChats.length) {
-      out.push({
-        platform: 'feishu',
-        target: 'feishu',
-        label: 'Feishu/Lark configured but no home/allowed chat',
-        configured: false,
-      });
-    }
-  }
-  const dingtalk = resolveDingTalkConfig(config, env);
-  if (
-    dingtalk.clientId ||
-    dingtalk.clientSecret ||
-    dingtalk.robotCode ||
-    dingtalk.webhookUrl ||
-    dingtalk.homeChannel ||
-    dingtalk.allowedChats.length ||
-    dingtalk.allowedUsers.length
-  ) {
-    const openApiReady = Boolean(dingtalk.clientId && dingtalk.clientSecret && dingtalk.robotCode);
-    const webhookReady = Boolean(dingtalk.webhookUrl);
-    if (dingtalk.homeChannel || dingtalk.webhookUrl) {
-      const address = dingtalk.homeChannel || 'webhook';
-      out.push({
-        platform: 'dingtalk',
-        address,
-        target: 'dingtalk',
-        label: `DingTalk ${dingtalk.homeChannelName ?? (dingtalk.homeChannel ? `home (${dingtalk.homeChannel})` : 'webhook')}`,
-        configured: address === 'webhook' ? webhookReady : openApiReady,
-      });
-    }
-    const seenChats = new Set<string>([dingtalk.homeChannel].filter((v): v is string => Boolean(v)));
-    for (const chat of dingtalk.allowedChats) {
-      if (seenChats.has(chat)) continue;
-      seenChats.add(chat);
-      out.push({
-        platform: 'dingtalk',
-        address: chat,
-        target: `dingtalk:${chat}`,
-        label: `DingTalk chat ${chat}`,
-        configured: openApiReady,
-      });
-    }
-    for (const user of dingtalk.allowedUsers) {
-      out.push({
-        platform: 'dingtalk',
-        address: `user/${user}`,
-        target: `dingtalk:user/${user}`,
-        label: `DingTalk user ${user}`,
-        configured: openApiReady,
-      });
-    }
-    if (!dingtalk.homeChannel && !dingtalk.webhookUrl && !dingtalk.allowedChats.length && !dingtalk.allowedUsers.length) {
-      out.push({
-        platform: 'dingtalk',
-        target: 'dingtalk',
-        label: 'DingTalk configured but no home/allowed target',
-        configured: false,
-      });
-    }
-  }
   const googleChat = resolveGoogleChatConfig(config, env);
   if (
     googleChat.serviceAccountJson ||
@@ -626,6 +546,39 @@ export function listConfiguredTargets(
         platform: 'googlechat',
         target: 'googlechat',
         label: 'Google Chat configured but no home/allowed target',
+        configured: false,
+      });
+    }
+  }
+  const bluebubbles = resolveBlueBubblesConfig(config, env);
+  if (bluebubbles.serverUrl || bluebubbles.password || bluebubbles.homeChannel || bluebubbles.allowedUsers.length) {
+    const configured = Boolean(bluebubbles.serverUrl && bluebubbles.password);
+    if (bluebubbles.homeChannel) {
+      out.push({
+        platform: 'bluebubbles',
+        address: bluebubbles.homeChannel,
+        target: 'bluebubbles',
+        label: `BlueBubbles ${bluebubbles.homeChannelName ?? 'home'} (${bluebubbles.homeChannel})`,
+        configured,
+      });
+    }
+    const seen = new Set<string>([bluebubbles.homeChannel].filter((v): v is string => Boolean(v)));
+    for (const user of bluebubbles.allowedUsers) {
+      if (seen.has(user)) continue;
+      seen.add(user);
+      out.push({
+        platform: 'bluebubbles',
+        address: user,
+        target: `bluebubbles:${user}`,
+        label: `BlueBubbles target ${user}`,
+        configured,
+      });
+    }
+    if (!bluebubbles.homeChannel && !bluebubbles.allowedUsers.length) {
+      out.push({
+        platform: 'bluebubbles',
+        target: 'bluebubbles',
+        label: 'BlueBubbles configured but no home/allowed target',
         configured: false,
       });
     }
