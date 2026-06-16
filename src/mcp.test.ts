@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isValidMcpServerName, loadMcpConfig } from './mcp.js';
+import { capMcpToolOutput, isValidMcpServerName, loadMcpConfig, MAX_MCP_TOOL_OUTPUT_CHARS } from './mcp.js';
 
 describe('MCP config loading', () => {
   let home: string;
@@ -42,5 +42,11 @@ describe('MCP config loading', () => {
     expect(isValidMcpServerName('__proto__')).toBe(false);
     expect(isValidMcpServerName('constructor')).toBe(false);
     expect(isValidMcpServerName('bad/name')).toBe(false);
+  });
+
+  it('caps oversized tool text before it enters model context', () => {
+    const capped = capMcpToolOutput('x'.repeat(MAX_MCP_TOOL_OUTPUT_CHARS + 12));
+    expect(capped).toContain('[MCP output truncated: 12 chars omitted]');
+    expect(capped.length).toBeLessThan(MAX_MCP_TOOL_OUTPUT_CHARS + 80);
   });
 });

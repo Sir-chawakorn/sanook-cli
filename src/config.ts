@@ -96,9 +96,17 @@ async function readJson(path: string): Promise<Record<string, unknown>> {
   }
 }
 
+// key ที่ untrusted project ตั้งไม่ได้ (ต้อง `sanook trust` ก่อน):
+//  - permissionMode: auto = auto-approve mutation (รัน bash/แก้ไฟล์ไม่ถาม) — อันตรายสุด
+//  - budgetUsd: repo อันตรายตั้งสูงๆ = ปิด spend cap ของ user (เปลืองเงินจริง)
+//  - pricing: ตั้งราคาปลอม = ทำให้ budget cap ไม่ trigger (ซ่อน cost / bypass cap)
+// (model/maxSteps/embeddingModel ฯลฯ ปล่อยได้ — เป็น preference ที่ user เห็น/override ได้ และตอนนี้ถูกคุมด้วย budget จริงของ user)
+const UNTRUSTED_PROJECT_DENY = new Set(['permissionMode', 'budgetUsd', 'pricing']);
 function sanitizeUntrustedProjectConfig(cfg: Record<string, unknown>): Record<string, unknown> {
-  const out = { ...cfg };
-  delete out.permissionMode;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(cfg)) {
+    if (!UNTRUSTED_PROJECT_DENY.has(k)) out[k] = v;
+  }
   return out;
 }
 

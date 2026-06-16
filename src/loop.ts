@@ -1,7 +1,7 @@
 import { streamText, stepCountIs, type ModelMessage, type ToolSet } from 'ai';
 import { readFile } from 'node:fs/promises';
 import { resolveModel, specKey, parseSpec, PROVIDERS } from './providers/registry.js';
-import { CostMeter, type Usage } from './cost.js';
+import { CostMeter, SharedBudget, type Usage } from './cost.js';
 import { tools } from './tools/index.js';
 import { loadMemory, loadAutoMemory, loadBrainContext } from './memory.js';
 import { loadSkills, renderAvailableSkills } from './skills.js';
@@ -128,12 +128,35 @@ export interface RunAgentResult {
 /** delegate path — spawn official codex CLI (ChatGPT plan quota) แทน SDK loop */
 async function runDelegate(opts: RunAgentOptions): Promise<RunAgentResult> {
   const { runCodex } = await import('./providers/codex.js');
-  const meter = new CostMeter(specKey(opts.model), opts.budgetUsd);
+  const meter = new CostMeter(specKey(opts.model), opts.budgetUsd, agentContext.getStore()?.sharedBudget);
   const { model } = parseSpec(opts.model);
+  // codex exec ไม่เห็น conversation history เอง → prepend transcript ให้มี context ข้าม turn
+  // (ไม่งั้น REPL ทุก turn = contextless, codex ลืมที่คุยมาทั้งหมด)
+  const prior = (opts.history ?? [])
+    .map((m) => {
+      const role = m.role === 'user' ? 'User' : m.role === 'assistant' ? 'Assistant' : '';
+      if (!role) return '';
+      const c =
+        typeof m.content === 'string'
+          ? m.content
+          : Array.isArray(m.content)
+            ? m.content.map((p) => (typeof p === 'object' && p && 'type' in p && p.type === 'text' ? (p as { text: string }).text : '')).join('')
+            : '';
+      return c.trim() ? `${role}: ${c.trim()}` : '';
+    })
+    .filter(Boolean)
+    .join('\n\n');
+  const prompt = prior ? `Previous conversation:\n${prior}\n\n---\nNow: ${opts.prompt}` : opts.prompt;
+  // sandbox: plan/ask-mode → read-only (สกัด approval รายไฟล์ของ codex ไม่ได้ จึงไม่ให้แก้);
+  // auto (--yes / config auto) → workspace-write เพื่อให้ codex แก้ไฟล์ได้จริง (ไม่งั้นเป็น coding agent ที่แก้อะไรไม่ได้)
+  const sandbox: 'read-only' | 'workspace-write' =
+    opts.planMode || (opts.permissionMode ?? 'ask') === 'ask' ? 'read-only' : 'workspace-write';
   let text = '';
   const out = await runCodex({
-    prompt: opts.prompt,
+    prompt,
     model: model === 'gpt-5-codex' ? undefined : model,
+    sandbox,
+    cwd: opts.cwd, // worktree isolation ของ sub-agent
     signal: opts.signal,
     onEvent: (e) => {
       if (e.type === 'text') {
@@ -159,14 +182,16 @@ async function runDelegate(opts: RunAgentOptions): Promise<RunAgentResult> {
 export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   // context ผ่าน AsyncLocalStorage (ไม่ใช่ process.env global) → parallel sub-agent ไม่ชนกัน
   // sub-agent (task tool) อ่าน model/budget/depth จาก context นี้
-  agentContext.enterWith({ model: opts.model, budgetUsd: opts.budgetUsd, depth: opts.subagentDepth ?? 0, cwd: opts.cwd });
+  const parentStore = agentContext.getStore();
+  const sharedBudget = parentStore?.sharedBudget ?? (opts.budgetUsd != null ? new SharedBudget(opts.budgetUsd) : undefined);
+  agentContext.enterWith({ model: opts.model, budgetUsd: opts.budgetUsd, sharedBudget, depth: opts.subagentDepth ?? 0, cwd: opts.cwd });
   approvalContext.enterWith({ mode: opts.permissionMode ?? 'ask', approve: opts.approve });
   // codex (delegate) → ข้าม SDK loop, ส่ง task ให้ official codex CLI (ChatGPT quota)
   if (PROVIDERS[parseSpec(opts.model).provider]?.kind === 'delegate') {
     return runDelegate(opts);
   }
   const model = resolveModel(opts.model); // throws ถ้าไม่มี key / provider ผิด
-  let meter = new CostMeter(specKey(opts.model), opts.budgetUsd);
+  let meter = new CostMeter(specKey(opts.model), opts.budgetUsd, sharedBudget);
 
   // โหลด context: auto-memory + skills + git state + repo map + project SANOOK.md → system prompt
   // sub-agent (opts.tools) ข้าม repo map (มี subset tool + prompt เฉพาะอยู่แล้ว — ประหยัด context)
@@ -317,10 +342,12 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   let { text, result, err: streamError } = await runWithRetry(model);
   // model หลักล้มกลางทาง (ไม่ใช่ rate-limit ที่ retry หมดแล้ว) → ลอง fallback model
-  if (streamError && opts.fallbackModel && opts.fallbackModel !== opts.model && !sideEffectToolSeen) {
+  // ต้อง text === '' ด้วย (เหมือน rate-limit retry) — ถ้า primary stream ออกไปบางส่วนแล้ว ค่อยล้ม
+  // การ fallback จะ stream คำตอบใหม่ทับ = output ซ้ำ/เพี้ยน + history desync → ไม่ fallback ถ้ามี text แล้ว
+  if (streamError && text === '' && opts.fallbackModel && opts.fallbackModel !== opts.model && !sideEffectToolSeen) {
     opts.onEvent?.({ type: 'text', text: `\n[model หลักล้ม → fallback: ${opts.fallbackModel}]\n` });
     // meter ใหม่ใช้ pricing ของ fallback แต่ merge usage/cost ของ primary เข้าด้วย (กัน cost หาย + budget นับต่อ)
-    const fallbackMeter = new CostMeter(specKey(opts.fallbackModel), opts.budgetUsd);
+    const fallbackMeter = new CostMeter(specKey(opts.fallbackModel), opts.budgetUsd, sharedBudget);
     fallbackMeter.merge(meter);
     meter = fallbackMeter;
     ({ text, result, err: streamError } = await runWithRetry(resolveModel(opts.fallbackModel)));

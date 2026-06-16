@@ -1,8 +1,17 @@
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
+import type { SharedBudget } from '../cost.js';
 import { agentContext, agentCwd } from '../agentContext.js';
 import { approvalContext, type ApprovalFn } from '../approval.js';
-import { runParallel, runThunks, TaskRegistry, type SubagentRunner, type SubagentSpec, type SubagentOutcome } from '../orchestrate.js';
+import {
+  runParallel,
+  runThunks,
+  TaskRegistry,
+  withGlobalSubagentSlot,
+  type SubagentRunner,
+  type SubagentSpec,
+  type SubagentOutcome,
+} from '../orchestrate.js';
 import { runInWorktrees, getRepoRoot } from '../worktree.js';
 
 // task = มอบงานย่อยให้ sub-agent ทำใน context แยก (เลียน Claude Code Task tool)
@@ -25,6 +34,7 @@ const registry = new TaskRegistry();
 interface ParentCtx {
   model?: string;
   budgetUsd?: number;
+  sharedBudget?: SharedBudget;
   depth: number;
   cwd?: string;
   mode: 'auto' | 'ask';
@@ -35,7 +45,15 @@ interface ParentCtx {
 function parentCtx(): ParentCtx {
   const ctx = agentContext.getStore();
   const appr = approvalContext.getStore();
-  return { model: ctx?.model, budgetUsd: ctx?.budgetUsd, depth: ctx?.depth ?? 0, cwd: ctx?.cwd, mode: appr?.mode ?? 'ask', approve: appr?.approve };
+  return {
+    model: ctx?.model,
+    budgetUsd: ctx?.budgetUsd,
+    sharedBudget: ctx?.sharedBudget,
+    depth: ctx?.depth ?? 0,
+    cwd: ctx?.cwd,
+    mode: appr?.mode ?? 'ask',
+    approve: appr?.approve,
+  };
 }
 
 /**
@@ -57,20 +75,22 @@ function makeRunner(parent: ParentCtx): SubagentRunner {
     const model = spec.model ?? process.env.SANOOK_SUBAGENT_MODEL ?? parent.model ?? 'sonnet';
     const depth = parent.depth + 1;
     const cwd = spec.cwd ?? parent.cwd; // worktree ของ subagent นี้ (ถ้า isolate) ไม่งั้น inherit
-    const childStore = { model, budgetUsd: parent.budgetUsd, depth, cwd };
-    const { text } = await agentContext.run(childStore, () =>
-      runAgent({
-        model,
-        budgetUsd: parent.budgetUsd, // cap เดียวกับ main (กัน subagent วิ่ง uncapped)
-        subagentDepth: depth,
-        cwd, // file ops ของ subagent ผูกกับ worktree นี้ (isolation)
-        permissionMode: parent.mode, // inherit ask-mode (กัน subagent เลี่ยง approval)
-        approve: parent.approve,
-        prompt: spec.prompt,
-        maxSteps: SUB_MAX_STEPS,
-        signal,
-        tools: Object.fromEntries(picked) as unknown as ToolSet,
-      }),
+    const childStore = { model, budgetUsd: parent.budgetUsd, sharedBudget: parent.sharedBudget, depth, cwd };
+    const { text } = await withGlobalSubagentSlot(() =>
+      agentContext.run(childStore, () =>
+        runAgent({
+          model,
+          budgetUsd: parent.budgetUsd, // cap เดียวกับ main (กัน subagent วิ่ง uncapped)
+          subagentDepth: depth,
+          cwd, // file ops ของ subagent ผูกกับ worktree นี้ (isolation)
+          permissionMode: parent.mode, // inherit ask-mode (กัน subagent เลี่ยง approval)
+          approve: parent.approve,
+          prompt: spec.prompt,
+          maxSteps: SUB_MAX_STEPS,
+          signal,
+          tools: Object.fromEntries(picked) as unknown as ToolSet,
+        }),
+      ),
     );
     return text || '(sub-agent ไม่มีผลลัพธ์)';
   };
@@ -118,7 +138,10 @@ function formatOutcomes(outcomes: { ok: boolean; description: string; text: stri
 async function runIsolated(specs: SubagentSpec[], parent: ParentCtx, concurrency: number): Promise<string> {
   const root = await getRepoRoot(parent.cwd ?? agentCwd());
   if (!root) return 'isolate=worktree ต้องอยู่ใน git repo — ใช้ task_parallel แบบปกติแทน (ไม่มี worktree)';
-  const runner = makeRunner(parent);
+  // isolate=true has one coarse approval at the task_parallel tool boundary. Inside
+  // the temporary worktree, subagents run auto so the REPL is not spammed with
+  // per-file approvals from hidden child turns; only the captured diff is merged.
+  const runner = makeRunner({ ...parent, mode: 'auto', approve: undefined });
 
   const runs = await runInWorktrees<SubagentSpec, SubagentOutcome>(
     specs,

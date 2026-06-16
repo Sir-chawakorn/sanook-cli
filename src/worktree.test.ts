@@ -10,8 +10,21 @@ import {
   removeWorktree,
   getRepoRoot,
   diffFiles,
+  diffTouchedPaths,
   runInWorktrees,
 } from './worktree.js';
+
+describe('diffTouchedPaths (snapshot safety — both sides of a rename)', () => {
+  it('rename → captures BOTH source and dest (so rollback can restore the deleted source)', () => {
+    const diff = 'diff --git a/old.txt b/new.txt\nsimilarity index 100%\nrename from old.txt\nrename to new.txt\n';
+    expect(diffTouchedPaths(diff).sort()).toEqual(['new.txt', 'old.txt']);
+    expect(diffFiles(diff)).toEqual(['new.txt']); // summary keeps showing the dest only
+  });
+  it('modify → the single path; add/delete ignore /dev/null', () => {
+    expect(diffTouchedPaths('diff --git a/x.txt b/x.txt\n--- a/x.txt\n+++ b/x.txt\n@@ -1 +1 @@\n-a\n+b\n')).toEqual(['x.txt']);
+    expect(diffTouchedPaths('diff --git a/n.txt b/n.txt\n--- /dev/null\n+++ b/n.txt\n@@ -0,0 +1 @@\n+x\n')).toEqual(['n.txt']);
+  });
+});
 
 const allSettled = <R>(thunks: (() => Promise<R>)[]): Promise<R[]> => Promise.all(thunks.map((t) => t()));
 

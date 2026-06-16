@@ -3,6 +3,13 @@ import { render } from 'ink-testing-library';
 import { SetupWizard } from './setup.js';
 
 const tick = (ms = 50): Promise<void> => new Promise((r) => setTimeout(r, ms));
+const waitForFrame = async (lastFrame: () => string | undefined, text: string): Promise<void> => {
+  const deadline = Date.now() + 750;
+  do {
+    if ((lastFrame() ?? '').includes(text)) return;
+    await tick(25);
+  } while (Date.now() < deadline);
+};
 const ENTER = '\r';
 const ESC = '\x1b';
 
@@ -16,7 +23,7 @@ describe('setup wizard — key step guards', () => {
     expect(lastFrame()).toContain('วาง API key ของ Anthropic');
 
     stdin.write(ENTER); // empty submit
-    await tick();
+    await waitForFrame(lastFrame, 'วาง API key ก่อน');
     expect(lastFrame()).toContain('วาง API key ของ Anthropic'); // STILL on key step (didn't jump to model)
     expect(lastFrame()).toContain('วาง API key ก่อน'); // inline error shown
   });

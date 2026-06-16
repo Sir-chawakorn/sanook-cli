@@ -12,6 +12,7 @@
 // or a stray [[ inside a code fence degrade to "no frontmatter / no links"
 // rather than throwing. We must never block indexing a real, messy vault file.
 // ============================================================================
+import { createHash } from 'node:crypto';
 
 const MIN_CHARS = 120; // sections shorter than this fold into the next chunk
 
@@ -35,14 +36,9 @@ export interface ParsedDoc {
   chunks: Chunk[];
 }
 
-/** deterministic short hash of a path (fnv-1a → base36) — no crypto dep, stable chunk ids. */
+/** deterministic path hash — SHA-256 prefix keeps chunk ids short without 32-bit collision risk. */
 export function pathHash(path: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < path.length; i++) {
-    h ^= path.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(36);
+  return createHash('sha256').update(path).digest('hex').slice(0, 16);
 }
 
 /** split a leading `---\n…\n---` frontmatter block from the body. Defensive: no block ⇒ {} + full md. */
@@ -52,7 +48,10 @@ export function parseFrontmatter(md: string): { data: Frontmatter; body: string 
   const end = md.indexOf('\n---', 3);
   if (end === -1) return { data: empty, body: md };
   const block = md.slice(3, end).trim();
-  const body = md.slice(md.indexOf('\n', end + 1) + 1).replace(/^\n+/, '');
+  // หา newline หลัง closing fence; ถ้าไม่มี (frontmatter-only ไม่มี trailing newline) body = '' ไม่ใช่ทั้งไฟล์
+  // (indexOf คืน -1 → slice(0) = ทั้งไฟล์ → frontmatter รั่วเข้า body ทำ index/search เพี้ยน)
+  const afterFence = md.indexOf('\n', end + 1);
+  const body = (afterFence === -1 ? '' : md.slice(afterFence + 1)).replace(/^\n+/, '');
 
   const data: Frontmatter = { tags: [] };
   const lines = block.split('\n');

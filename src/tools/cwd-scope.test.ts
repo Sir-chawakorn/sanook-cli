@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile, stat } from 'node:fs/promises';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { mkdtemp, mkdir, rm, readFile, stat, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentContext } from '../agentContext.js';
@@ -17,6 +17,7 @@ async function scopedDir(): Promise<string> {
   return d;
 }
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(dirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
 });
 
@@ -57,5 +58,17 @@ describe('agentCwd scoping of file tools', () => {
     // …but an absolute path into a DIFFERENT dir (not the scoped cwd / brain) is blocked
     const blocked = await runScoped(cwd, () => writeFileTool.execute!({ path: join(other, 'b.txt'), content: '2' }, {} as never));
     expect(blocked).toContain('BLOCKED');
+  });
+
+  it('permission guard blocks writes through symlinks into protected directories even with outside-workspace opt-in', async () => {
+    vi.stubEnv('SANOOK_ALLOW_OUTSIDE_WORKSPACE', '1');
+    const cwd = await scopedDir();
+    const outside = await scopedDir();
+    await mkdir(join(outside, '.ssh'), { recursive: true });
+    await symlink(join(outside, '.ssh'), join(cwd, 'ssh-link'));
+
+    const blocked = await runScoped(cwd, () => writeFileTool.execute!({ path: 'ssh-link/config', content: 'secret' }, {} as never));
+    expect(blocked).toContain('BLOCKED');
+    expect(blocked).toContain('path ที่ป้องกัน');
   });
 });

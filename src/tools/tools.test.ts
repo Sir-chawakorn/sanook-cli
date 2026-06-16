@@ -125,6 +125,18 @@ describe('editFileTool (integration)', () => {
     expect(await readFile(f, 'utf8')).toBe('a();\r\nB();\r\nc();\r\n');
   });
 
+  it('flex match (indent ต่าง) → คง indentation เดิม ไม่ de-indent code', async () => {
+    const f = join(dir, 'indent.ts');
+    await writeFile(f, 'function g() {\n    const x = 1;\n    const y = 2;\n}\n');
+    // model ส่ง old/new แบบไม่มี indent → flex tier match แต่ต้อง re-apply 4-space indent ของไฟล์
+    const out = await editFileTool.execute!(
+      { path: f, old_string: 'const x = 1;\nconst y = 2;', new_string: 'const x = 10;\nconst y = 20;' },
+      opts,
+    );
+    expect(out).toMatch(/OK/);
+    expect(await readFile(f, 'utf8')).toBe('function g() {\n    const x = 10;\n    const y = 20;\n}\n');
+  });
+
   it('replace_all: แทนที่ทุกที่ด้วย old_string สั้นๆ (rename) — ไม่ต้อง unique, ประหยัด token', async () => {
     await writeFile(file, 'let total = 0;\ntotal = total + 1;\nreturn total;\n');
     const out = await editFileTool.execute!({ path: file, old_string: 'total', new_string: 'sum', replace_all: true }, opts);

@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { emptyIndex, bm25Search, indexStats } from './index-core.js';
+import { addDoc, emptyIndex, bm25Search, indexStats } from './index-core.js';
 import {
   indexVaultFiles,
   foldFacts,
   foldSessions,
   foldSkills,
+  vectorizeIndex,
   type VaultFS,
 } from './indexer.js';
+import { cosineTopK } from './embed-store.js';
 import { emptyStore, mergeFact } from '../memory-store.js';
 import type { Manifest } from './store.js';
 
@@ -173,5 +175,27 @@ describe('fold live corpora into the shared index', () => {
     expect(foldFacts(idx, facts, 1001)).toBe(1);
     expect(bm25Search(idx, 'visible deployment', 50, new Set(['memory']))[0]).toBeTruthy();
     expect(bm25Search(idx, 'hidden scraped', 50, new Set(['memory']))).toEqual([]);
+  });
+});
+
+describe('vectorizeIndex — semantic sidecar build', () => {
+  it('embeds every searchable doc with ids matching the BM25 index', async () => {
+    const idx = emptyIndex();
+    addDoc(idx, { id: 'b', source: 'vault', title: 'Bravo', text: 'bravo deployment note' });
+    addDoc(idx, { id: 'a', source: 'memory', title: '', text: 'automation preference' });
+
+    const vi = await vectorizeIndex(idx, 'fake:model', async (texts) =>
+      texts.map((t) => (t.includes('automation') ? [1, 0] : [0, 1])),
+    );
+
+    expect(vi.tag).toBe('fake:model');
+    expect(vi.ids).toEqual(['a', 'b']); // deterministic by id, not Map insertion order
+    expect(cosineTopK(vi, [1, 0])[0]?.id).toBe('a');
+  });
+
+  it('rejects embedding providers that return the wrong number of rows', async () => {
+    const idx = emptyIndex();
+    addDoc(idx, { id: 'a', source: 'vault', title: '', text: 'one doc' });
+    await expect(vectorizeIndex(idx, 'fake:model', async () => [])).rejects.toThrow(/embedding count mismatch/);
   });
 });

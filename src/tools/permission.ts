@@ -111,8 +111,16 @@ export async function checkReadPath(path: string): Promise<GateResult> {
 /** กันเขียนทับ secrets/shell-rc/.sanook + กันเขียนนอก workspace/brain */
 export async function checkWritePath(path: string): Promise<GateResult> {
   const abs = resolve(path);
-  const inProtectedDir = PROTECTED_DIRS.some((d) => abs === d || abs.startsWith(d + sep));
-  if (PROTECTED_EXACT.has(abs) || inProtectedDir || protectedSegment(abs)) {
+  const canonical = await existingAncestor(path);
+  const inProtectedDir = (p: string): boolean => PROTECTED_DIRS.some((d) => p === d || p.startsWith(d + sep));
+  if (
+    PROTECTED_EXACT.has(abs) ||
+    PROTECTED_EXACT.has(canonical) ||
+    inProtectedDir(abs) ||
+    inProtectedDir(canonical) ||
+    protectedSegment(abs) ||
+    protectedSegment(canonical)
+  ) {
     return {
       ok: false,
       reason: `path ที่ป้องกันถูกปฏิเสธ: "${path}" (secrets / shell-rc / .sanook / .git / .env / node_modules)`,

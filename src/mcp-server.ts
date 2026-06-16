@@ -139,7 +139,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<st
       resetSearchCaches();
       return (
         `indexed: +${r.added} ~${r.updated} -${r.removed} (skipped ${r.skipped}) · ` +
-        `memory=${r.memory} sessions=${r.sessions} skills=${r.skills} · vault=${r.vaultPath ?? '(none)'}`
+        `memory=${r.memory} sessions=${r.sessions} skills=${r.skills} vectors=${r.vectors} · vault=${r.vaultPath ?? '(none)'}`
       );
     }
     case 'sanook_stats': {

@@ -59,6 +59,7 @@ export interface RunCodexOptions {
   prompt: string;
   model?: string;
   sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access';
+  cwd?: string; // worktree isolation ของ sub-agent — codex จะรัน + แก้ไฟล์ใน dir นี้
   resumeThreadId?: string;
   onEvent?: (e: CodexEvent) => void;
   signal?: AbortSignal;
@@ -80,13 +81,16 @@ export async function runCodex(opts: RunCodexOptions): Promise<{ text: string; t
     // (codex bug #2733/#3286: ตั้ง OPENAI_API_KEY ค้าง env ทำให้ ChatGPT-plan auth วน loop sign-in)
     const env = { ...process.env };
     delete env.OPENAI_API_KEY;
-    const p = spawn('codex', args, { env, shell: process.platform === 'win32' }); // Windows: codex = JS shim ผ่าน .cmd → ต้อง shell
+    const p = spawn('codex', args, { env, cwd: opts.cwd, shell: process.platform === 'win32' }); // Windows: codex = JS shim ผ่าน .cmd → ต้อง shell
 
     let finalText = '';
     let threadId: string | undefined;
     let buf = '';
 
     opts.signal?.addEventListener('abort', () => p.kill());
+    // codex อาจตายระหว่างรับ prompt → write ลง stdin ที่ปิดแล้ว = EPIPE; ถ้าไม่ดัก = crash ทั้ง CLI
+    // (close handler ด้านล่าง reject error ที่อ่านรู้เรื่องแทน)
+    p.stdin.on('error', () => {});
     p.stdin.write(opts.prompt);
     p.stdin.end();
 

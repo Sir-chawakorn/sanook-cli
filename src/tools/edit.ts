@@ -107,25 +107,45 @@ export const editFileTool = tool({
       if (!exact) {
         return `ERROR: ไม่พบ old_string ในไฟล์ "${path}" — replace_all ใช้ match แบบตรงเป๊ะเท่านั้น (อ่านไฟล์ใหม่แล้วคัดข้อความที่ตรง)`;
       }
-      let updated = content.split(oldNorm).join(newNorm); // split/join = แทนที่ทุกที่ (string literal, ไม่ใช่ regex)
+      const parts = content.split(oldNorm); // split/join = แทนที่ทุกที่ (string literal, ไม่ใช่ regex)
+      let updated = parts.join(newNorm);
       if (usesCRLF) updated = updated.replace(/\n/g, '\r\n');
       try {
         await writeFile(full, updated, 'utf8');
       } catch (err) {
         return `ERROR: เขียนไฟล์ "${path}" ไม่ได้ — ${(err as Error).message}`;
       }
-      return `OK: แก้ "${path}" (${exact.count} ที่)\n${renderEditDiff(oldNorm, newNorm)}`;
+      // นับจาก split (non-overlapping จริง) ไม่ใช่ exact.count ที่นับ overlapping → เลขตรงกับที่แทนจริง
+      return `OK: แก้ "${path}" (${parts.length - 1} ที่)\n${renderEditDiff(oldNorm, newNorm)}`;
     }
 
-    const m = findMatch(content, oldNorm);
+    const exact = exactMatch(content, oldNorm);
+    const m = exact ?? whitespaceFlexMatch(content, oldNorm);
+    const isFlex = !exact && !!m; // match มาจาก tier whitespace-flex (old_string indentation ไม่ตรงไฟล์)
     if (!m) {
       return `ERROR: ไม่พบ old_string ในไฟล์ "${path}" — อ่านไฟล์ใหม่ด้วย read_file แล้วคัดข้อความที่ตรงเป๊ะมาใช้`;
     }
     if (m.count > 1) {
-      return `ERROR: old_string พบ ${m.count} ที่ในไฟล์ "${path}" — ตั้ง replace_all:true เพื่อแก้ทุกที่ หรือใส่ context รอบๆ ให้พอ unique (ใช้เท่าที่จำเป็น ประหยัด token)`;
+      // flex tier: replace_all ใช้ไม่ได้ (exact-only) → แนะให้ใส่ context อย่างเดียว กัน dead-end loop
+      return isFlex
+        ? `ERROR: old_string ตรง ${m.count} ที่ในไฟล์ "${path}" (แบบ flex) — ใส่ context รอบๆ ให้ unique แล้วลองใหม่`
+        : `ERROR: old_string พบ ${m.count} ที่ในไฟล์ "${path}" — ตั้ง replace_all:true เพื่อแก้ทุกที่ หรือใส่ context รอบๆ ให้พอ unique (ใช้เท่าที่จำเป็น ประหยัด token)`;
     }
 
-    let updated = content.slice(0, m.start) + newNorm + content.slice(m.end);
+    // flex match กิน indentation เดิมของไฟล์ (เทียบแบบ trim) — ต้อง re-apply indent ให้ replacement
+    // ไม่งั้น code โดน de-indent (พัง Python/YAML + เยื้องเพี้ยนทุกภาษา) แบบเงียบๆ
+    let replacement = newNorm;
+    if (isFlex) {
+      const baseIndent = content.slice(m.start).match(/^[ \t]*/)?.[0] ?? '';
+      if (baseIndent) {
+        const newLines = newNorm.split('\n');
+        const nonBlank = newLines.filter((l) => l.trim() !== '');
+        const commonNew = nonBlank.length ? Math.min(...nonBlank.map((l) => (l.match(/^[ \t]*/)?.[0].length ?? 0))) : 0;
+        replacement = newLines.map((l) => (l.trim() === '' ? l : baseIndent + l.slice(commonNew))).join('\n');
+      }
+    }
+
+    let updated = content.slice(0, m.start) + replacement + content.slice(m.end);
     if (usesCRLF) updated = updated.replace(/\n/g, '\r\n');
     try {
       await writeFile(full, updated, 'utf8');

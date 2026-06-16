@@ -1,7 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { runParallel, TaskRegistry, type SubagentRunner, type SubagentSpec } from './orchestrate.js';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { runParallel, TaskRegistry, withGlobalSubagentSlot, type SubagentRunner, type SubagentSpec } from './orchestrate.js';
 
 const spec = (description: string, prompt = description): SubagentSpec => ({ description, prompt });
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 /** a runner whose resolution we control + that tracks peak concurrency. */
 function gatedRunner() {
@@ -60,6 +64,25 @@ describe('runParallel', () => {
   it('empty spec list → empty result', async () => {
     const { runner } = gatedRunner();
     expect(await runParallel([], runner)).toEqual([]);
+  });
+});
+
+describe('global subagent concurrency gate', () => {
+  it('caps concurrent subagent slots across independent callers', async () => {
+    vi.stubEnv('SANOOK_SUBAGENT_CONCURRENCY', '2');
+    let inFlight = 0;
+    let peak = 0;
+    await Promise.all(
+      Array.from({ length: 8 }, () =>
+        withGlobalSubagentSlot(async () => {
+          inFlight++;
+          peak = Math.max(peak, inFlight);
+          await new Promise((r) => setTimeout(r, 5));
+          inFlight--;
+        }),
+      ),
+    );
+    expect(peak).toBeLessThanOrEqual(2);
   });
 });
 

@@ -17,7 +17,12 @@ interface HooksConfig {
   PostToolUse?: HookEntry[];
 }
 
-const SAFE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR', 'APPDATA'];
+// รวม Windows-critical — hooks รันด้วย shell:true (cmd.exe ผ่าน ComSpec); ขาด SystemRoot/ComSpec/PATHEXT
+// = cmd.exe spawn ไม่ขึ้น/หา .cmd ไม่เจอ → hooks พังทั้งหมดบน Windows
+const SAFE_ENV_KEYS = [
+  'PATH', 'HOME', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR',
+  'APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'SystemRoot', 'SystemDrive', 'windir', 'PATHEXT', 'ComSpec',
+];
 function safeEnv(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const k of SAFE_ENV_KEYS) {
@@ -28,7 +33,12 @@ function safeEnv(): Record<string, string> {
 }
 
 async function readHooksFile(path: string, merged: HooksConfig): Promise<void> {
-  const cfg = JSON.parse(await readFile(path, 'utf8')) as HooksConfig;
+  let cfg: HooksConfig;
+  try {
+    cfg = JSON.parse(await readFile(path, 'utf8')) as HooksConfig;
+  } catch {
+    return; // ไม่มีไฟล์ หรือ JSON พัง → ข้าม (ไม่งั้น hooks.json เสียใน trusted project ทำ agent run crash ทั้งรอบ)
+  }
   const valid = (h: unknown): h is HookEntry =>
     Boolean(
       h &&

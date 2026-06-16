@@ -72,6 +72,24 @@ export interface Usage {
   cachedInputTokens?: number;
 }
 
+export class SharedBudget {
+  private spent = 0;
+
+  constructor(private readonly budgetUsd?: number) {}
+
+  add(usd: number): void {
+    if (Number.isFinite(usd) && usd > 0) this.spent += usd;
+  }
+
+  get totalUsd(): number {
+    return this.spent;
+  }
+
+  get overBudget(): boolean {
+    return this.budgetUsd != null && this.spent >= this.budgetUsd;
+  }
+}
+
 export class CostMeter {
   private inTok = 0;
   private outTok = 0;
@@ -82,6 +100,7 @@ export class CostMeter {
   constructor(
     private readonly specKey: string,
     private readonly budgetUsd?: number,
+    private readonly sharedBudget?: SharedBudget,
   ) {}
 
   /**
@@ -102,11 +121,13 @@ export class CostMeter {
 
     const p = PRICING[this.specKey];
     if (p) {
-      this.spent +=
+      const delta =
         (noCacheInput / 1e6) * p.input +
         (output / 1e6) * p.output +
         (cacheRead / 1e6) * p.cacheRead +
         (cacheWriteTokens / 1e6) * p.cacheWrite;
+      this.spent += delta;
+      this.sharedBudget?.add(delta);
     }
   }
 
@@ -129,7 +150,9 @@ export class CostMeter {
 
   /** true เมื่อใช้เกิน budget (เช็คก่อนยิง request ถัดไป) — no-op ถ้าไม่มี pricing (เตือนที่ entry point) */
   get overBudget(): boolean {
-    return this.budgetUsd != null && this.hasPricing && this.spent >= this.budgetUsd;
+    if (this.sharedBudget?.overBudget) return true;
+    if (!this.hasPricing) return false;
+    return this.budgetUsd != null && this.spent >= this.budgetUsd;
   }
 
   summary(): string {

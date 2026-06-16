@@ -18,7 +18,12 @@ import { encode, LspDecoder } from './framing.js';
 import { LspSession, waitForDiagnostics, type Diagnostic, type LspTransport } from './client.js';
 import { resolveServer } from './servers.js';
 
-const SAFE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR', 'APPDATA'];
+// รวม Windows-critical (SystemRoot/windir/PATHEXT/ComSpec/USERPROFILE/LOCALAPPDATA/TMP) —
+// ถ้าขาด SystemRoot/PATHEXT โปรเซสลูกบน Windows มัก spawn ไม่ขึ้น/หา .cmd ไม่เจอ
+const SAFE_ENV_KEYS = [
+  'PATH', 'HOME', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR',
+  'APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'SystemRoot', 'SystemDrive', 'windir', 'PATHEXT', 'ComSpec',
+];
 function safeEnv(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const k of SAFE_ENV_KEYS) {
@@ -30,7 +35,8 @@ function safeEnv(): Record<string, string> {
 
 /** real stdio transport: spawn the server, frame with Content-Length both ways. */
 function spawnTransport(binPath: string, args: string[], cwd: string): { transport: LspTransport; proc: ChildProcess } {
-  const proc = spawn(binPath, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: safeEnv() });
+  // Windows: LSP bin มัก resolve เป็น .cmd shim → spawn ตรงไม่ขึ้น ต้อง shell
+  const proc = spawn(binPath, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: safeEnv(), shell: process.platform === 'win32' });
   const decoder = new LspDecoder();
   let handler: ((m: Parameters<LspTransport['onMessage']>[0] extends (m: infer M) => void ? M : never) => void) | null = null;
   proc.stdout?.on('data', (buf: Buffer) => {
@@ -105,20 +111,31 @@ export async function diagnose(filePath: string, opts: DiagnoseOptions = {}): Pr
 
   let pooled = pool.get(key);
   if (!pooled) {
+    let proc: ChildProcess | undefined;
     try {
-      const { transport, proc } = spawnTransport(resolved.binPath, resolved.def.args, cwd);
-      const session = new LspSession(transport);
+      const t = spawnTransport(resolved.binPath, resolved.def.args, cwd);
+      proc = t.proc;
+      const session = new LspSession(t.transport);
       let died = false;
       proc.on('exit', () => {
         died = true;
         pool.delete(key);
       });
-      await session.initialize(rootUri);
+      // timeout: server ที่ค้าง (ไม่ตอบ initialize) ไม่ทำ diagnose แฮงค์ + reject → catch kill child กัน leak
+      await Promise.race([
+        session.initialize(rootUri),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('initialize timeout (8s)')), 8000)),
+      ]);
       if (died) return { ok: false, reason: `${resolved.def.command} ออกก่อนเริ่มงาน (ติดตั้งครบไหม?)` };
       pooled = { session, proc, opened: new Map() };
       pool.set(key, pooled);
     } catch (e) {
       pool.delete(key);
+      try {
+        proc?.kill(); // init ล้ม/timeout → kill child + ปิด stdio pipes กัน orphan/leak
+      } catch {
+        /* already dead */
+      }
       return { ok: false, reason: `เริ่ม ${resolved.def.command} ไม่สำเร็จ: ${(e as Error).message}` };
     }
   }

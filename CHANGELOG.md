@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Whole-codebase audit — confirmed bugs fixed across the CLI
+
+A multi-agent review swept every subsystem (agent loop, tools, providers, gateway, MCP, search, orchestration) and adversarially verified each finding. The ones fixed here:
+
+**High**
+- **`edit_file` silently stripped indentation.** The whitespace-flexible match tier matched an indented block by trimmed lines but spliced the (un-indented) replacement verbatim — de-indenting code and breaking Python/YAML, invisibly. It now re-applies the file's indentation to the replacement.
+- **Codex delegate could never edit files + ran in the wrong directory.** `sanook -m codex` ran with `--sandbox read-only` unconditionally (a "coding agent" that silently couldn't write) and ignored worktree `cwd`. It now uses `workspace-write` in auto mode (read-only under plan/ask), threads `cwd`, and passes prior conversation so REPL turns aren't contextless.
+- **Worktree rollback could lose a renamed file.** The pre-apply snapshot only captured destination paths, so a failed 3-way apply of a rename didn't restore the deleted source. Snapshots now cover both sides of renames/copies (and parse git-quoted paths).
+
+**Medium** — git tools now run in the sub-agent's worktree (`git_commit --addAll` no longer commits the main repo); LSP child process no longer leaks on init failure/timeout (+ init timeout, + Windows `.cmd` shell, + Windows-critical env); Codex no longer crashes the CLI on an EPIPE; the model-fallback path no longer duplicates streamed output; `redactKey` now masks GLM/Zhipu `{id}.{secret}` keys; MCP server stderr is drained (was hanging when the pipe filled); an untrusted project can no longer disable the budget cap or spoof pricing; the Telegram bot skips its backlog on startup (no replaying old commands); hooks get Windows-critical env.
+
+**Low** — `replace_all` reports the real replacement count; the multi-match hint no longer suggests `replace_all` for flex matches (dead-end); a malformed trusted-project `hooks.json` no longer crashes the run; frontmatter-only notes with no trailing newline no longer leak the frontmatter into the indexed body; the gateway returns 400/413 (not 500) for bad/oversized request bodies.
+
+**Follow-up medium fixes** — `sanook index` now builds and saves the semantic vector sidecar, so `--mode semantic|hybrid` no longer silently degrades to BM25 after a reindex; subagent fan-out has a global process-wide concurrency cap; `budgetUsd` is shared across the whole agent tree instead of resetting per subagent; isolated write subagents no longer inherit the interactive approval loop inside their temp worktree after the parent approved `task_parallel`; `/v1/chat/completions` now supports OpenAI-style `stream:true` SSE chunks.
+
+**Follow-up low fixes** — protected path checks resolve symlink ancestors before allowing writes; search chunk ids use a stronger SHA-256-derived path hash; oversized MCP tool text is capped before entering model context; malformed search manifests are sanitized on load without discarding a valid index; a setup-wizard timing test now waits for the rendered validation frame instead of flaking under full-suite load.
+
 ### Fix: couldn't type in the REPL after first-run setup
 
 The setup wizard and the REPL were two separate Ink renders (`render(SetupWizard)` → `unmount` → `render(App)`). After the first Ink instance unmounted, stdin raw-mode/keypress handling didn't reattach to the second, so the chat input was dead — you couldn't type anything. Now the wizard, the brain wizard, and the REPL live under **one Ink render** (a `Root` component swaps screens), so stdin stays continuous and input works the moment the REPL appears. (Regression-tested with ink-testing-library: typed characters reach the input box; phase routing verified.)

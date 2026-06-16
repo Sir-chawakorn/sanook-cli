@@ -68,6 +68,19 @@ describe('loadConfig layering', () => {
     expect((await loadConfig({}, dir)).permissionMode).toBe('ask');
   });
 
+  it('untrusted project ปิด budget cap (budgetUsd) ไม่ได้ — กัน repo อันตรายเปลืองเงิน user', async () => {
+    await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ model: 'ok', budgetUsd: 999999 }));
+    const c = await loadConfig({}, dir);
+    expect(c.budgetUsd).toBeUndefined(); // budgetUsd ของ repo ถูก strip
+    expect(c.model).toBe('ok'); // แต่ model (preference) ยัง apply ได้
+  });
+
+  it('trusted project ตั้ง budgetUsd ได้', async () => {
+    vi.stubEnv('SANOOK_TRUST_PROJECT', '1');
+    await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ budgetUsd: 2.5 }));
+    expect((await loadConfig({}, dir)).budgetUsd).toBe(2.5);
+  });
+
   it('trusted project config override permissionMode ได้', async () => {
     vi.stubEnv('SANOOK_TRUST_PROJECT', '1');
     await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ permissionMode: 'auto' }));

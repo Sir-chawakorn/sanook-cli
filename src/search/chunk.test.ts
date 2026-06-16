@@ -111,3 +111,12 @@ body referencing [[Other Note]] and long enough to remain a chunk after packing 
     expect(chunkMarkdown('e.md', '   \n\n').chunks).toEqual([]);
   });
 });
+
+describe('pathHash', () => {
+  it('is deterministic and uses a wider SHA-256 prefix rather than a tiny 32-bit id', () => {
+    const h = pathHash('Notes/x.md');
+    expect(pathHash('Notes/x.md')).toBe(h);
+    expect(h).toMatch(/^[0-9a-f]{16}$/);
+    expect(pathHash('Notes/y.md')).not.toBe(h);
+  });
+});

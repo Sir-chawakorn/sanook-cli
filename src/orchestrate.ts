@@ -40,6 +40,32 @@ export interface ParallelOptions {
 }
 
 const DEFAULT_CONCURRENCY = 5;
+const DEFAULT_GLOBAL_SUBAGENT_CONCURRENCY = 16;
+
+let globalInFlight = 0;
+const globalWaiters: (() => void)[] = [];
+
+function globalSubagentLimit(): number {
+  const raw = Number.parseInt(process.env.SANOOK_SUBAGENT_CONCURRENCY ?? '', 10);
+  return Number.isInteger(raw) && raw > 0 ? Math.min(raw, 64) : DEFAULT_GLOBAL_SUBAGENT_CONCURRENCY;
+}
+
+export function globalSubagentRunningCount(): number {
+  return globalInFlight;
+}
+
+export async function withGlobalSubagentSlot<R>(fn: () => Promise<R>): Promise<R> {
+  while (globalInFlight >= globalSubagentLimit()) {
+    await new Promise<void>((resolve) => globalWaiters.push(resolve));
+  }
+  globalInFlight++;
+  try {
+    return await fn();
+  } finally {
+    globalInFlight--;
+    globalWaiters.shift()?.();
+  }
+}
 
 /**
  * Run thunks concurrently, capped at `concurrency`, results in input order.

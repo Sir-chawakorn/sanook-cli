@@ -25,6 +25,7 @@ import { activeFacts, effImportance, loadStore, type Fact } from '../memory-stor
 import { chunkMarkdown } from './chunk.js';
 import { addDoc, removeDoc, removeSource, type Doc, type InvertedIndex } from './index-core.js';
 import { loadIndex, saveIndex, type Manifest } from './store.js';
+import { buildVectorIndex, embedTexts, getEmbedder, saveVectors, type VectorIndex } from './embed-store.js';
 
 /** injected filesystem boundary — real impl walks disk; tests pass an in-memory map. */
 export interface VaultFS {
@@ -48,6 +49,7 @@ export interface IndexReport extends VaultDiff {
   memory: number;
   sessions: number;
   skills: number;
+  vectors: number;
   vaultPath: string | null;
 }
 
@@ -177,6 +179,30 @@ export function foldSkills(index: InvertedIndex, skills: SkillDoc[]): number {
   return skills.length;
 }
 
+function docEmbeddingText(doc: { title?: string; text: string }): string {
+  return [doc.title?.trim(), doc.text.trim()].filter(Boolean).join('\n').slice(0, 4000);
+}
+
+export async function vectorizeIndex(
+  index: InvertedIndex,
+  tag: string,
+  embed: (texts: string[]) => Promise<number[][]>,
+): Promise<VectorIndex> {
+  const docs = [...index.docs.values()]
+    .filter((d) => d.text.trim())
+    .sort((a, b) => a.id.localeCompare(b.id));
+  if (!docs.length) return buildVectorIndex(tag, []);
+
+  const vectors = await embed(docs.map(docEmbeddingText));
+  if (vectors.length !== docs.length) {
+    throw new Error(`embedding count mismatch: expected ${docs.length}, got ${vectors.length}`);
+  }
+  return buildVectorIndex(
+    tag,
+    docs.map((d, i) => ({ id: d.id, vec: vectors[i] })),
+  );
+}
+
 // ---- real-filesystem wiring ------------------------------------------------
 
 const IGNORE_DIRS = new Set([
@@ -222,6 +248,15 @@ export function nodeVaultFS(root: string): VaultFS {
 }
 
 const SESSIONS_DIR = appHomePath('sessions');
+
+async function configEmbeddingModel(): Promise<string | undefined> {
+  try {
+    const cfg = JSON.parse(await readFile(appHomePath('config.json'), 'utf8')) as { embeddingModel?: string };
+    return cfg.embeddingModel;
+  } catch {
+    return undefined;
+  }
+}
 
 /** load first-user-message of the most recent sessions (bounded) for the session corpus. */
 export async function loadRecentSessions(limit = 60): Promise<SessionDoc[]> {
@@ -292,5 +327,19 @@ export async function reindex(now: number = Date.now()): Promise<IndexReport> {
   );
 
   await saveIndex(index, nextManifest);
-  return { ...diff, memory, sessions, skills, vaultPath: brain ?? null };
+
+  let vectors = 0;
+  const embedder = getEmbedder(process.env.SANOOK_EMBEDDING_MODEL ?? (await configEmbeddingModel()));
+  if (embedder) {
+    try {
+      const vi = await vectorizeIndex(index, embedder.tag, (texts) => embedTexts(embedder, texts));
+      await saveVectors(vi);
+      vectors = vi.ids.length;
+    } catch {
+      // Semantic search is optional. A provider/network failure must never break
+      // the BM25 floor; the engine will degrade until the next successful index.
+    }
+  }
+
+  return { ...diff, memory, sessions, skills, vectors, vaultPath: brain ?? null };
 }

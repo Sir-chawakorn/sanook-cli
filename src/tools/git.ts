@@ -1,8 +1,12 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { runGit } from '../git.js';
+import { agentCwd } from '../agentContext.js';
 
 const gitErr = (e: unknown): string => `git error: ${(e as Error).message}`;
+// รัน git ใน cwd ของ agent (worktree ของ sub-agent ถ้ามี) — ไม่งั้น git_commit/status/diff ไปโดน MAIN repo
+// แทนที่ของ sub-agent ที่ isolate ไว้ (worktree isolation พัง / commit ผิด tree)
+const gitCwd = (): string => agentCwd();
 
 export const gitStatusTool = tool({
   description: 'ดู git status — ไฟล์ที่เปลี่ยน/staged/untracked + branch',
@@ -12,7 +16,7 @@ export const gitStatusTool = tool({
   execute: async ({ path }) => {
     try {
       const args = ['status', '--short', '--branch', ...(path ? ['--', path] : [])];
-      return (await runGit(args)).trim() || '(clean)';
+      return (await runGit(args, gitCwd())).trim() || '(clean)';
     } catch (e) {
       return gitErr(e);
     }
@@ -28,7 +32,7 @@ export const gitDiffTool = tool({
   execute: async ({ staged, path }) => {
     try {
       const args = ['diff', ...(staged ? ['--staged'] : []), ...(path ? ['--', path] : [])];
-      const out = await runGit(args);
+      const out = await runGit(args, gitCwd());
       return out.length > 20000 ? `${out.slice(0, 20000)}\n... [diff ยาว, ตัด]` : out || '(no changes)';
     } catch (e) {
       return gitErr(e);
@@ -43,7 +47,7 @@ export const gitLogTool = tool({
   }),
   execute: async ({ count = 10 }) => {
     try {
-      return (await runGit(['log', '--oneline', '-n', String(Math.min(Math.max(count, 1), 50))])) || '(no commits)';
+      return (await runGit(['log', '--oneline', '-n', String(Math.min(Math.max(count, 1), 50))], gitCwd())) || '(no commits)';
     } catch (e) {
       return gitErr(e);
     }
@@ -60,8 +64,9 @@ export const gitCommitTool = tool({
   }),
   execute: async ({ message, addAll }) => {
     try {
-      if (addAll) await runGit(['add', '-A']);
-      return (await runGit(['commit', '-m', message])).trim();
+      const cwd = gitCwd();
+      if (addAll) await runGit(['add', '-A'], cwd);
+      return (await runGit(['commit', '-m', message], cwd)).trim();
     } catch (e) {
       return gitErr(e);
     }

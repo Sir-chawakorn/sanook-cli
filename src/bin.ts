@@ -452,9 +452,12 @@ async function runIndex(_args: string[]): Promise<void> {
   const { reindex } = await import('./search/indexer.js');
   console.log('indexing…');
   const r = await reindex();
+  const { resetSearchCaches } = await import('./search/engine.js');
+  resetSearchCaches();
   console.log(
     `done: +${r.added} ~${r.updated} -${r.removed} (skipped ${r.skipped}) · ` +
-      `memory=${r.memory} sessions=${r.sessions} skills=${r.skills}\nvault: ${r.vaultPath ?? '(not set — `' + BRAND.cliName + ' brain init` or set config.brainPath)'}`,
+      `memory=${r.memory} sessions=${r.sessions} skills=${r.skills} vectors=${r.vectors}\n` +
+      `vault: ${r.vaultPath ?? '(not set — `' + BRAND.cliName + ' brain init` or set config.brainPath)'}`,
   );
 }
 

@@ -39,7 +39,7 @@ export const INDEX_PATH = join(SEARCH_DIR, 'index.json');
 interface IndexFileJSON {
   v: number;
   index: ReturnType<typeof indexToJSON>;
-  manifest: Manifest;
+  manifest: unknown;
 }
 const FILE_VERSION = 1;
 
@@ -61,6 +61,26 @@ export async function indexMtimeMs(): Promise<number> {
   }
 }
 
+export function sanitizeManifest(raw: unknown): Manifest {
+  const out = Object.create(null) as Manifest;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+
+  for (const [path, entry] of Object.entries(raw)) {
+    if (!path || ['__proto__', 'prototype', 'constructor'].includes(path)) continue;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+
+    const r = entry as Record<string, unknown>;
+    const mtimeMs = Number(r.mtimeMs);
+    const size = Number(r.size);
+    if (!Number.isFinite(mtimeMs) || mtimeMs < 0 || !Number.isFinite(size) || size < 0) continue;
+    if (typeof r.sha !== 'string' || !r.sha || r.sha.length > 256) continue;
+    if (!Array.isArray(r.ids) || !r.ids.every((id) => typeof id === 'string' && id.length > 0 && id.length < 1024)) continue;
+
+    out[path] = { mtimeMs, size, sha: r.sha, ids: [...r.ids] };
+  }
+  return out;
+}
+
 /**
  * Load the persisted index + manifest. Pure read: a missing or malformed file
  * degrades to an empty index rather than throwing, so a corrupt cache never
@@ -70,7 +90,7 @@ export async function loadIndex(): Promise<PersistedIndex> {
   try {
     const raw = JSON.parse(await readFile(INDEX_PATH, 'utf8')) as IndexFileJSON;
     if (raw && raw.v === FILE_VERSION) {
-      return { index: indexFromJSON(raw.index), manifest: raw.manifest ?? {} };
+      return { index: indexFromJSON(raw.index), manifest: sanitizeManifest(raw.manifest) };
     }
   } catch {
     /* no file yet, or malformed → fall through to empty */

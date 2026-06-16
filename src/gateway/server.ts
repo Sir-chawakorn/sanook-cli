@@ -7,6 +7,8 @@ import { runAgent } from '../loop.js';
 import { redactKey } from '../providers/keys.js';
 import { BRAND } from '../brand.js';
 
+type AgentRunner = (opts: Parameters<typeof runAgent>[0]) => ReturnType<typeof runAgent>;
+
 export interface ServerOpts {
   port: number;
   token: string;
@@ -14,6 +16,7 @@ export interface ServerOpts {
   budgetUsd?: number;
   permissionMode?: 'auto' | 'ask';
   onLog?: (msg: string) => void;
+  runner?: AgentRunner;
 }
 
 function send(res: ServerResponse, status: number, body: unknown): void {
@@ -21,19 +24,38 @@ function send(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+function sendSse(res: ServerResponse, body: unknown): void {
+  res.write(`data: ${typeof body === 'string' ? body : JSON.stringify(body)}\n\n`);
+}
+
 const MAX_BODY = 1_000_000; // 1MB กัน memory blowup
+
+/** error ที่พก HTTP status — ให้ client เห็น 400/413 (client error) แทน 500 (server error) */
+class HttpError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const c of req) {
     size += (c as Buffer).length;
-    if (size > MAX_BODY) throw new Error('request body ใหญ่เกิน');
+    if (size > MAX_BODY) throw new HttpError(413, 'request body ใหญ่เกิน'); // Payload Too Large
     chunks.push(c as Buffer);
   }
   const raw = Buffer.concat(chunks).toString('utf8');
   if (!raw) return {};
-  const parsed = JSON.parse(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new HttpError(400, 'invalid JSON body'); // Bad Request — ไม่ leak ข้อความ parser
+  }
   return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
 }
 
@@ -45,7 +67,9 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
 export function startServer(opts: ServerOpts): () => void {
   const server = createServer((req, res) => {
     // redact กัน API key/secret รั่วใน error response (provider error อาจฝัง key)
-    void handle(req, res, opts).catch((err) => send(res, 500, { error: redactKey((err as Error).message ?? String(err)) }));
+    void handle(req, res, opts).catch((err) =>
+      send(res, (err as { status?: number }).status ?? 500, { error: redactKey((err as Error).message ?? String(err)) }),
+    );
   });
   // '127.0.0.1' = loopback only — สำคัญ: ห้าม 0.0.0.0 (จะเปิดให้ทั้ง LAN)
   server.listen(opts.port, '127.0.0.1', () => opts.onLog?.(`http://127.0.0.1:${opts.port} (loopback)`));
@@ -81,7 +105,46 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
       .slice(0, lastUserIdx)
       .map((m) => ({ role: m.role, content: m.content as string })) as ModelMessage[];
     const model = typeof body.model === 'string' && body.model ? body.model : opts.defaultModel;
-    const { text } = await runAgent({
+    const runner = opts.runner ?? runAgent;
+    if (body.stream === true) {
+      res.writeHead(200, {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache, no-transform',
+        connection: 'keep-alive',
+      });
+      sendSse(res, {
+        object: 'chat.completion.chunk',
+        model,
+        choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
+      });
+      try {
+        await runner({
+          model,
+          prompt,
+          history,
+          maxSteps: 20,
+          budgetUsd: opts.budgetUsd,
+          permissionMode: opts.permissionMode ?? 'ask',
+          onEvent: (e) => {
+            if (e.type !== 'text' || !e.text) return;
+            sendSse(res, {
+              object: 'chat.completion.chunk',
+              model,
+              choices: [{ index: 0, delta: { content: e.text }, finish_reason: null }],
+            });
+          },
+        });
+        sendSse(res, { object: 'chat.completion.chunk', model, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] });
+        sendSse(res, '[DONE]');
+      } catch (e) {
+        sendSse(res, { error: redactKey((e as Error).message ?? String(e)) });
+        sendSse(res, '[DONE]');
+      }
+      res.end();
+      return;
+    }
+
+    const { text } = await runner({
       model,
       prompt,
       history,

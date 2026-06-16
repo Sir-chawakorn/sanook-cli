@@ -18,6 +18,7 @@ const VERSION = (
 export const PROTOCOL_VERSION = '2024-11-05'; // shared by the MCP client (here) and server (mcp-server.ts)
 const MAX_BUF = 16 * 1024 * 1024; // กัน server ส่ง byte ยาวไม่มี newline → memory โต unbounded
 const REQUEST_TIMEOUT = 20_000;
+export const MAX_MCP_TOOL_OUTPUT_CHARS = 200_000;
 
 // env ปลอดภัยที่ส่งให้ MCP child (ไม่มี secret) — server ที่ต้อง token ให้ตั้งใน cfg.env เอง
 const SAFE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR', 'APPDATA'];
@@ -54,6 +55,12 @@ export function isValidMcpServerName(name: string): boolean {
   );
 }
 
+export function capMcpToolOutput(text: string, max = MAX_MCP_TOOL_OUTPUT_CHARS): string {
+  if (text.length <= max) return text;
+  const omitted = text.length - max;
+  return `${text.slice(0, max)}\n\n[MCP output truncated: ${omitted} chars omitted]`;
+}
+
 /** transport = ส่ง JSON-RPC request/notify ให้ server (stdio หรือ http) */
 interface Transport {
   request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown>;
@@ -70,6 +77,7 @@ class StdioTransport implements Transport {
   private nextId = 1;
   private pending = new Map<number, Pending>();
   private dead = false;
+  private stderrTail = '';
 
   constructor(cfg: McpServerConfig) {
     this.proc = spawn(cfg.command!, cfg.args ?? [], {
@@ -82,8 +90,13 @@ class StdioTransport implements Transport {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.proc.stdout?.on('data', (d: Buffer) => this.onData(d.toString()));
+    // ต้อง drain stderr — piped ไว้แต่ไม่อ่าน = OS pipe buffer (~64KB) เต็ม → server บล็อกตอนเขียน log = แฮงค์
+    // เก็บหางไว้ ~2KB ช่วย debug ว่า server ตายเพราะอะไร
+    this.proc.stderr?.on('data', (d: Buffer) => {
+      this.stderrTail = (this.stderrTail + d.toString()).slice(-2000);
+    });
     this.proc.on('error', () => this.fail('spawn error'));
-    this.proc.on('exit', () => this.fail('server exited'));
+    this.proc.on('exit', () => this.fail(this.stderrTail.trim() ? `server exited — ${this.stderrTail.trim().split('\n').pop()}` : 'server exited'));
     this.proc.stdin?.on('error', () => {}); // กัน EPIPE
   }
 
@@ -260,7 +273,8 @@ class McpClient {
       .filter((c) => c.type === 'text')
       .map((c) => c.text ?? '')
       .join('\n');
-    return r?.isError ? `MCP error: ${text}` : text || '(no output)';
+    const capped = capMcpToolOutput(text);
+    return r?.isError ? `MCP error: ${capped}` : capped || '(no output)';
   }
 
   close(): void {

@@ -268,6 +268,37 @@ describe('gateway HTTP (spawn server จริง)', () => {
       stop();
     }
   });
+
+  it('/v1/chat/completions stream:true returns SSE chunks', async () => {
+    const { startServer } = await import('./gateway/server.js');
+    const { CostMeter } = await import('./cost.js');
+    const stop = startServer({
+      port: 8912,
+      token: 'tok',
+      defaultModel: 'sonnet',
+      runner: async (opts) => {
+        opts.onEvent?.({ type: 'text', text: 'hello ' });
+        opts.onEvent?.({ type: 'text', text: 'world' });
+        return { text: 'hello world', messages: [], cost: new CostMeter('anthropic:claude-haiku-4-5') };
+      },
+    });
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      const res = await fetch('http://127.0.0.1:8912/v1/chat/completions', {
+        method: 'POST',
+        headers: { authorization: 'Bearer tok', 'content-type': 'application/json' },
+        body: JSON.stringify({ stream: true, messages: [{ role: 'user', content: 'hi' }] }),
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('text/event-stream');
+      const text = await res.text();
+      expect(text).toContain('"content":"hello "');
+      expect(text).toContain('"content":"world"');
+      expect(text).toContain('data: [DONE]');
+    } finally {
+      stop();
+    }
+  });
 });
 
 // helper: array → readable stream (สำหรับ mock doStream)

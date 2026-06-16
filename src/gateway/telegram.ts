@@ -67,6 +67,14 @@ export function startTelegram(opts: TelegramOpts): () => void {
 
   async function loop(): Promise<void> {
     let offset = 0;
+    // ข้าม backlog ตอนเริ่ม — ไม่งั้น bot replay คำสั่งเก่าที่ค้างไว้ (Telegram เก็บ update ~24h) ตอน start
+    // = รัน bash/แก้ไฟล์ตามคำสั่งเก่าโดยไม่ได้ตั้งใจ. offset=-1 → คืน update ล่าสุดตัวเดียว แล้วเลื่อน offset ข้ามไป
+    try {
+      const initial = await getUpdates(opts.token, -1, ctrl.signal);
+      if (initial.length) offset = initial[initial.length - 1].update_id + 1;
+    } catch {
+      /* ดึง backlog ไม่ได้ → เริ่มที่ 0 (ดีกว่าไม่เริ่มเลย) */
+    }
     while (!stopped) {
       try {
         const updates = await getUpdates(opts.token, offset, ctrl.signal);

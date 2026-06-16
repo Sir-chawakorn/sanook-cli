@@ -77,7 +77,9 @@ export interface ApplyResult {
  */
 export async function applyDiff(diff: string, repoRoot: string): Promise<ApplyResult> {
   if (!diff.trim()) return { ok: true };
-  const files = diffFiles(diff);
+  // snapshot ต้องคลุม "ทุก path ที่ patch แตะ" รวม source ของ rename/copy (git apply ลบ source ตอน rename)
+  // ไม่งั้น apply ล้มกลางทาง → rollback ไม่คืน source = ไฟล์หาย. ใช้ touched-paths (ทั้ง 2 ฝั่ง) ไม่ใช่แค่ dest
+  const files = diffTouchedPaths(diff);
   if (files.length) {
     try {
       await runGit(['diff', '--cached', '--quiet', '--', ...files], repoRoot);
@@ -125,11 +127,48 @@ export async function removeWorktree(wt: Worktree): Promise<void> {
   await runGit(['worktree', 'prune'], wt.repoRoot).catch(() => {});
 }
 
-/** changed file paths in a captured diff (for a human-readable summary). */
+/** git quote paths ที่มีอักขระพิเศษ/ช่องว่างเป็น "..." แบบ C-escape → คืน path จริง (best-effort) */
+function unquotePath(p: string): string {
+  if (p.startsWith('"') && p.endsWith('"')) {
+    try {
+      return JSON.parse(p) as string;
+    } catch {
+      return p.slice(1, -1);
+    }
+  }
+  return p;
+}
+
+/** changed file paths in a captured diff (dest side — for a human-readable summary). */
 export function diffFiles(diff: string): string[] {
   const files = new Set<string>();
   for (const m of diff.matchAll(/^diff --git a\/(.+?) b\/(.+)$/gm)) files.add(m[2]);
   return [...files];
+}
+
+/**
+ * ทุก path ที่ patch อ่าน "หรือ" เขียน — รวม 2 ฝั่งของ rename/copy — สำหรับ snapshot + rollback ให้ปลอดภัย
+ * (จงใจ liberal: snapshot เกินไม่เป็นไร [restore ทับด้วยเนื้อเดิม = no-op] แต่ขาด source ของ rename = ไฟล์หาย)
+ * อ่านจากบรรทัด `--- a/` `+++ b/` `rename from/to` `copy from/to` ซึ่งมี path เดียวต่อบรรทัด (parse แม่นกว่า `diff --git`)
+ */
+export function diffTouchedPaths(diff: string): string[] {
+  const set = new Set<string>();
+  for (const line of diff.split('\n')) {
+    let m: RegExpMatchArray | null;
+    if (
+      (m = line.match(/^rename from (.+)$/)) ||
+      (m = line.match(/^rename to (.+)$/)) ||
+      (m = line.match(/^copy from (.+)$/)) ||
+      (m = line.match(/^copy to (.+)$/))
+    ) {
+      set.add(unquotePath(m[1]));
+    } else if ((m = line.match(/^--- (.+)$/)) && m[1] !== '/dev/null') {
+      set.add(unquotePath(m[1].replace(/^a\//, '')));
+    } else if ((m = line.match(/^\+\+\+ (.+)$/)) && m[1] !== '/dev/null') {
+      set.add(unquotePath(m[1].replace(/^b\//, '')));
+    }
+  }
+  return [...set];
 }
 
 export interface MergeNote {

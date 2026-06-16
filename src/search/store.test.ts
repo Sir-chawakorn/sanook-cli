@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { readdir, readFile, rm, stat } from 'node:fs/promises';
+import { readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -54,6 +54,27 @@ describe('search index store', () => {
     await S.saveIndex(I.emptyIndex(), {});
     await import('node:fs/promises').then((fs) => fs.writeFile(S.INDEX_PATH, '{ nope'));
     expect((await S.loadIndex()).index.docs.size).toBe(0);
+  });
+
+  it('sanitizes malformed manifest entries without losing a valid index', async () => {
+    const idx = I.addDoc(I.emptyIndex(), { id: 'doc1', source: 'vault', title: 'Deploy', text: 'deploy' });
+    await S.saveIndex(idx, {});
+
+    const raw = JSON.parse(await readFile(S.INDEX_PATH, 'utf8')) as Record<string, unknown>;
+    raw.manifest = {
+      'Deploy.md': { mtimeMs: 1, size: 2, sha: 'abc', ids: ['doc1'] },
+      'Bad.md': { mtimeMs: 'nope', size: 2, sha: 'abc', ids: ['doc2'] },
+      '__proto__': { mtimeMs: 1, size: 2, sha: 'polluted', ids: ['pwn'] },
+      constructor: { mtimeMs: 1, size: 2, sha: 'polluted', ids: ['pwn'] },
+    };
+    await writeFile(S.INDEX_PATH, `${JSON.stringify(raw)}\n`);
+
+    const loaded = await S.loadIndex();
+    expect(loaded.index.docs.get('doc1')?.title).toBe('Deploy');
+    expect(Object.keys(loaded.manifest)).toEqual(['Deploy.md']);
+    expect(loaded.manifest['Deploy.md']?.ids).toEqual(['doc1']);
+    expect((loaded.manifest as Record<string, unknown>).polluted).toBeUndefined();
+    expect(Object.getPrototypeOf(loaded.manifest)).toBeNull();
   });
 
   it('saveIndex is a no-op when persistence is disabled', async () => {

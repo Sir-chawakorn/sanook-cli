@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CostMeter, PRICING, registerPricing } from './cost.js';
+import { CostMeter, PRICING, SharedBudget, registerPricing } from './cost.js';
 import { PROVIDERS } from './providers/registry.js';
 
 describe('CostMeter budget cap', () => {
@@ -52,5 +52,32 @@ describe('CostMeter budget cap', () => {
     fallback.merge(primary);
     expect(fallback.totalUsd).toBeCloseTo(beforeSpent, 8); // primary cost ไม่หาย
     expect(fallback.summary()).toContain('in 1000'); // token นับรวม
+  });
+
+  it('shared budget caps a whole agent tree, not each subagent independently', () => {
+    registerPricing({ 'test:shared': { input: 1, output: 0 } });
+    const shared = new SharedBudget(0.0015);
+    const a = new CostMeter('test:shared', 0.0015, shared);
+    const b = new CostMeter('test:shared', 0.0015, shared);
+
+    a.add({ inputTokens: 1000, outputTokens: 0 }); // $0.001, below cap alone
+    expect(a.overBudget).toBe(false);
+    expect(b.overBudget).toBe(false);
+
+    b.add({ inputTokens: 1000, outputTokens: 0 }); // shared total $0.002
+    expect(shared.overBudget).toBe(true);
+    expect(a.overBudget).toBe(true);
+    expect(b.overBudget).toBe(true);
+  });
+
+  it('shared budget stops unpriced siblings once priced work spent the cap', () => {
+    const shared = new SharedBudget(0.001);
+    const priced = new CostMeter('anthropic:claude-haiku-4-5', 0.001, shared);
+    const unpriced = new CostMeter('missing:model', 0.001, shared);
+
+    priced.add({ inputTokens: 1000, outputTokens: 0 }); // $0.001
+    expect(shared.overBudget).toBe(true);
+    expect(unpriced.hasPricing).toBe(false);
+    expect(unpriced.overBudget).toBe(true);
   });
 });
