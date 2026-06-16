@@ -67,7 +67,9 @@ export function parseSchedule(input: string, now: number): ParsedSchedule | null
     const mm = parseInt(dt[2], 10);
     if (hh > 23 || mm > 59) return null;
     const mins = hh * 60 + mm;
-    return { runAt: nextDaily(mins, now), recurring: true, kind: 'cron', normalized: `${pad(hh)}:${pad(mm)}` };
+    const runAt = nextDaily(mins, now);
+    if (!isValidEpochMs(runAt)) return null;
+    return { runAt, recurring: true, kind: 'cron', normalized: `${pad(hh)}:${pad(mm)}` };
   }
 
   // ── NL ภาษาไทย / aliases → map เป็น canonical แล้ว parse ซ้ำ ──

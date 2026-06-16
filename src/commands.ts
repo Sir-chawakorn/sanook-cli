@@ -8,7 +8,7 @@ import { projectConfigPathIfTrusted } from './trust.js';
 export interface CommandResult {
   /** true = เป็น slash command (ไม่ส่งเข้า agent) */
   handled: boolean;
-  action?: 'clear' | 'compact' | 'quit' | 'help' | 'diff' | 'undo';
+  action?: 'clear' | 'compact' | 'quit' | 'help' | 'diff' | 'undo' | 'rewind';
   /** ข้อความแสดงกลับ (help / cost / model / unknown) */
   message?: string;
   /** /model <spec> — เปลี่ยน model */
@@ -126,7 +126,8 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
   const trimmed = input.trim();
   if (!trimmed.startsWith('/')) return { handled: false };
 
-  const [cmd, ...args] = trimmed.slice(1).split(/\s+/);
+  const [rawCmd, ...args] = trimmed.slice(1).split(/\s+/);
+  const cmd = rawCmd.toLowerCase();
   switch (cmd) {
     case 'help':
     case '?':
@@ -149,6 +150,8 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
       return { handled: true, action: 'diff' };
     case 'undo':
       return { handled: true, action: 'undo' };
+    case 'rewind':
+      return { handled: true, action: 'rewind' };
     case 'cost':
       return { handled: true, message: ctx.costSummary ?? '(ยังไม่มี usage รอบนี้)' };
     default:

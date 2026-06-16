@@ -40,6 +40,11 @@ export interface NewTask {
   runAt: number;
 }
 
+function normalizeOptionalModel(model: string | undefined): string | undefined {
+  const trimmed = model?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 // ── low-level: read ตรงจากไฟล์ทุกครั้ง (ไม่ cache snapshot → ไม่มี stale-overwrite) ──
 async function readTasks(): Promise<Task[]> {
   try {
@@ -85,6 +90,9 @@ export async function dueTasks(now = Date.now()): Promise<Task[]> {
 // ── mutations (locked, atomic, re-read สด) ──
 export async function enqueueTask(t: NewTask): Promise<Task> {
   const task: Task = { id: randomUUID().slice(0, 8), status: 'queued', createdAt: Date.now(), ...t };
+  const model = normalizeOptionalModel(t.model);
+  if (model) task.model = model;
+  else delete task.model;
   await mutate((tasks) => {
     tasks.push(task);
     return { tasks, result: undefined };

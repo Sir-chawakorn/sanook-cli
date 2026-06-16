@@ -64,6 +64,16 @@ describe('parseSchedule hardening (จาก adversarial review)', () => {
   it('one-shot ในอดีต → null (ไม่ยิงย้อนหลังเงียบๆ)', () => {
     expect(parseSchedule('2020-01-01T00:00:00.000Z', T0)).toBeNull();
   });
+  it('invalid base time → null', () => {
+    expect(parseSchedule('now', Number.NaN)).toBeNull();
+    expect(parseSchedule('every 1m', Number.POSITIVE_INFINITY)).toBeNull();
+    expect(parseSchedule('2026-12-25T00:00:00.000Z', 8_640_000_000_000_001)).toBeNull();
+    expect(nextRun('every 1m', Number.NaN)).toBeNull();
+  });
+  it('daily schedule past valid Date range → null', () => {
+    expect(parseSchedule('09:00', 8_640_000_000_000_000)).toBeNull();
+    expect(nextRun('09:00', 8_640_000_000_000_000)).toBeNull();
+  });
   it('date-only อนาคต → once', () => {
     const p = parseSchedule('2026-12-25', T0);
     expect(p?.recurring).toBe(false);
@@ -79,6 +89,12 @@ describe('parseSchedule hardening (จาก adversarial review)', () => {
     expect(parseSchedule('2028-02-29T00:00:00.000Z', T0)?.runAt).toBe(Date.parse('2028-02-29T00:00:00.000Z'));
     expect(parseSchedule('2100-02-29T00:00:00.000Z', T0)).toBeNull();
     expect(parseSchedule('2400-02-29T00:00:00.000Z', T0)?.runAt).toBe(Date.parse('2400-02-29T00:00:00.000Z'));
+  });
+  it('impossible ISO clock times → null', () => {
+    expect(parseSchedule('2026-12-25T24:00', T0)).toBeNull();
+    expect(parseSchedule('2026-12-25 24:00', T0)).toBeNull();
+    expect(parseSchedule('2026-12-25T23:60', T0)).toBeNull();
+    expect(parseSchedule('2026-12-25T23:59', T0)?.runAt).toBe(Date.parse('2026-12-25T23:59'));
   });
 });
 

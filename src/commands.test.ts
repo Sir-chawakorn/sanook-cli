@@ -24,6 +24,10 @@ describe('parseCommand', () => {
     expect(r.action).toBe('help');
     expect(r.message).toContain('/model');
   });
+  it('builtin slash commands are case-insensitive', () => {
+    expect(parseCommand('/HELP', ctx).action).toBe('help');
+    expect(parseCommand('/Model opus', ctx).modelChange).toBe('anthropic:claude-opus-4-8');
+  });
   it('/quit + /exit → action quit', () => {
     expect(parseCommand('/quit', ctx).action).toBe('quit');
     expect(parseCommand('/exit', ctx).action).toBe('quit');
@@ -34,6 +38,9 @@ describe('parseCommand', () => {
   it('/diff + /undo → action diff/undo (git-backed)', () => {
     expect(parseCommand('/diff', ctx).action).toBe('diff');
     expect(parseCommand('/undo', ctx).action).toBe('undo');
+  });
+  it('/rewind → action rewind', () => {
+    expect(parseCommand('/rewind', ctx).action).toBe('rewind');
   });
   it('/model ไม่มี arg → แสดง model ปัจจุบัน', () => {
     expect(parseCommand('/model', ctx).message).toContain('sonnet');

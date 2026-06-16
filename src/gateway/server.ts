@@ -28,6 +28,24 @@ function sendSse(res: ServerResponse, body: unknown): void {
   res.write(`data: ${typeof body === 'string' ? body : JSON.stringify(body)}\n\n`);
 }
 
+export function optionalString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+export function parseOptionalSchedule(
+  value: unknown,
+  now: number,
+): { schedule: ReturnType<typeof parseSchedule>; invalid?: string } {
+  const scheduleText = optionalString(value);
+  const hasScheduleInput = typeof value === 'string' ? scheduleText !== undefined : Boolean(value);
+  if (!hasScheduleInput) return { schedule: null };
+
+  const schedule = scheduleText ? parseSchedule(scheduleText, now) : null;
+  return schedule ? { schedule } : { schedule: null, invalid: String(value) };
+}
+
 const MAX_BODY = 1_000_000; // 1MB กัน memory blowup
 
 /** error ที่พก HTTP status — ให้ client เห็น 400/413 (client error) แทน 500 (server error) */
@@ -104,7 +122,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
     const history = msgs
       .slice(0, lastUserIdx)
       .map((m) => ({ role: m.role, content: m.content as string })) as ModelMessage[];
-    const model = typeof body.model === 'string' && body.model ? body.model : opts.defaultModel;
+    const model = optionalString(body.model) ?? opts.defaultModel;
     const runner = opts.runner ?? runAgent;
     if (body.stream === true) {
       res.writeHead(200, {
@@ -167,13 +185,13 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
     const body = await readBody(req);
     const spec = String(body.spec ?? '').trim();
     if (!spec) return send(res, 400, { error: 'ต้องมี spec' });
-    const sched = body.schedule ? parseSchedule(String(body.schedule), Date.now()) : null;
-    if (body.schedule && !sched) return send(res, 400, { error: `schedule ไม่ถูกต้อง: ${String(body.schedule)}` });
+    const { schedule: sched, invalid } = parseOptionalSchedule(body.schedule, Date.now());
+    if (invalid) return send(res, 400, { error: `schedule ไม่ถูกต้อง: ${invalid}` });
     const task = await enqueueTask({
       kind: sched?.recurring ? 'cron' : 'once',
       spec,
       schedule: sched?.recurring ? sched.normalized : undefined,
-      model: typeof body.model === 'string' ? body.model : undefined,
+      model: optionalString(body.model),
       runAt: sched?.runAt ?? Date.now(),
     });
     return send(res, 201, { task });

@@ -46,6 +46,21 @@ describe('ledger (lock + atomic concurrency)', () => {
     expect(await L.removeTask(t.id)).toBe(false);
   });
 
+  it('enqueueTask trims model overrides and drops blanks', async () => {
+    const blank = await L.enqueueTask({ kind: 'once', spec: 'blank-model', model: '   ', runAt: Date.now() });
+    const named = await L.enqueueTask({
+      kind: 'once',
+      spec: 'trim-model',
+      model: '  openai:gpt-5.5  ',
+      runAt: Date.now(),
+    });
+
+    expect(blank.model).toBeUndefined();
+    expect((await L.getTask(blank.id))?.model).toBeUndefined();
+    expect(named.model).toBe('openai:gpt-5.5');
+    expect((await L.getTask(named.id))?.model).toBe('openai:gpt-5.5');
+  });
+
   it('dueTasks: คืนเฉพาะ queued ที่ถึงเวลา', async () => {
     await L.enqueueTask({ kind: 'once', spec: 'future', runAt: Date.now() + 1_000_000 });
     const due = await L.dueTasks(Date.now());
