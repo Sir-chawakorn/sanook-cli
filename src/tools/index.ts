@@ -11,6 +11,7 @@ import { scheduleTaskTool, listScheduledTool, cancelScheduledTool } from './sche
 import { taskTool, taskParallelTool, taskSpawnTool, taskCollectTool, taskCancelTool, taskStatusTool } from './task.js';
 import { diagnosticsTool } from './diagnostics.js';
 import { gitStatusTool, gitDiffTool, gitLogTool, gitCommitTool } from './git.js';
+import { haCallServiceTool, haGetStateTool, haListEntitiesTool, haListServicesTool } from './homeassistant.js';
 
 /** tool registry ที่ส่งให้ agent loop */
 export const tools = {
@@ -40,6 +41,10 @@ export const tools = {
   git_diff: gitDiffTool,
   git_log: gitLogTool,
   git_commit: gitCommitTool,
+  ha_list_entities: haListEntitiesTool,
+  ha_get_state: haGetStateTool,
+  ha_list_services: haListServicesTool,
+  ha_call_service: haCallServiceTool,
 };
 
 export { readFileTool, writeFileTool, editFileTool, listDirTool, globTool, grepTool, bashTool };

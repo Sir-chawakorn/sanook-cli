@@ -77,18 +77,38 @@ sanook gateway setup sms --account-sid "$TWILIO_ACCOUNT_SID" --auth-token "$TWIL
   --phone-number "$TWILIO_PHONE_NUMBER" --home-channel +15551234567 \
   --webhook-url https://your-tunnel.example.com/sms/webhook
 sanook gateway setup ntfy --topic sanook-yourname-2026 --token "$NTFY_TOKEN" --markdown
+sanook gateway setup mattermost --url https://mm.example.com --token "$MATTERMOST_TOKEN" \
+  --allowed-users user_id_1 --home-channel chan_home_id --thread-replies
+sanook gateway setup homeassistant --url http://homeassistant.local:8123 --token "$HASS_TOKEN" \
+  --home-channel sanook_agent --watch-domains light,binary_sensor,climate
 sanook gateway setup signal --account +15550000000 --home-channel +15551234567 \
   --http-url http://127.0.0.1:8080
+sanook gateway setup whatsapp --phone-number-id "$WHATSAPP_CLOUD_PHONE_NUMBER_ID" \
+  --access-token "$WHATSAPP_CLOUD_ACCESS_TOKEN" --app-secret "$WHATSAPP_CLOUD_APP_SECRET" \
+  --home-channel 15551234567 --public-url https://your-tunnel.example.com
+sanook gateway setup matrix --homeserver https://matrix.example.org \
+  --access-token "$MATRIX_ACCESS_TOKEN" --allowed-users @alice:matrix.org \
+  --home-room '!abc123:matrix.example.org'
 sanook gateway setup webhooks --secret "$WEBHOOK_SECRET" --public-url https://your-tunnel.example.com
 sanook webhook subscribe github-issues --events issues \
   --prompt "Issue #{issue.number}: {issue.title}" --to slack:C01ABCDEF
 sanook send --to sms "deploy finished"
 sanook send --to ntfy "deploy finished"
+sanook send --to mattermost "deploy finished"
+sanook send --to homeassistant "deploy finished"
 sanook send --to signal "deploy finished"
+sanook send --to whatsapp "deploy finished"
+sanook send --to matrix "deploy finished"
 sanook cron add "09:00" "สรุปงานเช้านี้" --to ntfy
+sanook cron add "09:00" "สรุปงานเช้านี้" --to mattermost
+sanook cron add "09:00" "สรุปงานเช้านี้" --to homeassistant
+sanook cron add "09:00" "สรุปงานเช้านี้" --to whatsapp
+sanook cron add "09:00" "สรุปงานเช้านี้" --to matrix
 ```
 
-ใน Telegram/Discord/Slack/Email/LINE/SMS/ntfy/Signal พิมพ์ `/new` หรือ `/reset` เพื่อล้าง history ของ target นั้น, `/status` เพื่อดู session ปัจจุบัน และ `/help` เพื่อดูคำสั่งที่รองรับ
+ใน Telegram/Discord/Slack/Mattermost/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix พิมพ์ `/new` หรือ `/reset` เพื่อล้าง history ของ target นั้น, `/status` เพื่อดู session ปัจจุบัน และ `/help` เพื่อดูคำสั่งที่รองรับ; Matrix/Mattermost ใช้ `!new`, `!reset`, `!status`, `!help` ได้ด้วยสำหรับ client ที่กันคำสั่ง `/`
+
+Home Assistant ใช้ Long-Lived Access Token, รับเฉพาะ `state_changed` ที่ตรง `--watch-domains`, `--watch-entities` หรือ `--watch-all`, และตอบกลับผ่าน persistent notification (`homeassistant[:notification_id]`). Tools อ่านสถานะ/บริการได้ ส่วน `ha_call_service` ต้องผ่าน approval และ block domain เสี่ยงเช่น `shell_command`, `command_line`, `python_script`, `pyscript`, `hassio`, `rest_command`
 
 ## ทำอะไรได้บ้าง
 
@@ -96,8 +116,8 @@ sanook cron add "09:00" "สรุปงานเช้านี้" --to ntfy
 - **Hermes-style CLI** — `sanook setup`, `sanook model`, `sanook auth`, `sanook chat -q`, `sanook gateway`, `sanook status`, `sanook sessions`, `sanook dump`, `sanook tools`, `sanook send`
 - **Second brain** — `sanook brain init` สร้าง workspace Obsidian ให้ AI จำงานข้ามวัน
 - **Tools** — อ่าน/เขียน/แก้ไฟล์ · รัน bash · git · grep/glob พร้อม permission gate
-- **Gateway + cron** — `sanook gateway run` (alias: `sanook serve`) รัน 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram/Discord/Slack/Email/LINE/SMS/ntfy/Signal/Webhooks; task ใช้ `--to` เพื่อส่งผลลัพธ์กลับไปยัง messaging target ได้
-- **Messaging setup/send** — `sanook gateway setup telegram|discord|slack|email|line|sms|ntfy|signal|webhooks` บันทึก token/allowlist หรือ SMTP/IMAP/LINE/Twilio/ntfy/Signal/Webhook config; `sanook gateway run` เริ่ม Telegram long-polling, Discord Gateway, Slack Socket Mode, Email IMAP polling + SMTP threaded replies, LINE webhook, Twilio SMS webhook, ntfy topic stream, Signal ผ่าน `signal-cli` HTTP/SSE และ generic webhooks เมื่อ config พร้อม; history ถูกเก็บต่อ platform/target และถ้าคำตอบสุดท้ายเป็น `[SILENT]`, `SILENT`, `NO_REPLY`, หรือ `NO REPLY` จะบันทึกไว้แต่ไม่ส่งกลับ; `sanook send --to telegram|discord|slack|email|line|sms|ntfy|signal "..."`, `sanook webhook subscribe` และ `sanook cron add --to ...` ใช้กฎส่งออกชุดเดียวกัน
+- **Gateway + cron** — `sanook gateway run` (alias: `sanook serve`) รัน 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram/Discord/Slack/Mattermost/Home Assistant/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix/Webhooks; task ใช้ `--to` เพื่อส่งผลลัพธ์กลับไปยัง messaging target ได้
+- **Messaging setup/send** — `sanook gateway setup telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|webhooks` บันทึก token/allowlist หรือ SMTP/IMAP/LINE/Twilio/ntfy/Mattermost/Home Assistant/Signal/WhatsApp/Matrix/Webhook config; `sanook gateway run` เริ่ม Telegram long-polling, Discord Gateway, Slack Socket Mode, Mattermost REST/WebSocket, Home Assistant state-change WebSocket, Email IMAP polling + SMTP threaded replies, LINE webhook, Twilio SMS webhook, ntfy topic stream, Signal ผ่าน `signal-cli` HTTP/SSE, WhatsApp Cloud webhook + Graph Messages API, Matrix Client-Server sync/send และ generic webhooks เมื่อ config พร้อม; history ถูกเก็บต่อ platform/target และถ้าคำตอบสุดท้ายเป็น `[SILENT]`, `SILENT`, `NO_REPLY`, หรือ `NO REPLY` จะบันทึกไว้แต่ไม่ส่งกลับ; `sanook send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix "..."`, `sanook webhook subscribe` และ `sanook cron add --to ...` ใช้กฎส่งออกชุดเดียวกัน
 - **MCP + Skills** — ต่อ MCP server ได้ + มี built-in skills และติดตั้งเพิ่มได้
 - **Update ง่าย** — ใช้ `sanook update` เพื่ออัปเดต CLI เป็นเวอร์ชันล่าสุดจาก npm
 

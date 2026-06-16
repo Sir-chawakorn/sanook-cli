@@ -81,27 +81,38 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
     readGatewayConfig,
     resolveDiscordConfig,
     resolveEmailConfig,
+    resolveHomeAssistantConfig,
     resolveLineConfig,
+    resolveMattermostConfig,
+    resolveMatrixConfig,
     resolveNtfyConfig,
     resolveSignalConfig,
     resolveSlackConfig,
     resolveSmsConfig,
     resolveTelegramConfig,
+    resolveTeamsConfig,
+    resolveWhatsAppConfig,
     resolveWebhookConfig,
     gatewayConfigPath,
   } = await import('./gateway/config.js');
   const { gatewayServiceStatus } = await import('./gateway/service.js');
   const { listConfiguredTargets } = await import('./gateway/targets.js');
   const { redactSignalId } = await import('./gateway/signal.js');
+  const { redactWhatsAppId } = await import('./gateway/whatsapp.js');
   const gatewayConfig = await readGatewayConfig();
   const telegram = resolveTelegramConfig(gatewayConfig, env);
   const discord = resolveDiscordConfig(gatewayConfig, env);
   const slack = resolveSlackConfig(gatewayConfig, env);
   const email = resolveEmailConfig(gatewayConfig, env);
+  const homeassistant = resolveHomeAssistantConfig(gatewayConfig, env);
   const line = resolveLineConfig(gatewayConfig, env);
+  const mattermost = resolveMattermostConfig(gatewayConfig, env);
   const sms = resolveSmsConfig(gatewayConfig, env);
   const ntfy = resolveNtfyConfig(gatewayConfig, env);
   const signal = resolveSignalConfig(gatewayConfig, env);
+  const whatsapp = resolveWhatsAppConfig(gatewayConfig, env);
+  const matrix = resolveMatrixConfig(gatewayConfig, env);
+  const teams = resolveTeamsConfig(gatewayConfig, env);
   const webhooks = resolveWebhookConfig(gatewayConfig, env);
   const service = await gatewayServiceStatus();
   const targets = listConfiguredTargets(gatewayConfig, env);
@@ -160,11 +171,16 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
   lines.push(`  telegram: ${telegram.token ? `configured via ${telegram.source}` : 'not configured'}; enabled=${yesNo(telegram.enabled)}; allowed=${telegram.allowedChatIds.length}; write=${yesNo(telegram.allowWrite)}`);
   lines.push(`  discord: ${discord.token ? `configured via ${discord.source}` : 'not configured'}; enabled=${yesNo(discord.enabled)}; allowed=${discord.allowedChannelIds.length}; default=${valueOrUnset(discord.defaultChannelId)}; write=${yesNo(discord.allowWrite)}`);
   lines.push(`  slack: ${slack.botToken ? `configured via ${slack.source}` : 'not configured'}; enabled=${yesNo(slack.enabled)}; appToken=${yesNo(Boolean(slack.appToken))}; allowed=${slack.allowedChannelIds.length}; default=${valueOrUnset(slack.defaultChannelId)}; write=${yesNo(slack.allowWrite)}`);
+  lines.push(`  mattermost: ${mattermost.serverUrl || mattermost.token ? `configured via ${mattermost.source}` : 'not configured'}; enabled=${yesNo(mattermost.enabled)}; url=${valueOrUnset(mattermost.serverUrl)}; token=${yesNo(Boolean(mattermost.token))}; allowedUsers=${mattermost.allowedUsers.length}; allowedChannels=${mattermost.allowedChannels.length}; home=${valueOrUnset(mattermost.homeChannel)}; requireMention=${yesNo(mattermost.requireMention)}; replyMode=${mattermost.replyMode}`);
+  lines.push(`  homeassistant: ${homeassistant.token ? `configured via ${homeassistant.source}` : 'not configured'}; enabled=${yesNo(homeassistant.enabled)}; url=${valueOrUnset(homeassistant.url)}; token=${yesNo(Boolean(homeassistant.token))}; watchDomains=${homeassistant.watchDomains.length}; watchEntities=${homeassistant.watchEntities.length}; ignore=${homeassistant.ignoreEntities.length}; watchAll=${yesNo(homeassistant.watchAll)}; cooldown=${homeassistant.cooldownSeconds}s`);
   lines.push(`  email: ${email.address ? `configured via ${email.source}` : 'not configured'}; enabled=${yesNo(email.enabled)}; smtp=${valueOrUnset(email.smtpHost)}:${email.smtpPort}; imap=${valueOrUnset(email.imapHost)}:${email.imapPort}; allowed=${email.allowedUsers.length}; home=${valueOrUnset(email.homeAddress)}`);
   lines.push(`  line: ${line.channelAccessToken ? `configured via ${line.source}` : 'not configured'}; enabled=${yesNo(line.enabled)}; allowed=${line.allowedUsers.length + line.allowedGroups.length + line.allowedRooms.length}; home=${valueOrUnset(line.homeChannel)}; secret=${yesNo(Boolean(line.channelSecret))}`);
   lines.push(`  sms: ${sms.accountSid && sms.authToken && sms.phoneNumber ? `configured via ${sms.source}` : 'not configured'}; enabled=${yesNo(sms.enabled)}; allowed=${sms.allowedUsers.length}; home=${valueOrUnset(sms.homeChannel)}; webhook=${valueOrUnset(sms.webhookUrl)}; signature=${sms.insecureNoSignature ? 'disabled' : 'required'}`);
   lines.push(`  ntfy: ${ntfy.topic || ntfy.token ? `configured via ${ntfy.source}` : 'not configured'}; enabled=${yesNo(ntfy.enabled)}; server=${valueOrUnset(ntfy.serverUrl)}; topic=${valueOrUnset(ntfy.topic)}; publish=${valueOrUnset(ntfy.publishTopic)}; allowed=${ntfy.allowedUsers.length}; home=${valueOrUnset(ntfy.homeChannel)}; token=${yesNo(Boolean(ntfy.token))}; markdown=${yesNo(ntfy.markdown)}`);
   lines.push(`  signal: ${signal.account ? `configured via ${signal.source}` : 'not configured'}; enabled=${yesNo(signal.enabled)}; url=${valueOrUnset(signal.httpUrl)}; account=${redactSignalId(signal.account)}; allowed=${signal.allowedUsers.length}; groups=${signal.groupAllowedUsers.length}; home=${redactSignalId(signal.homeChannel)}; requireMention=${yesNo(signal.requireMention)}`);
+  lines.push(`  whatsapp: ${whatsapp.phoneNumberId || whatsapp.accessToken ? `configured via ${whatsapp.source}` : 'not configured'}; enabled=${yesNo(whatsapp.enabled)}; phoneNumberId=${yesNo(Boolean(whatsapp.phoneNumberId))}; token=${yesNo(Boolean(whatsapp.accessToken))}; secret=${yesNo(Boolean(whatsapp.appSecret))}; verifyToken=${yesNo(Boolean(whatsapp.verifyToken))}; allowed=${whatsapp.allowedUsers.length}; home=${redactWhatsAppId(whatsapp.homeChannel)}; public=${valueOrUnset(whatsapp.publicUrl)}; api=${whatsapp.apiVersion}`);
+  lines.push(`  matrix: ${matrix.homeserver || matrix.accessToken || matrix.userId ? `configured via ${matrix.source}` : 'not configured'}; enabled=${yesNo(matrix.enabled)}; homeserver=${valueOrUnset(matrix.homeserver)}; token=${yesNo(Boolean(matrix.accessToken))}; user=${valueOrUnset(matrix.userId)}; password=${yesNo(Boolean(matrix.password))}; allowedUsers=${matrix.allowedUsers.length}; allowedRooms=${matrix.allowedRooms.length}; home=${valueOrUnset(matrix.homeRoom)}; requireMention=${yesNo(matrix.requireMention)}; autoJoin=${yesNo(matrix.autoJoin)}`);
+  lines.push(`  teams: ${teams.incomingWebhookUrl || teams.graphAccessToken || teams.clientId ? `configured via ${teams.source}` : 'not configured'}; enabled=${yesNo(teams.enabled)}; mode=${teams.deliveryMode}; webhook=${yesNo(Boolean(teams.incomingWebhookUrl))}; graphToken=${yesNo(Boolean(teams.graphAccessToken))}; chat=${valueOrUnset(teams.chatId)}; teamChannel=${teams.teamId && teams.channelId ? 'set' : '(not set)'}; home=${valueOrUnset(teams.homeChannel)}; botApp=${teams.clientId && teams.tenantId ? 'set' : '(not set)'}; allowed=${teams.allowedUsers.length}; port=${teams.port}`);
   lines.push(`  webhooks: ${webhooks.enabled ? `enabled via ${webhooks.source}` : 'not enabled'}; routes=${Object.keys(webhooks.routes).length}; secret=${yesNo(Boolean(webhooks.secret))}; public=${valueOrUnset(webhooks.publicUrl)}`);
   lines.push(`  send targets: ${targets.length}`);
   lines.push('');

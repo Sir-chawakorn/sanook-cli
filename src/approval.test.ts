@@ -65,6 +65,7 @@ describe('approval gate', () => {
       'cancel_scheduled',
       'remember',
       'create_skill',
+      'ha_call_service',
     ]) {
       expect(MUTATE_TOOLS.has(t)).toBe(true);
     }

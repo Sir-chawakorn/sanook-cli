@@ -29,9 +29,17 @@ describe('support dump', () => {
     const rawLineToken = 'line-token-secret-1234567890';
     const rawTwilioToken = 'twilio-token-secret-1234567890';
     const rawNtfyToken = 'ntfy-token-secret-1234567890';
+    const rawMattermostToken = 'mattermost-token-secret-1234567890';
+    const rawHassToken = 'hass-token-secret-1234567890';
     const rawWebhookSecret = 'webhook-secret-1234567890';
     const rawSignalAccount = '+16660000000';
     const rawSignalHome = '+16661234567';
+    const rawWhatsAppToken = 'EAA-whatsapp-token-secret-1234567890';
+    const rawWhatsAppSecret = 'whatsapp-app-secret-1234567890';
+    const rawWhatsAppVerify = 'whatsapp-verify-token-1234567890';
+    const rawWhatsAppHome = '17771234567';
+    const rawMatrixToken = 'matrix-access-token-secret-1234567890';
+    const rawMatrixPassword = 'matrix-password-secret-1234567890';
     const project = join(home, 'project');
     await mkdir(join(home, '.sanook', 'gateway'), { recursive: true });
     await mkdir(project, { recursive: true });
@@ -48,7 +56,38 @@ describe('support dump', () => {
           line: { channelAccessToken: rawLineToken, homeChannel: 'U1234567890abcdef' },
           sms: { accountSid: 'AC123', authToken: rawTwilioToken, phoneNumber: '+15550000000', homeChannel: '+15551234567' },
           ntfy: { topic: 'sanook-topic', token: rawNtfyToken, homeChannel: 'sanook-topic', allowedUsers: ['sanook-topic'] },
+          mattermost: {
+            serverUrl: 'https://mm.example.com',
+            token: rawMattermostToken,
+            homeChannel: 'chan-home',
+            allowedUsers: ['user-1'],
+            allowedChannels: ['chan-home'],
+          },
+          homeassistant: {
+            url: 'http://ha.local:8123',
+            token: rawHassToken,
+            homeChannel: 'sanook_agent',
+            watchDomains: ['light'],
+            watchEntities: ['sensor.temp'],
+            ignoreEntities: ['sensor.noisy'],
+          },
           signal: { httpUrl: 'http://127.0.0.1:8080', account: rawSignalAccount, homeChannel: rawSignalHome, allowedUsers: [rawSignalHome] },
+          whatsapp: {
+            phoneNumberId: '123456789012345',
+            accessToken: rawWhatsAppToken,
+            appSecret: rawWhatsAppSecret,
+            verifyToken: rawWhatsAppVerify,
+            homeChannel: rawWhatsAppHome,
+            allowedUsers: [rawWhatsAppHome],
+          },
+          matrix: {
+            homeserver: 'https://matrix.example.org',
+            accessToken: rawMatrixToken,
+            userId: '@sanook:matrix.example.org',
+            password: rawMatrixPassword,
+            homeRoom: '!home:matrix.example.org',
+            allowedUsers: ['@alice:matrix.org'],
+          },
           webhooks: { enabled: true, secret: rawWebhookSecret, routes: { issues: { secret: rawWebhookSecret, deliver: 'log' } } },
         },
         null,
@@ -76,17 +115,34 @@ describe('support dump', () => {
     expect(out).toContain('line: configured via config');
     expect(out).toContain('sms: configured via config');
     expect(out).toContain('ntfy: configured via config');
+    expect(out).toContain('mattermost: configured via config');
+    expect(out).toContain('homeassistant: configured via config');
+    expect(out).toContain('watchDomains=1');
+    expect(out).toContain('watchEntities=1');
     expect(out).toContain('signal: configured via config');
     expect(out).toContain('account=+166…0000');
     expect(out).toContain('home=+166…4567');
+    expect(out).toContain('whatsapp: configured via config');
+    expect(out).toContain('home=1777…4567');
+    expect(out).toContain('matrix: configured via config');
+    expect(out).toContain('token=yes');
+    expect(out).toContain('password=yes');
     expect(out).toContain('webhooks: enabled via config');
     expect(out).not.toContain(rawKey);
     expect(out).not.toContain(rawTelegram);
     expect(out).not.toContain(rawLineToken);
     expect(out).not.toContain(rawTwilioToken);
     expect(out).not.toContain(rawNtfyToken);
+    expect(out).not.toContain(rawMattermostToken);
+    expect(out).not.toContain(rawHassToken);
     expect(out).not.toContain(rawWebhookSecret);
     expect(out).not.toContain(rawSignalAccount);
     expect(out).not.toContain(rawSignalHome);
+    expect(out).not.toContain(rawWhatsAppToken);
+    expect(out).not.toContain(rawWhatsAppSecret);
+    expect(out).not.toContain(rawWhatsAppVerify);
+    expect(out).not.toContain(rawWhatsAppHome);
+    expect(out).not.toContain(rawMatrixToken);
+    expect(out).not.toContain(rawMatrixPassword);
   });
 });

@@ -9,12 +9,16 @@ import {
   readGatewayConfig,
   resolveDiscordConfig,
   resolveEmailConfig,
+  resolveHomeAssistantConfig,
   resolveLineConfig,
+  resolveMattermostConfig,
+  resolveMatrixConfig,
   resolveNtfyConfig,
   resolveSignalConfig,
   resolveSlackConfig,
   resolveSmsConfig,
   resolveTelegramConfig,
+  resolveWhatsAppConfig,
   resolveWebhookConfig,
 } from './config.js';
 
@@ -74,9 +78,12 @@ export async function startGateway(opts: GatewayOpts): Promise<() => void> {
   let stopTelegram: (() => void) | undefined;
   let stopDiscord: (() => void) | undefined;
   let stopSlack: (() => void) | undefined;
+  let stopMattermost: (() => void) | undefined;
+  let stopHomeAssistant: (() => void) | undefined;
   let stopEmail: (() => void) | undefined;
   let stopNtfy: (() => void) | undefined;
   let stopSignal: (() => void) | undefined;
+  let stopMatrix: (() => void) | undefined;
   const gatewayConfig = await readGatewayConfig();
   const telegram = resolveTelegramConfig(gatewayConfig);
   if (telegram.enabled && telegram.token) {
@@ -129,6 +136,50 @@ export async function startGateway(opts: GatewayOpts): Promise<() => void> {
         });
       } catch (e) {
         log(`Slack ไม่เริ่ม: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  const mattermost = resolveMattermostConfig(gatewayConfig);
+  if (mattermost.enabled && (mattermost.serverUrl || mattermost.token || mattermost.homeChannel || mattermost.allowedUsers.length || mattermost.allowedChannels.length)) {
+    if (!mattermost.serverUrl) {
+      log('Mattermost ไม่เริ่ม: ต้องตั้ง MATTERMOST_URL เช่น https://mm.example.com');
+    } else if (!mattermost.token) {
+      log('Mattermost ไม่เริ่ม: ต้องตั้ง MATTERMOST_TOKEN');
+    } else if (!mattermost.allowAllUsers && !mattermost.allowedUsers.length) {
+      log('Mattermost ไม่เริ่ม: ต้องตั้ง MATTERMOST_ALLOWED_USERS เพื่อ fail-closed');
+    } else {
+      const { startMattermost } = await import('./mattermost.js');
+      try {
+        stopMattermost = await startMattermost({
+          config: mattermost,
+          model: opts.model,
+          budgetUsd: opts.budgetUsd,
+          permissionMode: opts.permissionMode ?? (envFlag(BRAND_ENV.gatewayAllowWrite) ? 'auto' : 'ask'),
+          onLog: log,
+        });
+      } catch (e) {
+        log(`Mattermost ไม่เริ่ม: ${(e as Error).message}`);
+      }
+    }
+  }
+
+  const homeassistant = resolveHomeAssistantConfig(gatewayConfig);
+  if (homeassistant.enabled && (homeassistant.token || homeassistant.homeChannel || homeassistant.watchAll || homeassistant.watchDomains.length || homeassistant.watchEntities.length)) {
+    if (!homeassistant.token) {
+      log('Home Assistant ไม่เริ่ม: ต้องตั้ง HASS_TOKEN');
+    } else {
+      const { startHomeAssistant } = await import('./homeassistant.js');
+      try {
+        stopHomeAssistant = startHomeAssistant({
+          config: homeassistant,
+          model: opts.model,
+          budgetUsd: opts.budgetUsd,
+          permissionMode: opts.permissionMode ?? (envFlag(BRAND_ENV.gatewayAllowWrite) ? 'auto' : 'ask'),
+          onLog: log,
+        });
+      } catch (e) {
+        log(`Home Assistant ไม่เริ่ม: ${(e as Error).message}`);
       }
     }
   }
@@ -220,6 +271,42 @@ export async function startGateway(opts: GatewayOpts): Promise<() => void> {
     }
   }
 
+  const whatsapp = resolveWhatsAppConfig(gatewayConfig);
+  if (whatsapp.enabled && (whatsapp.phoneNumberId || whatsapp.accessToken || whatsapp.homeChannel || whatsapp.allowedUsers.length)) {
+    if (!whatsapp.phoneNumberId || !whatsapp.accessToken) {
+      log('WhatsApp Cloud webhook ไม่เริ่ม: ต้องตั้ง WHATSAPP_CLOUD_PHONE_NUMBER_ID และ WHATSAPP_CLOUD_ACCESS_TOKEN ให้ครบ');
+    } else if (!whatsapp.appSecret) {
+      log('WhatsApp Cloud webhook ไม่เริ่ม: ต้องตั้ง WHATSAPP_CLOUD_APP_SECRET เพื่อ verify X-Hub-Signature-256');
+    } else if (!whatsapp.verifyToken) {
+      log('WhatsApp Cloud webhook ไม่เริ่ม: ต้องตั้ง WHATSAPP_CLOUD_VERIFY_TOKEN สำหรับ Meta webhook verify handshake');
+    } else if (!whatsapp.homeChannel && !whatsapp.allowedUsers.length && !whatsapp.allowAllUsers) {
+      log('WhatsApp Cloud webhook ไม่เริ่ม: ต้องตั้ง home channel หรือ allowlist เพื่อ fail-closed');
+    } else {
+      const publicBase = whatsapp.publicUrl ? `${whatsapp.publicUrl.replace(/\/+$/, '')}/whatsapp/webhook` : `http://127.0.0.1:${opts.port}/whatsapp/webhook`;
+      log(`WhatsApp Cloud: webhook ready at ${publicBase}`);
+    }
+  }
+
+  const matrix = resolveMatrixConfig(gatewayConfig);
+  if (matrix.enabled && (matrix.homeserver || matrix.accessToken || matrix.userId || matrix.homeRoom || matrix.allowedUsers.length || matrix.allowedRooms.length)) {
+    if (!matrix.homeserver) {
+      log('Matrix ไม่เริ่ม: ต้องตั้ง MATRIX_HOMESERVER เช่น https://matrix.org');
+    } else if (!matrix.accessToken && (!matrix.userId || !matrix.password)) {
+      log('Matrix ไม่เริ่ม: ต้องตั้ง MATRIX_ACCESS_TOKEN หรือ MATRIX_USER_ID/MATRIX_PASSWORD');
+    } else if (!matrix.allowAllUsers && !matrix.allowedUsers.length) {
+      log('Matrix ไม่เริ่ม: ต้องตั้ง MATRIX_ALLOWED_USERS เพื่อ fail-closed');
+    } else {
+      const { startMatrix } = await import('./matrix.js');
+      stopMatrix = startMatrix({
+        config: matrix,
+        model: opts.model,
+        budgetUsd: opts.budgetUsd,
+        permissionMode: opts.permissionMode ?? (envFlag(BRAND_ENV.gatewayAllowWrite) ? 'auto' : 'ask'),
+        onLog: log,
+      });
+    }
+  }
+
   const webhooks = resolveWebhookConfig(gatewayConfig);
   if (webhooks.enabled) {
     const routes = Object.keys(webhooks.routes);
@@ -239,9 +326,12 @@ export async function startGateway(opts: GatewayOpts): Promise<() => void> {
     stopTelegram?.();
     stopDiscord?.();
     stopSlack?.();
+    stopMattermost?.();
+    stopHomeAssistant?.();
     stopEmail?.();
     stopNtfy?.();
     stopSignal?.();
+    stopMatrix?.();
     release(); // ปล่อย single-instance lock (sync — ทันก่อน process.exit ตัด event loop)
   };
 }

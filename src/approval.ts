@@ -23,6 +23,7 @@ export const MUTATE_TOOLS = new Set([
   'cancel_scheduled',
   'remember', // เขียน auto-memory ถาวร
   'create_skill', // เขียน skill ถาวร
+  'ha_call_service', // ควบคุมอุปกรณ์ Home Assistant จริง
 ]);
 
 // capability-based gate: tool ที่ "อ่านอย่างเดียว" เท่านั้นที่ผ่านโดยไม่ขออนุมัติ
@@ -39,6 +40,9 @@ const READ_ONLY_TOOLS = new Set([
   'git_diff',
   'git_log',
   'list_scheduled',
+  'ha_list_entities',
+  'ha_get_state',
+  'ha_list_services',
 ]);
 
 export function isReadOnlyTool(tool: string): boolean {
@@ -69,6 +73,8 @@ export function summarizeToolCall(tool: string, input: unknown): string {
       return `จำ: ${String(i.fact ?? '').slice(0, 50)}`;
     case 'create_skill':
       return `สร้าง skill ${String(i.name ?? '')}`;
+    case 'ha_call_service':
+      return `Home Assistant ${String(i.domain ?? '')}.${String(i.service ?? '')}${i.entity_id ? ` ${String(i.entity_id)}` : ''}`;
     default:
       return tool;
   }

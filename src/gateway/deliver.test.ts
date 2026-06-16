@@ -251,6 +251,165 @@ describe('gateway delivery helper', () => {
     });
   });
 
+  it('delivers to the configured WhatsApp Cloud home channel', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ messages: [{ id: 'wamid.out.1' }] }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('whatsapp', 'hello whatsapp', {
+        config: {
+          whatsapp: {
+            phoneNumberId: '123456789012345',
+            accessToken: 'EAA-wa-token',
+            homeChannel: '15551234567',
+            allowedUsers: ['15551234567'],
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'whatsapp',
+      target: 'whatsapp:15551234567',
+      to: '15551234567',
+      messageCount: 1,
+      messageIds: ['wamid.out.1'],
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://graph.facebook.com/v20.0/123456789012345/messages');
+    expect(init.headers).toMatchObject({ authorization: 'Bearer EAA-wa-token' });
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      messaging_product: 'whatsapp',
+      to: '15551234567',
+      text: { body: 'hello whatsapp' },
+    });
+  });
+
+  it('delivers to the configured Matrix home room', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify({ event_id: '$matrix.out.1' })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('matrix', 'hello matrix', {
+        config: {
+          matrix: {
+            homeserver: 'https://matrix.example.org',
+            accessToken: 'matrix-token',
+            homeRoom: '!home:matrix.example.org',
+            allowedUsers: ['@alice:matrix.org'],
+            allowedRooms: ['!home:matrix.example.org'],
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'matrix',
+      target: 'matrix:!home:matrix.example.org',
+      to: '!home:matrix.example.org',
+      messageCount: 1,
+      messageIds: ['$matrix.out.1'],
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toMatch(/^https:\/\/matrix\.example\.org\/_matrix\/client\/v3\/rooms\/!home%3Amatrix\.example\.org\/send\/m\.room\.message\//);
+    expect(init.method).toBe('PUT');
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer matrix-token');
+    expect(JSON.parse(String(init.body))).toEqual({ msgtype: 'm.text', body: 'hello matrix' });
+  });
+
+  it('requires a Matrix home room or allowed room unless all rooms are explicitly allowed', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('matrix:!outside:matrix.example.org', 'hello matrix', {
+        config: {
+          matrix: {
+            homeserver: 'https://matrix.example.org',
+            accessToken: 'matrix-token',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).rejects.toThrow('fail-closed');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('delivers to a configured Mattermost channel and optional root post thread', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) =>
+      new Response(JSON.stringify({ id: 'post-out-1', channel_id: 'chan-home' })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('mattermost:chan-home:root-post-1', 'hello mattermost', {
+        config: {
+          mattermost: {
+            serverUrl: 'https://mm.example.com',
+            token: 'mattermost-token',
+            homeChannel: 'chan-home',
+            allowedUsers: ['user-1'],
+            allowedChannels: ['chan-home'],
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'mattermost',
+      target: 'mattermost:chan-home:root-post-1',
+      channelId: 'chan-home',
+      messageCount: 1,
+      messageIds: ['post-out-1'],
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://mm.example.com/api/v4/posts');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toMatchObject({ authorization: 'Bearer mattermost-token' });
+    expect(JSON.parse(String(init.body))).toEqual({
+      channel_id: 'chan-home',
+      message: 'hello mattermost',
+      root_id: 'root-post-1',
+    });
+  });
+
+  it('delivers to Home Assistant as a persistent notification', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response('{}'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('homeassistant:doorbell', 'hello home', {
+        config: {
+          homeassistant: {
+            url: 'http://ha.local:8123',
+            token: 'hass-token',
+            homeChannel: 'sanook_agent',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'homeassistant',
+      target: 'homeassistant:doorbell',
+      messageCount: 1,
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('http://ha.local:8123/api/services/persistent_notification/create');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toMatchObject({ authorization: 'Bearer hass-token' });
+    expect(JSON.parse(String(init.body))).toEqual({
+      title: 'Sanook',
+      message: 'hello home',
+      notification_id: 'doorbell',
+    });
+  });
+
   it('requires an email recipient or configured home address', async () => {
     await expect(
       deliverToTarget('email', 'hello', {

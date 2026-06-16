@@ -27,6 +27,11 @@ describe('parseSearchArgs', () => {
     expect(parseSearchArgs(['deploy', '--limit', '0']).ok).toBe(false);
   });
 
+  it('rejects malformed limits instead of truncating them', () => {
+    expect(parseSearchArgs(['deploy', '--limit', '5abc']).ok).toBe(false);
+    expect(parseSearchArgs(['deploy', '--limit', '1.5']).ok).toBe(false);
+  });
+
   it('rejects invalid sources and empty queries', () => {
     expect(parseSearchArgs(['deploy', '--source', 'vault,nope']).ok).toBe(false);
     expect(parseSearchArgs(['--mode', 'fts']).ok).toBe(false);

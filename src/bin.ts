@@ -127,18 +127,23 @@ gateway (อยู่ยาว 24/7 — HTTP loopback + cron):
   ${BRAND.cliName} gateway setup telegram          ตั้งค่า Telegram token + allowlist
   ${BRAND.cliName} gateway setup discord           ตั้งค่า Discord bot token + channel allowlist
   ${BRAND.cliName} gateway setup slack             ตั้งค่า Slack bot/app token + channel allowlist
+  ${BRAND.cliName} gateway setup mattermost        ตั้งค่า Mattermost token + user/channel allowlist
+  ${BRAND.cliName} gateway setup homeassistant     ตั้งค่า Home Assistant token + state-change filters
   ${BRAND.cliName} gateway setup email             ตั้งค่า Email IMAP/SMTP + allowed senders
   ${BRAND.cliName} gateway setup line              ตั้งค่า LINE Messaging API push target
   ${BRAND.cliName} gateway setup sms               ตั้งค่า Twilio SMS webhook + allowlist
   ${BRAND.cliName} gateway setup ntfy              ตั้งค่า ntfy topic push + subscribe
   ${BRAND.cliName} gateway setup signal            ตั้งค่า Signal ผ่าน signal-cli HTTP daemon
+  ${BRAND.cliName} gateway setup whatsapp          ตั้งค่า WhatsApp Cloud API webhook + send
+  ${BRAND.cliName} gateway setup matrix            ตั้งค่า Matrix homeserver sync + send
+  ${BRAND.cliName} gateway setup teams             ตั้งค่า Microsoft Teams delivery
   ${BRAND.cliName} gateway setup webhooks          เปิด generic webhook routes + HMAC
   ${BRAND.cliName} gateway run [--port 8787]       เปิด gateway (เหมือน serve)
   ${BRAND.cliName} gateway start [--port 8787]     เปิด gateway เป็น background process
   ${BRAND.cliName} gateway stop|restart|install    จัดการ gateway service
   ${BRAND.cliName} gateway status                  ดู config/status gateway
-  ${BRAND.cliName} send --to telegram|discord|slack|email|line|sms|ntfy|signal[:target] "msg" ส่งข้อความออก platform โดยไม่เรียก LLM
-  ${BRAND.cliName} webhook subscribe <route> [--prompt "..."] [--to telegram|slack|sms|ntfy|signal]
+  ${BRAND.cliName} send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|teams[:target] "msg" ส่งข้อความออก platform โดยไม่เรียก LLM
+  ${BRAND.cliName} webhook subscribe <route> [--prompt "..."] [--to telegram|slack|mattermost|homeassistant|sms|ntfy|signal|whatsapp|matrix|teams]
                                            รับ event จาก GitHub/GitLab/Jira/Stripe แล้ว trigger agent/delivery
   ${BRAND.cliName} send --list [platform]          ดู messaging targets ที่ตั้งค่าไว้
   ${BRAND.cliName} serve [--port 8787]            เปิด gateway (OpenAI-compat /v1/chat/completions + scheduler)
@@ -261,12 +266,17 @@ async function runGatewayStatus(): Promise<void> {
     redactGatewayConfig,
     resolveDiscordConfig,
     resolveEmailConfig,
+    resolveHomeAssistantConfig,
     resolveLineConfig,
+    resolveMattermostConfig,
+    resolveMatrixConfig,
     resolveNtfyConfig,
     resolveSignalConfig,
     resolveSlackConfig,
     resolveSmsConfig,
     resolveTelegramConfig,
+    resolveTeamsConfig,
+    resolveWhatsAppConfig,
     resolveWebhookConfig,
     gatewayConfigPath,
   } = await import('./gateway/config.js');
@@ -275,12 +285,18 @@ async function runGatewayStatus(): Promise<void> {
   const discord = resolveDiscordConfig(cfg);
   const slack = resolveSlackConfig(cfg);
   const email = resolveEmailConfig(cfg);
+  const homeassistant = resolveHomeAssistantConfig(cfg);
   const line = resolveLineConfig(cfg);
+  const mattermost = resolveMattermostConfig(cfg);
   const sms = resolveSmsConfig(cfg);
   const ntfy = resolveNtfyConfig(cfg);
   const signal = resolveSignalConfig(cfg);
+  const whatsapp = resolveWhatsAppConfig(cfg);
+  const matrix = resolveMatrixConfig(cfg);
+  const teams = resolveTeamsConfig(cfg);
   const webhooks = resolveWebhookConfig(cfg);
   const { redactSignalId } = await import('./gateway/signal.js');
+  const { redactWhatsAppId } = await import('./gateway/whatsapp.js');
   console.log(`${BRAND.productName} gateway`);
   console.log(`  config:   ${gatewayConfigPath()}`);
   console.log(`  token:    ${appHomePath('gateway', 'token')} (HTTP bearer, auto-created on run)`);
@@ -304,6 +320,28 @@ async function runGatewayStatus(): Promise<void> {
     console.log(`    app token:        ${slack.appToken ? 'set' : '(not set — needed for future Socket Mode gateway)'}`);
     console.log(`    default channel:  ${slack.defaultChannelId ?? '(not set)'}`);
     console.log(`    allowed channels: ${slack.allowedChannelIds.length ? slack.allowedChannelIds.join(', ') : '(none)'}`);
+  }
+  console.log(`  mattermost: ${mattermost.serverUrl || mattermost.token ? `configured via ${mattermost.source}` : 'not configured'}`);
+  if (mattermost.serverUrl || mattermost.token) {
+    console.log(`    server url:       ${mattermost.serverUrl ?? '(not set)'}`);
+    console.log(`    token:            ${mattermost.token ? 'set' : '(not set)'}`);
+    console.log(`    home channel:     ${mattermost.homeChannel ?? '(not set)'}`);
+    console.log(`    allowed users:    ${mattermost.allowedUsers.length ? mattermost.allowedUsers.join(', ') : mattermost.allowAllUsers ? '(all users)' : '(none)'}`);
+    console.log(`    allowed channels: ${mattermost.allowedChannels.length ? mattermost.allowedChannels.join(', ') : '(none)'}`);
+    console.log(`    free channels:    ${mattermost.freeResponseChannels.length ? mattermost.freeResponseChannels.join(', ') : '(none)'}`);
+    console.log(`    require mention:  ${mattermost.requireMention ? 'yes' : 'no'}`);
+    console.log(`    reply mode:       ${mattermost.replyMode}`);
+  }
+  console.log(`  homeassistant: ${homeassistant.token || homeassistant.url !== 'http://homeassistant.local:8123' ? `configured via ${homeassistant.source}` : 'not configured'}`);
+  if (homeassistant.token || homeassistant.url !== 'http://homeassistant.local:8123') {
+    console.log(`    url:              ${homeassistant.url}`);
+    console.log(`    token:            ${homeassistant.token ? 'set' : '(not set)'}`);
+    console.log(`    home channel:     ${homeassistant.homeChannel ?? '(not set)'}`);
+    console.log(`    watch domains:    ${homeassistant.watchDomains.length ? homeassistant.watchDomains.join(', ') : '(none)'}`);
+    console.log(`    watch entities:   ${homeassistant.watchEntities.length ? homeassistant.watchEntities.join(', ') : '(none)'}`);
+    console.log(`    ignore entities:  ${homeassistant.ignoreEntities.length ? homeassistant.ignoreEntities.join(', ') : '(none)'}`);
+    console.log(`    watch all:        ${homeassistant.watchAll ? 'yes' : 'no'}`);
+    console.log(`    cooldown:         ${homeassistant.cooldownSeconds}s`);
   }
   console.log(`  email:    ${email.address ? `configured via ${email.source}` : 'not configured'}`);
   if (email.address) {
@@ -352,6 +390,44 @@ async function runGatewayStatus(): Promise<void> {
     console.log(`    allowed groups:  ${signal.groupAllowedUsers.length ? signal.groupAllowedUsers.map(redactSignalId).join(', ') : '(none)'}`);
     console.log(`    require mention: ${signal.requireMention ? 'yes' : 'no'}`);
   }
+  console.log(`  whatsapp: ${whatsapp.phoneNumberId || whatsapp.accessToken ? `configured via ${whatsapp.source}` : 'not configured'}`);
+  if (whatsapp.phoneNumberId || whatsapp.accessToken) {
+    console.log(`    phone number id: ${whatsapp.phoneNumberId ? 'set' : '(not set)'}`);
+    console.log(`    access token:    ${whatsapp.accessToken ? 'set' : '(not set)'}`);
+    console.log(`    app secret:      ${whatsapp.appSecret ? 'set' : '(not set — needed for webhook)'}`);
+    console.log(`    verify token:    ${whatsapp.verifyToken ? 'set' : '(not set — needed for webhook verify)'}`);
+    console.log(`    home channel:    ${redactWhatsAppId(whatsapp.homeChannel)}`);
+    console.log(
+      `    allowed users:   ${whatsapp.allowedUsers.length ? whatsapp.allowedUsers.map(redactWhatsAppId).join(', ') : whatsapp.allowAllUsers ? '(all users)' : '(none)'}`,
+    );
+    console.log(`    public url:      ${whatsapp.publicUrl ?? '(not set)'}`);
+    console.log(`    api version:     ${whatsapp.apiVersion}`);
+  }
+  console.log(`  matrix:   ${matrix.homeserver || matrix.accessToken || matrix.userId ? `configured via ${matrix.source}` : 'not configured'}`);
+  if (matrix.homeserver || matrix.accessToken || matrix.userId) {
+    console.log(`    homeserver:      ${matrix.homeserver ?? '(not set)'}`);
+    console.log(`    access token:    ${matrix.accessToken ? 'set' : '(not set)'}`);
+    console.log(`    user id:         ${matrix.userId ?? '(not set)'}`);
+    console.log(`    password:        ${matrix.password ? 'set' : '(not set)'}`);
+    console.log(`    home room:       ${matrix.homeRoom ?? '(not set)'}`);
+    console.log(`    allowed users:   ${matrix.allowedUsers.length ? matrix.allowedUsers.join(', ') : matrix.allowAllUsers ? '(all users)' : '(none)'}`);
+    console.log(`    allowed rooms:   ${matrix.allowedRooms.length ? matrix.allowedRooms.join(', ') : '(none)'}`);
+    console.log(`    free rooms:      ${matrix.freeResponseRooms.length ? matrix.freeResponseRooms.join(', ') : '(none)'}`);
+    console.log(`    require mention: ${matrix.requireMention ? 'yes' : 'no'}`);
+    console.log(`    auto join:       ${matrix.autoJoin ? 'yes' : 'no'}`);
+  }
+  console.log(`  teams:    ${teams.incomingWebhookUrl || teams.graphAccessToken || teams.clientId ? `configured via ${teams.source}` : 'not configured'}`);
+  if (teams.incomingWebhookUrl || teams.graphAccessToken || teams.clientId) {
+    console.log(`    delivery mode:   ${teams.deliveryMode}`);
+    console.log(`    webhook url:     ${teams.incomingWebhookUrl ? 'set' : '(not set)'}`);
+    console.log(`    graph token:     ${teams.graphAccessToken ? 'set' : '(not set)'}`);
+    console.log(`    chat id:         ${teams.chatId ?? '(not set)'}`);
+    console.log(`    team/channel:    ${teams.teamId && teams.channelId ? `${teams.teamId}/${teams.channelId}` : '(not set)'}`);
+    console.log(`    home channel:    ${teams.homeChannel ?? '(not set)'}`);
+    console.log(`    bot app:         ${teams.clientId && teams.tenantId ? 'set' : '(not set)'}`);
+    console.log(`    allowed users:   ${teams.allowedUsers.length ? teams.allowedUsers.join(', ') : teams.allowAllUsers ? '(all users)' : '(none)'}`);
+    console.log(`    webhook port:    ${teams.port}`);
+  }
   console.log(`  webhooks: ${webhooks.enabled ? `enabled via ${webhooks.source}` : 'not enabled'} (${Object.keys(webhooks.routes).length} route${Object.keys(webhooks.routes).length === 1 ? '' : 's'})`);
   if (webhooks.enabled) {
     console.log(`    global secret:   ${webhooks.secret ? 'set' : '(not set)'}`);
@@ -367,19 +443,24 @@ async function runGatewaySetup(args: string[]): Promise<void> {
   const rest = platformArgProvided ? args.slice(1) : args;
   if (!platform) {
     if (!process.stdin.isTTY) {
-      console.error(`ใช้: ${BRAND.cliName} gateway setup <telegram|discord|slack|email|line|sms|ntfy|signal|webhooks> [options]`);
+      console.error(`ใช้: ${BRAND.cliName} gateway setup <telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|teams|webhooks> [options]`);
       process.exit(1);
     }
     const {
       readGatewayConfig,
       resolveDiscordConfig,
       resolveEmailConfig,
+      resolveHomeAssistantConfig,
       resolveLineConfig,
+      resolveMattermostConfig,
+      resolveMatrixConfig,
       resolveNtfyConfig,
       resolveSignalConfig,
       resolveSlackConfig,
       resolveSmsConfig,
       resolveTelegramConfig,
+      resolveTeamsConfig,
+      resolveWhatsAppConfig,
       resolveWebhookConfig,
     } = await import('./gateway/config.js');
     const cfg = await readGatewayConfig();
@@ -387,31 +468,64 @@ async function runGatewaySetup(args: string[]): Promise<void> {
       { id: 'telegram', label: `Telegram ${resolveTelegramConfig(cfg).token ? '(configured)' : ''}` },
       { id: 'discord', label: `Discord ${resolveDiscordConfig(cfg).token ? '(configured)' : ''}` },
       { id: 'slack', label: `Slack ${resolveSlackConfig(cfg).botToken ? '(configured)' : ''}` },
+      { id: 'mattermost', label: `Mattermost ${resolveMattermostConfig(cfg).serverUrl ? '(configured)' : ''}` },
+      { id: 'homeassistant', label: `Home Assistant ${resolveHomeAssistantConfig(cfg).token ? '(configured)' : ''}` },
       { id: 'email', label: `Email ${resolveEmailConfig(cfg).address ? '(configured)' : ''}` },
       { id: 'line', label: `LINE ${resolveLineConfig(cfg).channelAccessToken ? '(configured)' : ''}` },
       { id: 'sms', label: `SMS/Twilio ${resolveSmsConfig(cfg).accountSid ? '(configured)' : ''}` },
       { id: 'ntfy', label: `ntfy ${resolveNtfyConfig(cfg).topic ? '(configured)' : ''}` },
       { id: 'signal', label: `Signal ${resolveSignalConfig(cfg).account ? '(configured)' : ''}` },
+      { id: 'whatsapp', label: `WhatsApp Cloud ${resolveWhatsAppConfig(cfg).phoneNumberId ? '(configured)' : ''}` },
+      { id: 'matrix', label: `Matrix ${resolveMatrixConfig(cfg).homeserver ? '(configured)' : ''}` },
+      { id: 'teams', label: `Microsoft Teams ${resolveTeamsConfig(cfg).incomingWebhookUrl || resolveTeamsConfig(cfg).graphAccessToken ? '(configured)' : ''}` },
       { id: 'webhooks', label: `Webhooks ${resolveWebhookConfig(cfg).enabled ? '(configured)' : ''}` },
     ];
     console.log(`${BRAND.productName} gateway setup`);
     for (const [i, option] of options.entries()) console.log(`  ${i + 1}. ${option.label}`);
-    const answer = await askText('เลือก platform [1-9]: ');
+    const answer = await askText('เลือก platform [1-14]: ');
     const index = Number(answer || '1') - 1;
     platform = options[index]?.id;
   }
-  if (!platform || !['telegram', 'discord', 'slack', 'email', 'line', 'sms', 'ntfy', 'signal', 'webhooks'].includes(platform)) {
-    console.error(`ตอนนี้ setup อัตโนมัติรองรับ telegram / discord / slack / email / line / sms / ntfy / signal / webhooks — ได้ "${platform ?? ''}"`);
+  if (platform === 'whatsapp-cloud') platform = 'whatsapp';
+  if (platform === 'msteams' || platform === 'ms-teams' || platform === 'microsoft-teams') platform = 'teams';
+  if (
+    !platform ||
+    ![
+      'telegram',
+      'discord',
+      'slack',
+      'mattermost',
+      'homeassistant',
+      'hass',
+      'email',
+      'line',
+      'sms',
+      'ntfy',
+      'signal',
+      'whatsapp',
+      'matrix',
+      'teams',
+      'webhooks',
+    ].includes(platform)
+  ) {
+    console.error(
+      `ตอนนี้ setup อัตโนมัติรองรับ telegram / discord / slack / mattermost / homeassistant / email / line / sms / ntfy / signal / whatsapp / matrix / teams / webhooks — ได้ "${platform ?? ''}"`,
+    );
     process.exit(1);
   }
 
   if (platform === 'discord') return runDiscordGatewaySetup(rest);
   if (platform === 'slack') return runSlackGatewaySetup(rest);
+  if (platform === 'mattermost') return runMattermostGatewaySetup(rest);
+  if (platform === 'homeassistant' || platform === 'hass') return runHomeAssistantGatewaySetup(rest);
   if (platform === 'email') return runEmailGatewaySetup(rest);
   if (platform === 'line') return runLineGatewaySetup(rest);
   if (platform === 'sms') return runSmsGatewaySetup(rest);
   if (platform === 'ntfy') return runNtfyGatewaySetup(rest);
   if (platform === 'signal') return runSignalGatewaySetup(rest);
+  if (platform === 'whatsapp') return runWhatsAppGatewaySetup(rest);
+  if (platform === 'matrix') return runMatrixGatewaySetup(rest);
+  if (platform === 'teams') return runTeamsGatewaySetup(rest);
   if (platform === 'webhooks') return runWebhookGatewaySetup(rest);
 
   let token = argValue(rest, '--bot-token', '--token');
@@ -552,6 +666,169 @@ async function runSlackGatewaySetup(args: string[]): Promise<void> {
   });
   console.log(`บันทึก Slack gateway config แล้ว: ${gatewayConfigPath()}`);
   console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to slack "hello"`);
+}
+
+async function runMattermostGatewaySetup(args: string[]): Promise<void> {
+  let serverUrl = argValue(args, '--url', '--server-url');
+  let token = argValue(args, '--token');
+  let homeChannel = argValue(args, '--home-channel', '--channel', '--to');
+  let allowedUsersRaw = argValue(args, '--allowed-users');
+  let allowedChannelsRaw = argValue(args, '--allowed-channels', '--channel-ids');
+  let freeResponseChannelsRaw = argValue(args, '--free-response-channels');
+  const homeChannelName = argValue(args, '--home-channel-name');
+  const allowAllUsers = args.includes('--allow-all-users');
+  const requireMention = !args.includes('--no-require-mention');
+  const groupSessionsPerUser = !args.includes('--shared-channel-session');
+  const replyMode = args.includes('--thread-replies') || argValue(args, '--reply-mode') === 'thread' ? 'thread' : 'off';
+
+  if (!serverUrl) {
+    if (!process.stdin.isTTY) {
+      console.error(`ใช้: ${BRAND.cliName} gateway setup mattermost --url <https://mm.example.com> --token <token> --allowed-users <user_id[,user_id]> --home-channel <channel_id>`);
+      process.exit(1);
+    }
+    console.log(`${BRAND.productName} Mattermost setup`);
+    console.log('ใช้ Mattermost REST API v4 + WebSocket; แนะนำ token ของ dedicated bot account');
+    serverUrl = await askText('Mattermost server URL (เช่น https://mm.example.com): ');
+  }
+  if (!token) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --token <Mattermost personal/bot access token>');
+      process.exit(1);
+    }
+    token = await askText('Mattermost token: ');
+  }
+  if (!allowedUsersRaw && !allowAllUsers) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --allowed-users <user_id[,user_id]> เพื่อ fail-closed หรือ --allow-all-users');
+      process.exit(1);
+    }
+    allowedUsersRaw = await askText('Allowed Mattermost user IDs (comma-separated): ');
+  }
+  if (!homeChannel && !allowedChannelsRaw) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --home-channel <channel_id> หรือ --allowed-channels <channel_id[,id]> เพื่อส่งข้อความออกแบบ fail-closed');
+      process.exit(1);
+    }
+    homeChannel = await askText('Mattermost home channel ID (blank = skip outbound home): ');
+  }
+
+  const { normalizeMattermostUrl } = await import('./gateway/mattermost.js');
+  const cleanServerUrl = normalizeMattermostUrl(serverUrl);
+  const cleanHome = homeChannel?.trim();
+  const allowedUsers = parseStringCsv(allowedUsersRaw);
+  const allowedChannels = parseStringCsv(allowedChannelsRaw ?? cleanHome);
+  const freeResponseChannels = parseStringCsv(freeResponseChannelsRaw);
+  if (!cleanServerUrl) {
+    console.error('Mattermost setup ต้องมี server URL ที่ขึ้นต้นด้วย http:// หรือ https://');
+    process.exit(1);
+  }
+  if (!token.trim()) {
+    console.error('Mattermost setup ต้องมี token');
+    process.exit(1);
+  }
+  if (!allowAllUsers && !allowedUsers.length) {
+    console.error('Mattermost setup ต้องมี allowed users อย่างน้อย 1 ค่า หรือระบุ --allow-all-users');
+    process.exit(1);
+  }
+  if (!cleanHome && !allowedChannels.length) {
+    console.error('Mattermost setup ต้องมี home channel/allowed channels อย่างน้อย 1 ค่า');
+    process.exit(1);
+  }
+
+  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
+  await patchGatewayConfig({
+    mattermost: {
+      enabled: true,
+      serverUrl: cleanServerUrl,
+      token: token.trim(),
+      homeChannel: cleanHome || allowedChannels[0],
+      homeChannelName: homeChannelName?.trim() || undefined,
+      allowedUsers,
+      allowedChannels,
+      freeResponseChannels,
+      allowAllUsers,
+      requireMention,
+      groupSessionsPerUser,
+      replyMode,
+    },
+  });
+  console.log(`บันทึก Mattermost gateway config แล้ว: ${gatewayConfigPath()}`);
+  console.log(`Mattermost websocket: ${cleanServerUrl}/api/v4/websocket`);
+  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to mattermost "hello"`);
+}
+
+async function runHomeAssistantGatewaySetup(args: string[]): Promise<void> {
+  const url = argValue(args, '--url')?.trim() || 'http://homeassistant.local:8123';
+  let token = argValue(args, '--token');
+  let homeChannel = argValue(args, '--home-channel', '--notification-id', '--to');
+  let watchDomainsRaw = argValue(args, '--watch-domains', '--domains');
+  let watchEntitiesRaw = argValue(args, '--watch-entities', '--entities');
+  let ignoreEntitiesRaw = argValue(args, '--ignore-entities');
+  const homeChannelName = argValue(args, '--home-channel-name');
+  const watchAll = args.includes('--watch-all');
+  const cooldownSecondsRaw = argValue(args, '--cooldown-seconds', '--cooldown');
+
+  if (!token) {
+    if (!process.stdin.isTTY) {
+      console.error(`ใช้: ${BRAND.cliName} gateway setup homeassistant --token <long-lived-token> [--url http://homeassistant.local:8123] --watch-domains climate,binary_sensor`);
+      process.exit(1);
+    }
+    console.log(`${BRAND.productName} Home Assistant setup`);
+    console.log('สร้าง Long-Lived Access Token จาก Home Assistant Profile แล้ววาง token ที่นี่');
+    token = await askText('Home Assistant long-lived access token: ');
+  }
+  if (!homeChannel && process.stdin.isTTY) {
+    homeChannel = (await askText('Persistent notification id (blank = sanook_agent): ')) || 'sanook_agent';
+  }
+  if (!watchDomainsRaw && !watchEntitiesRaw && !watchAll) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --watch-domains, --watch-entities หรือ --watch-all เพื่อรับ state_changed events');
+      process.exit(1);
+    }
+    watchDomainsRaw = await askText('Watch domains (comma-separated; เช่น climate,binary_sensor,alarm_control_panel): ');
+  }
+
+  const { homeAssistantWebSocketUrl, normalizeHomeAssistantUrl } = await import('./gateway/homeassistant.js');
+  const cleanUrl = normalizeHomeAssistantUrl(url);
+  const watchDomains = parseStringCsv(watchDomainsRaw);
+  const watchEntities = parseStringCsv(watchEntitiesRaw);
+  const ignoreEntities = parseStringCsv(ignoreEntitiesRaw);
+  const cooldownSeconds = cooldownSecondsRaw ? Number(cooldownSecondsRaw) : undefined;
+  if (!cleanUrl) {
+    console.error('Home Assistant setup ต้องมี URL ที่ขึ้นต้นด้วย http:// หรือ https://');
+    process.exit(1);
+  }
+  if (!token.trim()) {
+    console.error('Home Assistant setup ต้องมี token');
+    process.exit(1);
+  }
+  if (!watchAll && !watchDomains.length && !watchEntities.length) {
+    console.error('Home Assistant setup ต้องมี watch domains/entities อย่างน้อย 1 ค่า หรือระบุ --watch-all');
+    process.exit(1);
+  }
+  if (cooldownSecondsRaw && (!Number.isInteger(cooldownSeconds) || Number(cooldownSeconds) <= 0)) {
+    console.error('--cooldown-seconds ต้องเป็น integer มากกว่า 0');
+    process.exit(1);
+  }
+
+  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
+  await patchGatewayConfig({
+    homeassistant: {
+      enabled: true,
+      url: cleanUrl,
+      token: token.trim(),
+      homeChannel: homeChannel?.trim() || 'sanook_agent',
+      homeChannelName: homeChannelName?.trim() || undefined,
+      watchDomains,
+      watchEntities,
+      ignoreEntities,
+      watchAll,
+      cooldownSeconds,
+    },
+  });
+  console.log(`บันทึก Home Assistant gateway config แล้ว: ${gatewayConfigPath()}`);
+  console.log(`Home Assistant websocket: ${homeAssistantWebSocketUrl(cleanUrl)}`);
+  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to homeassistant "hello"`);
 }
 
 async function runLineGatewaySetup(args: string[]): Promise<void> {
@@ -766,6 +1043,273 @@ async function runSignalGatewaySetup(args: string[]): Promise<void> {
   console.log(`บันทึก Signal gateway config แล้ว: ${gatewayConfigPath()}`);
   console.log(`ตรวจ signal-cli daemon: ${httpUrl}/api/v1/check`);
   console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to signal "hello"`);
+}
+
+async function runWhatsAppGatewaySetup(args: string[]): Promise<void> {
+  let phoneNumberId = argValue(args, '--phone-number-id', '--phone-id');
+  let accessToken = argValue(args, '--access-token', '--token');
+  let appSecret = argValue(args, '--app-secret', '--secret');
+  let verifyToken = argValue(args, '--verify-token');
+  let homeChannel = argValue(args, '--home-channel', '--to');
+  let allowedRaw = argValue(args, '--allowed-users', '--allowed-numbers');
+  const homeChannelName = argValue(args, '--home-channel-name');
+  const publicUrl = argValue(args, '--public-url');
+  const apiVersion = argValue(args, '--api-version');
+  const allowAllUsers = args.includes('--allow-all-users');
+
+  if (!phoneNumberId) {
+    if (!process.stdin.isTTY) {
+      console.error(`ใช้: ${BRAND.cliName} gateway setup whatsapp --phone-number-id <id> --access-token <EAA...> --app-secret <secret> --home-channel <wa_id>`);
+      process.exit(1);
+    }
+    console.log(`${BRAND.productName} WhatsApp Cloud setup`);
+    console.log('ใช้ Meta WhatsApp Business Cloud API: ต้องมี Phone Number ID, Access Token, App Secret และ public HTTPS webhook URL');
+    phoneNumberId = await askText('WhatsApp Phone Number ID (ตัวเลขจาก Meta API Setup ไม่ใช่เบอร์โทร): ');
+  }
+  if (!accessToken) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --access-token <Meta WhatsApp Cloud token>');
+      process.exit(1);
+    }
+    accessToken = await askText('WhatsApp Cloud access token: ');
+  }
+  if (!appSecret) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --app-secret <Meta app secret> เพื่อ verify X-Hub-Signature-256');
+      process.exit(1);
+    }
+    appSecret = await askText('Meta app secret (Settings > Basic): ');
+  }
+  if (!homeChannel && !allowedRaw && !allowAllUsers) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --home-channel <wa_id> หรือ --allowed-users <wa_id[,wa_id]> เพื่อ fail-closed');
+      process.exit(1);
+    }
+    homeChannel = await askText('WhatsApp home/allowed wa_id (country code, no +): ');
+  }
+
+  const { randomBytes } = await import('node:crypto');
+  const { normalizeWhatsAppId } = await import('./gateway/whatsapp.js');
+  const cleanPhoneNumberId = phoneNumberId.trim();
+  const cleanHome = normalizeWhatsAppId(homeChannel);
+  const allowedUsers = parseStringCsv(allowedRaw ?? cleanHome).map(normalizeWhatsAppId).filter((id): id is string => Boolean(id));
+  if (!verifyToken) verifyToken = randomBytes(24).toString('base64url');
+  if (!cleanPhoneNumberId || !accessToken.trim() || !appSecret.trim()) {
+    console.error('WhatsApp setup ต้องมี phone number id, access token และ app secret');
+    process.exit(1);
+  }
+  if (!allowAllUsers && !cleanHome && !allowedUsers.length) {
+    console.error('WhatsApp setup ต้องมี home channel/allowlist อย่างน้อย 1 ค่า หรือระบุ --allow-all-users');
+    process.exit(1);
+  }
+
+  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
+  await patchGatewayConfig({
+    whatsapp: {
+      enabled: true,
+      phoneNumberId: cleanPhoneNumberId,
+      accessToken: accessToken.trim(),
+      appSecret: appSecret.trim(),
+      verifyToken: verifyToken.trim(),
+      homeChannel: cleanHome || allowedUsers[0],
+      homeChannelName: homeChannelName?.trim() || undefined,
+      allowedUsers,
+      allowAllUsers,
+      publicUrl: publicUrl?.trim() || undefined,
+      apiVersion: apiVersion?.trim() || undefined,
+    },
+  });
+  const callback = publicUrl?.trim() ? `${publicUrl.trim().replace(/\/+$/, '')}/whatsapp/webhook` : `https://<your-tunnel>/whatsapp/webhook`;
+  console.log(`บันทึก WhatsApp Cloud gateway config แล้ว: ${gatewayConfigPath()}`);
+  console.log(`Meta webhook callback URL: ${callback}`);
+  console.log(`Meta verify token: ${verifyToken.trim()}`);
+  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to whatsapp "hello"`);
+}
+
+async function runMatrixGatewaySetup(args: string[]): Promise<void> {
+  let homeserver = argValue(args, '--homeserver', '--server', '--url');
+  let accessToken = argValue(args, '--access-token', '--token');
+  let userId = argValue(args, '--user-id', '--user');
+  let password = argValue(args, '--password');
+  let homeRoom = argValue(args, '--home-room', '--room', '--to');
+  let allowedUsersRaw = argValue(args, '--allowed-users');
+  let allowedRoomsRaw = argValue(args, '--allowed-rooms');
+  let freeResponseRoomsRaw = argValue(args, '--free-response-rooms');
+  const homeRoomName = argValue(args, '--home-room-name');
+  const allowAllUsers = args.includes('--allow-all-users');
+  const requireMention = !args.includes('--no-require-mention');
+  const groupSessionsPerUser = !args.includes('--shared-room-session');
+  const autoJoin = !args.includes('--no-auto-join');
+  const pollTimeoutMs = argValue(args, '--poll-timeout-ms');
+
+  if (!homeserver) {
+    if (!process.stdin.isTTY) {
+      console.error(`ใช้: ${BRAND.cliName} gateway setup matrix --homeserver <https://matrix.org> --access-token <token> --allowed-users <@you:server> [--home-room '!room:server']`);
+      process.exit(1);
+    }
+    console.log(`${BRAND.productName} Matrix setup`);
+    console.log('ใช้ Matrix Client-Server API: ต้องมี homeserver URL และ access token หรือ user/password ของ bot account');
+    homeserver = await askText('Matrix homeserver URL (เช่น https://matrix.org): ');
+  }
+  if (!accessToken && (!userId || !password)) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --access-token <token> หรือ --user-id <@bot:server> --password <password>');
+      process.exit(1);
+    }
+    accessToken = await askText('Matrix access token (แนะนำ; blank = ใช้ user/password): ');
+    if (!accessToken) {
+      userId = await askText('Matrix bot user id (@bot:server): ');
+      password = await askText('Matrix bot password: ');
+    }
+  }
+  if (!allowedUsersRaw && !allowAllUsers) {
+    if (!process.stdin.isTTY) {
+      console.error('ต้องระบุ --allowed-users <@user:server[,user]> เพื่อ fail-closed หรือ --allow-all-users');
+      process.exit(1);
+    }
+    allowedUsersRaw = await askText('Allowed Matrix user IDs (comma-separated): ');
+  }
+  if (!homeRoom && process.stdin.isTTY) {
+    homeRoom = await askText('Matrix home room id/alias (!room:server หรือ #room:server; blank = skip): ');
+  }
+
+  const { normalizeMatrixHomeserver, normalizeMatrixRoomId, normalizeMatrixUserId } = await import('./gateway/matrix.js');
+  const cleanHomeserver = normalizeMatrixHomeserver(homeserver);
+  const cleanUserId = normalizeMatrixUserId(userId);
+  const cleanHomeRoom = normalizeMatrixRoomId(homeRoom);
+  const allowedUsers = parseStringCsv(allowedUsersRaw).map(normalizeMatrixUserId).filter((id): id is string => Boolean(id));
+  const allowedRooms = parseStringCsv(allowedRoomsRaw).map(normalizeMatrixRoomId).filter((id): id is string => Boolean(id));
+  const freeResponseRooms = parseStringCsv(freeResponseRoomsRaw).map(normalizeMatrixRoomId).filter((id): id is string => Boolean(id));
+  const timeout = pollTimeoutMs ? Number(pollTimeoutMs) : undefined;
+
+  if (!cleanHomeserver) {
+    console.error('Matrix setup ต้องมี homeserver URL ที่ขึ้นต้นด้วย http:// หรือ https://');
+    process.exit(1);
+  }
+  if (!accessToken?.trim() && (!cleanUserId || !password?.trim())) {
+    console.error('Matrix setup ต้องมี access token หรือ user id/password');
+    process.exit(1);
+  }
+  if (!allowAllUsers && !allowedUsers.length) {
+    console.error('Matrix setup ต้องมี allowed users อย่างน้อย 1 ค่า หรือระบุ --allow-all-users');
+    process.exit(1);
+  }
+  if (homeRoom?.trim() && !cleanHomeRoom) {
+    console.error('Matrix home room ต้องเป็น room id/alias เช่น !abc123:matrix.org หรือ #room:matrix.org');
+    process.exit(1);
+  }
+  if (pollTimeoutMs && (!Number.isInteger(timeout) || Number(timeout) <= 0)) {
+    console.error('--poll-timeout-ms ต้องเป็น integer มากกว่า 0');
+    process.exit(1);
+  }
+
+  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
+  await patchGatewayConfig({
+    matrix: {
+      enabled: true,
+      homeserver: cleanHomeserver,
+      accessToken: accessToken?.trim() || undefined,
+      userId: cleanUserId,
+      password: password?.trim() || undefined,
+      homeRoom: cleanHomeRoom || allowedRooms[0],
+      homeRoomName: homeRoomName?.trim() || undefined,
+      allowedUsers,
+      allowedRooms,
+      freeResponseRooms,
+      allowAllUsers,
+      requireMention,
+      groupSessionsPerUser,
+      autoJoin,
+      pollTimeoutMs: timeout,
+    },
+  });
+  console.log(`บันทึก Matrix gateway config แล้ว: ${gatewayConfigPath()}`);
+  console.log(`Matrix sync: ${cleanHomeserver}/_matrix/client/v3/sync`);
+  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to matrix "hello"${cleanHomeRoom ? '' : ` หรือ ${BRAND.cliName} send --to matrix:!room:server "hello"`}`);
+}
+
+async function runTeamsGatewaySetup(args: string[]): Promise<void> {
+  let incomingWebhookUrl = argValue(args, '--incoming-webhook-url', '--webhook-url', '--url');
+  const graphAccessToken = argValue(args, '--graph-access-token', '--access-token', '--token');
+  const teamId = argValue(args, '--team-id');
+  const channelId = argValue(args, '--channel-id');
+  const chatId = argValue(args, '--chat-id');
+  let homeChannel = argValue(args, '--home-channel', '--to');
+  const homeChannelName = argValue(args, '--home-channel-name');
+  const clientId = argValue(args, '--client-id');
+  const clientSecret = argValue(args, '--client-secret');
+  const tenantId = argValue(args, '--tenant-id');
+  const allowedUsersRaw = argValue(args, '--allowed-users');
+  const allowAllUsers = args.includes('--allow-all-users');
+  const portRaw = argValue(args, '--port');
+  const rawMode = argValue(args, '--delivery-mode', '--mode');
+  const deliveryMode = rawMode === 'graph' || (!rawMode && graphAccessToken) ? 'graph' : 'incoming_webhook';
+
+  if (deliveryMode === 'incoming_webhook' && !incomingWebhookUrl) {
+    if (!process.stdin.isTTY) {
+      console.error(`ใช้: ${BRAND.cliName} gateway setup teams --incoming-webhook-url <https://...>`);
+      process.exit(1);
+    }
+    console.log(`${BRAND.productName} Microsoft Teams setup`);
+    console.log('โหมดง่าย: สร้าง Incoming Webhook ใน Teams channel แล้ววาง URL ที่นี่');
+    incomingWebhookUrl = await askText('Teams incoming webhook URL: ');
+    homeChannel ||= (await askText('Teams home target label (blank = webhook): ')) || 'webhook';
+  }
+  if (deliveryMode === 'graph' && (!graphAccessToken || (!chatId && !homeChannel && (!teamId || !channelId)))) {
+    if (!process.stdin.isTTY) {
+      console.error(`ใช้: ${BRAND.cliName} gateway setup teams --delivery-mode graph --graph-access-token <token> (--chat-id <id> หรือ --team-id <id> --channel-id <id>)`);
+      process.exit(1);
+    }
+    console.log(`${BRAND.productName} Microsoft Teams Graph setup`);
+    console.log('ต้องมี Microsoft Graph token และ chat id หรือ team/channel id สำหรับ proactive delivery');
+  }
+
+  const { normalizeTeamsWebhookUrl } = await import('./gateway/teams.js');
+  const cleanWebhookUrl = normalizeTeamsWebhookUrl(incomingWebhookUrl);
+  const cleanPort = portRaw ? Number(portRaw) : undefined;
+  if (deliveryMode === 'incoming_webhook' && !cleanWebhookUrl) {
+    console.error('Microsoft Teams incoming webhook URL ต้องเป็น https:// URL');
+    process.exit(1);
+  }
+  if (deliveryMode === 'graph' && !graphAccessToken?.trim()) {
+    console.error('Microsoft Teams Graph mode ต้องมี --graph-access-token');
+    process.exit(1);
+  }
+  if (deliveryMode === 'graph' && !chatId?.trim() && !homeChannel?.trim() && (!teamId?.trim() || !channelId?.trim())) {
+    console.error('Microsoft Teams Graph mode ต้องมี --chat-id หรือ --team-id + --channel-id');
+    process.exit(1);
+  }
+  if (portRaw && (!Number.isInteger(cleanPort) || Number(cleanPort) <= 0)) {
+    console.error('--port ต้องเป็น integer มากกว่า 0');
+    process.exit(1);
+  }
+
+  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
+  const graphHome = homeChannel?.trim() || chatId?.trim() || (teamId?.trim() && channelId?.trim() ? `team/${teamId.trim()}/channel/${channelId.trim()}` : undefined);
+  await patchGatewayConfig({
+    teams: {
+      enabled: true,
+      deliveryMode,
+      incomingWebhookUrl: cleanWebhookUrl,
+      graphAccessToken: graphAccessToken?.trim() || undefined,
+      teamId: teamId?.trim() || undefined,
+      channelId: channelId?.trim() || undefined,
+      chatId: chatId?.trim() || undefined,
+      homeChannel: graphHome || (cleanWebhookUrl ? 'webhook' : undefined),
+      homeChannelName: homeChannelName?.trim() || undefined,
+      clientId: clientId?.trim() || undefined,
+      clientSecret: clientSecret?.trim() || undefined,
+      tenantId: tenantId?.trim() || undefined,
+      allowedUsers: parseStringCsv(allowedUsersRaw),
+      allowAllUsers,
+      port: cleanPort,
+    },
+  });
+  console.log(`บันทึก Microsoft Teams gateway config แล้ว: ${gatewayConfigPath()}`);
+  console.log(`Teams delivery mode: ${deliveryMode}`);
+  if (deliveryMode === 'incoming_webhook') console.log('ส่งผ่าน Incoming Webhook ที่ตั้งไว้');
+  else console.log(`Graph target: ${graphHome}`);
+  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to teams "hello"`);
 }
 
 async function runNtfyGatewaySetup(args: string[]): Promise<void> {
@@ -993,12 +1537,17 @@ async function runStatus(): Promise<void> {
     readGatewayConfig,
     resolveDiscordConfig,
     resolveEmailConfig,
+    resolveHomeAssistantConfig,
     resolveLineConfig,
+    resolveMattermostConfig,
+    resolveMatrixConfig,
     resolveNtfyConfig,
     resolveSignalConfig,
     resolveSlackConfig,
     resolveSmsConfig,
     resolveTelegramConfig,
+    resolveTeamsConfig,
+    resolveWhatsAppConfig,
     resolveWebhookConfig,
   } = await import('./gateway/config.js');
   const gatewayConfig = await readGatewayConfig();
@@ -1006,10 +1555,15 @@ async function runStatus(): Promise<void> {
   const discord = resolveDiscordConfig(gatewayConfig);
   const slack = resolveSlackConfig(gatewayConfig);
   const email = resolveEmailConfig(gatewayConfig);
+  const homeassistant = resolveHomeAssistantConfig(gatewayConfig);
   const line = resolveLineConfig(gatewayConfig);
+  const mattermost = resolveMattermostConfig(gatewayConfig);
   const sms = resolveSmsConfig(gatewayConfig);
   const ntfy = resolveNtfyConfig(gatewayConfig);
   const signal = resolveSignalConfig(gatewayConfig);
+  const whatsapp = resolveWhatsAppConfig(gatewayConfig);
+  const matrix = resolveMatrixConfig(gatewayConfig);
+  const teams = resolveTeamsConfig(gatewayConfig);
   const webhooks = resolveWebhookConfig(gatewayConfig);
   console.log(`${BRAND.productName} status`);
   console.log(`  version:   ${VERSION}`);
@@ -1023,11 +1577,16 @@ async function runStatus(): Promise<void> {
   );
   console.log(`  discord:   ${discord.token ? `configured (${discord.allowedChannelIds.length} allowed channel${discord.allowedChannelIds.length === 1 ? '' : 's'})` : 'not configured'}`);
   console.log(`  slack:     ${slack.botToken ? `configured (${slack.allowedChannelIds.length} allowed channel${slack.allowedChannelIds.length === 1 ? '' : 's'})` : 'not configured'}`);
+  console.log(`  mattermost:${mattermost.serverUrl && mattermost.token ? ` configured (${mattermost.allowedUsers.length} allowed user${mattermost.allowedUsers.length === 1 ? '' : 's'}, ${mattermost.allowedChannels.length} channel${mattermost.allowedChannels.length === 1 ? '' : 's'})` : ' not configured'}`);
+  console.log(`  homeassist:${homeassistant.token ? ` configured (${homeassistant.watchDomains.length} domain${homeassistant.watchDomains.length === 1 ? '' : 's'}, ${homeassistant.watchEntities.length} entit${homeassistant.watchEntities.length === 1 ? 'y' : 'ies'}, watchAll=${homeassistant.watchAll ? 'yes' : 'no'})` : ' not configured'}`);
   console.log(`  email:     ${email.address ? `configured (${email.allowedUsers.length} allowed sender${email.allowedUsers.length === 1 ? '' : 's'})` : 'not configured'}`);
   console.log(`  line:      ${line.channelAccessToken ? `configured (${line.allowedUsers.length + line.allowedGroups.length + line.allowedRooms.length} allowed target${line.allowedUsers.length + line.allowedGroups.length + line.allowedRooms.length === 1 ? '' : 's'})` : 'not configured'}`);
   console.log(`  sms:       ${sms.accountSid && sms.authToken && sms.phoneNumber ? `configured (${sms.allowedUsers.length} allowed sender${sms.allowedUsers.length === 1 ? '' : 's'})` : 'not configured'}`);
   console.log(`  ntfy:      ${ntfy.topic ? `configured (${ntfy.allowedUsers.length} allowed topic${ntfy.allowedUsers.length === 1 ? '' : 's'})` : 'not configured'}`);
   console.log(`  signal:    ${signal.account ? `configured (${signal.allowedUsers.length} allowed user${signal.allowedUsers.length === 1 ? '' : 's'}, ${signal.groupAllowedUsers.length} group${signal.groupAllowedUsers.length === 1 ? '' : 's'})` : 'not configured'}`);
+  console.log(`  whatsapp:  ${whatsapp.phoneNumberId && whatsapp.accessToken ? `configured (${whatsapp.allowedUsers.length} allowed user${whatsapp.allowedUsers.length === 1 ? '' : 's'})` : 'not configured'}`);
+  console.log(`  matrix:    ${matrix.homeserver && (matrix.accessToken || (matrix.userId && matrix.password)) ? `configured (${matrix.allowedUsers.length} allowed user${matrix.allowedUsers.length === 1 ? '' : 's'}, ${matrix.allowedRooms.length} room${matrix.allowedRooms.length === 1 ? '' : 's'})` : 'not configured'}`);
+  console.log(`  teams:     ${teams.incomingWebhookUrl || teams.graphAccessToken ? `configured (${teams.deliveryMode})` : 'not configured'}`);
   console.log(`  webhooks:  ${webhooks.enabled ? `enabled (${Object.keys(webhooks.routes).length} route${Object.keys(webhooks.routes).length === 1 ? '' : 's'})` : 'not enabled'}`);
   console.log(`  config:    ${appHomePath('config.json')}`);
 }
@@ -1637,12 +2196,17 @@ async function runSend(args: string[]): Promise<void> {
   ${BRAND.cliName} send --to telegram[:chat_id[:thread_id]] "message"
   ${BRAND.cliName} send --to discord[:channel_id[:thread_id]] "message"
   ${BRAND.cliName} send --to slack[:channel_id[:thread_ts]] "message"
+  ${BRAND.cliName} send --to mattermost[:channel_id[:root_post_id]] "message"
+  ${BRAND.cliName} send --to homeassistant[:notification_id] "message"
   ${BRAND.cliName} send --to email[:recipient@example.com] --subject "[CI]" "message"
-  ${BRAND.cliName} send --to line[:U/C/R-id] "message"
-  ${BRAND.cliName} send --to sms[:+15558675310] "message"
-  ${BRAND.cliName} send --to ntfy[:topic] "message"
-  ${BRAND.cliName} send --to signal[:+15558675310|group:<id>] "message"
-  ${BRAND.cliName} send --to slack --subject "[CI]" --file build.log
+	  ${BRAND.cliName} send --to line[:U/C/R-id] "message"
+	  ${BRAND.cliName} send --to sms[:+15558675310] "message"
+	  ${BRAND.cliName} send --to ntfy[:topic] "message"
+	  ${BRAND.cliName} send --to signal[:+15558675310|group:<id>] "message"
+	  ${BRAND.cliName} send --to whatsapp[:15558675310] "message"
+	  ${BRAND.cliName} send --to matrix[:!roomid:matrix.org] "message"
+	  ${BRAND.cliName} send --to teams[:chat_id|team/<team-id>/channel/<channel-id>] "message"
+	  ${BRAND.cliName} send --to slack --subject "[CI]" --file build.log
   echo "done" | ${BRAND.cliName} send --to telegram --quiet
   ${BRAND.cliName} send --list [platform] [--json]`);
     return;
@@ -1669,7 +2233,7 @@ async function runSend(args: string[]): Promise<void> {
 
   const to = argValue(args, '--to', '-t');
   if (!to) {
-    console.error(`ใช้: ${BRAND.cliName} send --to <telegram|discord|slack|email|line|sms|ntfy|signal>[:target] "message"`);
+    console.error(`ใช้: ${BRAND.cliName} send --to <telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|teams>[:target] "message"`);
     process.exit(2);
   }
   const file = argValue(args, '--file', '-f');
@@ -1724,7 +2288,7 @@ async function runWebhook(args: string[]): Promise<void> {
 
   if (args.includes('-h') || args.includes('--help') || action === 'help') {
     console.log(`ใช้:
-  ${BRAND.cliName} webhook subscribe <route> [--events issues,push] [--prompt "..."] [--to telegram|slack:C01|sms|ntfy|signal]
+	  ${BRAND.cliName} webhook subscribe <route> [--events issues,push] [--prompt "..."] [--to telegram|slack:C01|mattermost:chan|homeassistant|sms|ntfy|signal|whatsapp|matrix|teams]
   ${BRAND.cliName} webhook subscribe <route> --deliver telegram --deliver-chat-id 123 --deliver-only --prompt "New event: {__raw__}"
   ${BRAND.cliName} webhook list
   ${BRAND.cliName} webhook remove <route>

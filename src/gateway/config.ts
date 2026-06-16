@@ -27,6 +27,34 @@ export interface SlackGatewayConfig {
   allowWrite?: boolean;
 }
 
+export interface MattermostGatewayConfig {
+  enabled?: boolean;
+  serverUrl?: string;
+  token?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  allowedUsers?: string[];
+  allowedChannels?: string[];
+  freeResponseChannels?: string[];
+  allowAllUsers?: boolean;
+  requireMention?: boolean;
+  groupSessionsPerUser?: boolean;
+  replyMode?: 'off' | 'thread';
+}
+
+export interface HomeAssistantGatewayConfig {
+  enabled?: boolean;
+  url?: string;
+  token?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  watchDomains?: string[];
+  watchEntities?: string[];
+  ignoreEntities?: string[];
+  watchAll?: boolean;
+  cooldownSeconds?: number;
+}
+
 export interface EmailGatewayConfig {
   enabled?: boolean;
   address?: string;
@@ -91,6 +119,56 @@ export interface SignalGatewayConfig {
   requireMention?: boolean;
 }
 
+export interface WhatsAppGatewayConfig {
+  enabled?: boolean;
+  phoneNumberId?: string;
+  accessToken?: string;
+  appSecret?: string;
+  verifyToken?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  allowedUsers?: string[];
+  allowAllUsers?: boolean;
+  publicUrl?: string;
+  apiVersion?: string;
+}
+
+export interface MatrixGatewayConfig {
+  enabled?: boolean;
+  homeserver?: string;
+  accessToken?: string;
+  userId?: string;
+  password?: string;
+  homeRoom?: string;
+  homeRoomName?: string;
+  allowedUsers?: string[];
+  allowedRooms?: string[];
+  freeResponseRooms?: string[];
+  allowAllUsers?: boolean;
+  requireMention?: boolean;
+  groupSessionsPerUser?: boolean;
+  autoJoin?: boolean;
+  pollTimeoutMs?: number;
+}
+
+export interface TeamsGatewayConfig {
+  enabled?: boolean;
+  deliveryMode?: 'incoming_webhook' | 'graph';
+  incomingWebhookUrl?: string;
+  graphAccessToken?: string;
+  teamId?: string;
+  channelId?: string;
+  chatId?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  clientId?: string;
+  clientSecret?: string;
+  tenantId?: string;
+  allowedUsers?: string[];
+  allowAllUsers?: boolean;
+  port?: number;
+}
+
 export interface WebhookRouteConfig {
   events?: string[];
   secret?: string;
@@ -113,11 +191,16 @@ export interface GatewayConfig {
   telegram?: TelegramGatewayConfig;
   discord?: DiscordGatewayConfig;
   slack?: SlackGatewayConfig;
+  mattermost?: MattermostGatewayConfig;
+  homeassistant?: HomeAssistantGatewayConfig;
   email?: EmailGatewayConfig;
   line?: LineGatewayConfig;
   sms?: SmsGatewayConfig;
   ntfy?: NtfyGatewayConfig;
   signal?: SignalGatewayConfig;
+  whatsapp?: WhatsAppGatewayConfig;
+  matrix?: MatrixGatewayConfig;
+  teams?: TeamsGatewayConfig;
   webhooks?: WebhookGatewayConfig;
 }
 
@@ -135,11 +218,16 @@ export async function readGatewayConfig(): Promise<GatewayConfig> {
     const telegram = raw.telegram;
     const discord = raw.discord;
     const slack = raw.slack;
+    const mattermost = raw.mattermost;
+    const homeassistant = raw.homeassistant;
     const email = raw.email;
     const line = raw.line;
     const sms = raw.sms;
     const ntfy = raw.ntfy;
     const signal = raw.signal;
+    const whatsapp = raw.whatsapp;
+    const matrix = raw.matrix;
+    const teams = raw.teams;
     const webhooks = raw.webhooks;
     return {
       telegram: telegram
@@ -173,6 +261,48 @@ export async function readGatewayConfig(): Promise<GatewayConfig> {
               ? slack.allowedChannelIds.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
               : undefined,
             allowWrite: slack.allowWrite === true,
+          }
+        : undefined,
+      mattermost: mattermost
+        ? {
+            enabled: mattermost.enabled !== false,
+            serverUrl: typeof mattermost.serverUrl === 'string' ? mattermost.serverUrl.trim() : undefined,
+            token: typeof mattermost.token === 'string' ? mattermost.token : undefined,
+            homeChannel: typeof mattermost.homeChannel === 'string' ? mattermost.homeChannel.trim() : undefined,
+            homeChannelName: typeof mattermost.homeChannelName === 'string' ? mattermost.homeChannelName : undefined,
+            allowedUsers: Array.isArray(mattermost.allowedUsers)
+              ? mattermost.allowedUsers.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            allowedChannels: Array.isArray(mattermost.allowedChannels)
+              ? mattermost.allowedChannels.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            freeResponseChannels: Array.isArray(mattermost.freeResponseChannels)
+              ? mattermost.freeResponseChannels.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            allowAllUsers: mattermost.allowAllUsers === true,
+            requireMention: mattermost.requireMention !== false,
+            groupSessionsPerUser: mattermost.groupSessionsPerUser !== false,
+            replyMode: mattermost.replyMode === 'thread' ? 'thread' : 'off',
+          }
+        : undefined,
+      homeassistant: homeassistant
+        ? {
+            enabled: homeassistant.enabled !== false,
+            url: typeof homeassistant.url === 'string' ? homeassistant.url.trim() : undefined,
+            token: typeof homeassistant.token === 'string' ? homeassistant.token : undefined,
+            homeChannel: typeof homeassistant.homeChannel === 'string' ? homeassistant.homeChannel.trim() : undefined,
+            homeChannelName: typeof homeassistant.homeChannelName === 'string' ? homeassistant.homeChannelName : undefined,
+            watchDomains: Array.isArray(homeassistant.watchDomains)
+              ? homeassistant.watchDomains.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            watchEntities: Array.isArray(homeassistant.watchEntities)
+              ? homeassistant.watchEntities.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            ignoreEntities: Array.isArray(homeassistant.ignoreEntities)
+              ? homeassistant.ignoreEntities.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            watchAll: homeassistant.watchAll === true,
+            cooldownSeconds: Number.isInteger(homeassistant.cooldownSeconds) ? homeassistant.cooldownSeconds : undefined,
           }
         : undefined,
       email: email
@@ -260,6 +390,69 @@ export async function readGatewayConfig(): Promise<GatewayConfig> {
             requireMention: signal.requireMention === true,
           }
         : undefined,
+      whatsapp: whatsapp
+        ? {
+            enabled: whatsapp.enabled !== false,
+            phoneNumberId: typeof whatsapp.phoneNumberId === 'string' ? whatsapp.phoneNumberId.trim() : undefined,
+            accessToken: typeof whatsapp.accessToken === 'string' ? whatsapp.accessToken : undefined,
+            appSecret: typeof whatsapp.appSecret === 'string' ? whatsapp.appSecret : undefined,
+            verifyToken: typeof whatsapp.verifyToken === 'string' ? whatsapp.verifyToken : undefined,
+            homeChannel: typeof whatsapp.homeChannel === 'string' ? whatsapp.homeChannel.trim() : undefined,
+            homeChannelName: typeof whatsapp.homeChannelName === 'string' ? whatsapp.homeChannelName : undefined,
+            allowedUsers: Array.isArray(whatsapp.allowedUsers)
+              ? whatsapp.allowedUsers.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            allowAllUsers: whatsapp.allowAllUsers === true,
+            publicUrl: typeof whatsapp.publicUrl === 'string' ? whatsapp.publicUrl : undefined,
+            apiVersion: typeof whatsapp.apiVersion === 'string' ? whatsapp.apiVersion.trim() : undefined,
+          }
+        : undefined,
+      matrix: matrix
+        ? {
+            enabled: matrix.enabled !== false,
+            homeserver: typeof matrix.homeserver === 'string' ? matrix.homeserver.trim() : undefined,
+            accessToken: typeof matrix.accessToken === 'string' ? matrix.accessToken : undefined,
+            userId: typeof matrix.userId === 'string' ? matrix.userId.trim() : undefined,
+            password: typeof matrix.password === 'string' ? matrix.password : undefined,
+            homeRoom: typeof matrix.homeRoom === 'string' ? matrix.homeRoom.trim() : undefined,
+            homeRoomName: typeof matrix.homeRoomName === 'string' ? matrix.homeRoomName : undefined,
+            allowedUsers: Array.isArray(matrix.allowedUsers)
+              ? matrix.allowedUsers.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            allowedRooms: Array.isArray(matrix.allowedRooms)
+              ? matrix.allowedRooms.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            freeResponseRooms: Array.isArray(matrix.freeResponseRooms)
+              ? matrix.freeResponseRooms.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            allowAllUsers: matrix.allowAllUsers === true,
+            requireMention: matrix.requireMention !== false,
+            groupSessionsPerUser: matrix.groupSessionsPerUser !== false,
+            autoJoin: matrix.autoJoin !== false,
+            pollTimeoutMs: Number.isInteger(matrix.pollTimeoutMs) ? matrix.pollTimeoutMs : undefined,
+          }
+        : undefined,
+      teams: teams
+        ? {
+            enabled: teams.enabled !== false,
+            deliveryMode: teams.deliveryMode === 'graph' ? 'graph' : 'incoming_webhook',
+            incomingWebhookUrl: typeof teams.incomingWebhookUrl === 'string' ? teams.incomingWebhookUrl.trim() : undefined,
+            graphAccessToken: typeof teams.graphAccessToken === 'string' ? teams.graphAccessToken : undefined,
+            teamId: typeof teams.teamId === 'string' ? teams.teamId.trim() : undefined,
+            channelId: typeof teams.channelId === 'string' ? teams.channelId.trim() : undefined,
+            chatId: typeof teams.chatId === 'string' ? teams.chatId.trim() : undefined,
+            homeChannel: typeof teams.homeChannel === 'string' ? teams.homeChannel.trim() : undefined,
+            homeChannelName: typeof teams.homeChannelName === 'string' ? teams.homeChannelName : undefined,
+            clientId: typeof teams.clientId === 'string' ? teams.clientId.trim() : undefined,
+            clientSecret: typeof teams.clientSecret === 'string' ? teams.clientSecret : undefined,
+            tenantId: typeof teams.tenantId === 'string' ? teams.tenantId.trim() : undefined,
+            allowedUsers: Array.isArray(teams.allowedUsers)
+              ? teams.allowedUsers.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            allowAllUsers: teams.allowAllUsers === true,
+            port: Number.isInteger(teams.port) ? teams.port : undefined,
+          }
+        : undefined,
       webhooks: webhooks
         ? {
             enabled: webhooks.enabled !== false,
@@ -313,11 +506,16 @@ export async function patchGatewayConfig(patch: GatewayConfig): Promise<GatewayC
     telegram: patch.telegram ? { ...current.telegram, ...patch.telegram } : current.telegram,
     discord: patch.discord ? { ...current.discord, ...patch.discord } : current.discord,
     slack: patch.slack ? { ...current.slack, ...patch.slack } : current.slack,
+    mattermost: patch.mattermost ? { ...current.mattermost, ...patch.mattermost } : current.mattermost,
+    homeassistant: patch.homeassistant ? { ...current.homeassistant, ...patch.homeassistant } : current.homeassistant,
     email: patch.email ? { ...current.email, ...patch.email } : current.email,
     line: patch.line ? { ...current.line, ...patch.line } : current.line,
     sms: patch.sms ? { ...current.sms, ...patch.sms } : current.sms,
     ntfy: patch.ntfy ? { ...current.ntfy, ...patch.ntfy } : current.ntfy,
     signal: patch.signal ? { ...current.signal, ...patch.signal } : current.signal,
+    whatsapp: patch.whatsapp ? { ...current.whatsapp, ...patch.whatsapp } : current.whatsapp,
+    matrix: patch.matrix ? { ...current.matrix, ...patch.matrix } : current.matrix,
+    teams: patch.teams ? { ...current.teams, ...patch.teams } : current.teams,
     webhooks: patch.webhooks
       ? {
           ...current.webhooks,
@@ -412,6 +610,89 @@ export function resolveSlackConfig(config: GatewayConfig, env: NodeJS.ProcessEnv
     allowWrite: env.SLACK_ALLOW_WRITE === '1' || cfg?.allowWrite === true,
     enabled: cfg?.enabled !== false,
     source: envBotToken ? 'env' : botToken ? 'config' : 'none',
+  };
+}
+
+export interface ResolvedMattermostConfig {
+  serverUrl?: string;
+  token?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  allowedUsers: string[];
+  allowedChannels: string[];
+  freeResponseChannels: string[];
+  allowAllUsers: boolean;
+  requireMention: boolean;
+  groupSessionsPerUser: boolean;
+  replyMode: 'off' | 'thread';
+  enabled: boolean;
+  source: 'env' | 'config' | 'none';
+}
+
+export function resolveMattermostConfig(config: GatewayConfig, env: NodeJS.ProcessEnv = process.env): ResolvedMattermostConfig {
+  const cfg = config.mattermost;
+  const envServerUrl = optionalTrim(env.MATTERMOST_URL) || optionalTrim(env.MATTERMOST_SERVER_URL);
+  const envToken = optionalTrim(env.MATTERMOST_TOKEN);
+  const serverUrl = (envServerUrl || optionalTrim(cfg?.serverUrl))?.replace(/\/+$/, '');
+  const token = envToken || optionalTrim(cfg?.token);
+  const requireMentionEnv = env.MATTERMOST_REQUIRE_MENTION;
+  const groupSessionsEnv = env.MATTERMOST_GROUP_SESSIONS_PER_USER;
+  const replyModeRaw = optionalTrim(env.MATTERMOST_REPLY_MODE) || optionalTrim(cfg?.replyMode);
+  const replyMode = replyModeRaw === 'thread' ? 'thread' : 'off';
+  return {
+    serverUrl,
+    token,
+    homeChannel: optionalTrim(env.MATTERMOST_HOME_CHANNEL) || optionalTrim(cfg?.homeChannel),
+    homeChannelName: optionalTrim(env.MATTERMOST_HOME_CHANNEL_NAME) || optionalTrim(cfg?.homeChannelName),
+    allowedUsers: env.MATTERMOST_ALLOWED_USERS ? parseStringList(env.MATTERMOST_ALLOWED_USERS) : (cfg?.allowedUsers ?? []),
+    allowedChannels: env.MATTERMOST_ALLOWED_CHANNELS ? parseStringList(env.MATTERMOST_ALLOWED_CHANNELS) : (cfg?.allowedChannels ?? []),
+    freeResponseChannels: env.MATTERMOST_FREE_RESPONSE_CHANNELS
+      ? parseStringList(env.MATTERMOST_FREE_RESPONSE_CHANNELS)
+      : (cfg?.freeResponseChannels ?? []),
+    allowAllUsers:
+      env.MATTERMOST_ALLOW_ALL_USERS === '1' || env.MATTERMOST_ALLOW_ALL_USERS === 'true' || cfg?.allowAllUsers === true,
+    requireMention:
+      requireMentionEnv == null ? cfg?.requireMention !== false : requireMentionEnv === '1' || requireMentionEnv === 'true',
+    groupSessionsPerUser:
+      groupSessionsEnv == null ? cfg?.groupSessionsPerUser !== false : groupSessionsEnv === '1' || groupSessionsEnv === 'true',
+    replyMode,
+    enabled: cfg?.enabled !== false,
+    source: envServerUrl || envToken ? 'env' : serverUrl || token ? 'config' : 'none',
+  };
+}
+
+export interface ResolvedHomeAssistantConfig {
+  url: string;
+  token?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  watchDomains: string[];
+  watchEntities: string[];
+  ignoreEntities: string[];
+  watchAll: boolean;
+  cooldownSeconds: number;
+  enabled: boolean;
+  source: 'env' | 'config' | 'none';
+}
+
+export function resolveHomeAssistantConfig(config: GatewayConfig, env: NodeJS.ProcessEnv = process.env): ResolvedHomeAssistantConfig {
+  const cfg = config.homeassistant;
+  const envToken = optionalTrim(env.HASS_TOKEN);
+  const envUrl = optionalTrim(env.HASS_URL);
+  const url = (envUrl || optionalTrim(cfg?.url) || 'http://homeassistant.local:8123').replace(/\/+$/, '');
+  const watchAllEnv = env.HASS_WATCH_ALL;
+  return {
+    url,
+    token: envToken || optionalTrim(cfg?.token),
+    homeChannel: optionalTrim(env.HASS_HOME_CHANNEL) || optionalTrim(cfg?.homeChannel),
+    homeChannelName: optionalTrim(env.HASS_HOME_CHANNEL_NAME) || optionalTrim(cfg?.homeChannelName),
+    watchDomains: env.HASS_WATCH_DOMAINS ? parseStringList(env.HASS_WATCH_DOMAINS) : (cfg?.watchDomains ?? []),
+    watchEntities: env.HASS_WATCH_ENTITIES ? parseStringList(env.HASS_WATCH_ENTITIES) : (cfg?.watchEntities ?? []),
+    ignoreEntities: env.HASS_IGNORE_ENTITIES ? parseStringList(env.HASS_IGNORE_ENTITIES) : (cfg?.ignoreEntities ?? []),
+    watchAll: watchAllEnv == null ? cfg?.watchAll === true : watchAllEnv === '1' || watchAllEnv === 'true',
+    cooldownSeconds: parsePositiveInt(env.HASS_COOLDOWN_SECONDS, cfg?.cooldownSeconds ?? 30),
+    enabled: cfg?.enabled !== false,
+    source: envToken || envUrl ? 'env' : cfg?.token || cfg?.url ? 'config' : 'none',
   };
 }
 
@@ -598,6 +879,164 @@ export function resolveSignalConfig(config: GatewayConfig, env: NodeJS.ProcessEn
   };
 }
 
+export interface ResolvedWhatsAppConfig {
+  phoneNumberId?: string;
+  accessToken?: string;
+  appSecret?: string;
+  verifyToken?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  allowedUsers: string[];
+  allowAllUsers: boolean;
+  publicUrl?: string;
+  apiVersion: string;
+  enabled: boolean;
+  source: 'env' | 'config' | 'none';
+}
+
+export function resolveWhatsAppConfig(config: GatewayConfig, env: NodeJS.ProcessEnv = process.env): ResolvedWhatsAppConfig {
+  const cfg = config.whatsapp;
+  const envPhoneNumberId = optionalTrim(env.WHATSAPP_CLOUD_PHONE_NUMBER_ID);
+  const envAccessToken = optionalTrim(env.WHATSAPP_CLOUD_ACCESS_TOKEN);
+  const envAppSecret = optionalTrim(env.WHATSAPP_CLOUD_APP_SECRET);
+  const phoneNumberId = envPhoneNumberId || optionalTrim(cfg?.phoneNumberId);
+  const accessToken = envAccessToken || optionalTrim(cfg?.accessToken);
+  const appSecret = envAppSecret || optionalTrim(cfg?.appSecret);
+  return {
+    phoneNumberId,
+    accessToken,
+    appSecret,
+    verifyToken: optionalTrim(env.WHATSAPP_CLOUD_VERIFY_TOKEN) || optionalTrim(cfg?.verifyToken),
+    homeChannel: optionalTrim(env.WHATSAPP_CLOUD_HOME_CHANNEL) || optionalTrim(cfg?.homeChannel),
+    homeChannelName: optionalTrim(env.WHATSAPP_CLOUD_HOME_CHANNEL_NAME) || optionalTrim(cfg?.homeChannelName),
+    allowedUsers: env.WHATSAPP_CLOUD_ALLOWED_USERS ? parseStringList(env.WHATSAPP_CLOUD_ALLOWED_USERS) : (cfg?.allowedUsers ?? []),
+    allowAllUsers:
+      env.WHATSAPP_CLOUD_ALLOW_ALL_USERS === '1' || env.WHATSAPP_CLOUD_ALLOW_ALL_USERS === 'true' || cfg?.allowAllUsers === true,
+    publicUrl: optionalTrim(env.WHATSAPP_CLOUD_PUBLIC_URL) || optionalTrim(cfg?.publicUrl),
+    apiVersion: optionalTrim(env.WHATSAPP_CLOUD_API_VERSION) || optionalTrim(cfg?.apiVersion) || 'v20.0',
+    enabled: cfg?.enabled !== false,
+    source: envPhoneNumberId || envAccessToken || envAppSecret ? 'env' : phoneNumberId || accessToken || appSecret ? 'config' : 'none',
+  };
+}
+
+export interface ResolvedMatrixConfig {
+  homeserver?: string;
+  accessToken?: string;
+  userId?: string;
+  password?: string;
+  homeRoom?: string;
+  homeRoomName?: string;
+  allowedUsers: string[];
+  allowedRooms: string[];
+  freeResponseRooms: string[];
+  allowAllUsers: boolean;
+  requireMention: boolean;
+  groupSessionsPerUser: boolean;
+  autoJoin: boolean;
+  pollTimeoutMs: number;
+  enabled: boolean;
+  source: 'env' | 'config' | 'none';
+}
+
+export function resolveMatrixConfig(config: GatewayConfig, env: NodeJS.ProcessEnv = process.env): ResolvedMatrixConfig {
+  const cfg = config.matrix;
+  const envHomeserver = optionalTrim(env.MATRIX_HOMESERVER);
+  const envAccessToken = optionalTrim(env.MATRIX_ACCESS_TOKEN);
+  const envUserId = optionalTrim(env.MATRIX_USER_ID);
+  const envPassword = optionalTrim(env.MATRIX_PASSWORD);
+  const homeserver = (envHomeserver || optionalTrim(cfg?.homeserver))?.replace(/\/+$/, '');
+  const accessToken = envAccessToken || optionalTrim(cfg?.accessToken);
+  const userId = envUserId || optionalTrim(cfg?.userId);
+  const password = envPassword || optionalTrim(cfg?.password);
+  const requireMentionEnv = env.MATRIX_REQUIRE_MENTION;
+  const groupSessionsEnv = env.MATRIX_GROUP_SESSIONS_PER_USER;
+  const autoJoinEnv = env.MATRIX_AUTO_JOIN;
+  return {
+    homeserver,
+    accessToken,
+    userId,
+    password,
+    homeRoom: optionalTrim(env.MATRIX_HOME_ROOM) || optionalTrim(cfg?.homeRoom),
+    homeRoomName: optionalTrim(env.MATRIX_HOME_ROOM_NAME) || optionalTrim(cfg?.homeRoomName),
+    allowedUsers: env.MATRIX_ALLOWED_USERS ? parseStringList(env.MATRIX_ALLOWED_USERS) : (cfg?.allowedUsers ?? []),
+    allowedRooms: env.MATRIX_ALLOWED_ROOMS ? parseStringList(env.MATRIX_ALLOWED_ROOMS) : (cfg?.allowedRooms ?? []),
+    freeResponseRooms: env.MATRIX_FREE_RESPONSE_ROOMS ? parseStringList(env.MATRIX_FREE_RESPONSE_ROOMS) : (cfg?.freeResponseRooms ?? []),
+    allowAllUsers: env.MATRIX_ALLOW_ALL_USERS === '1' || env.MATRIX_ALLOW_ALL_USERS === 'true' || cfg?.allowAllUsers === true,
+    requireMention: requireMentionEnv == null ? cfg?.requireMention !== false : requireMentionEnv === '1' || requireMentionEnv === 'true',
+    groupSessionsPerUser: groupSessionsEnv == null ? cfg?.groupSessionsPerUser !== false : groupSessionsEnv === '1' || groupSessionsEnv === 'true',
+    autoJoin: autoJoinEnv == null ? cfg?.autoJoin !== false : autoJoinEnv === '1' || autoJoinEnv === 'true',
+    pollTimeoutMs: parsePositiveInt(env.MATRIX_POLL_TIMEOUT_MS, cfg?.pollTimeoutMs ?? 30_000),
+    enabled: cfg?.enabled !== false,
+    source:
+      envHomeserver || envAccessToken || envUserId || envPassword
+        ? 'env'
+        : homeserver || accessToken || userId || password
+          ? 'config'
+          : 'none',
+  };
+}
+
+export interface ResolvedTeamsConfig {
+  deliveryMode: 'incoming_webhook' | 'graph';
+  incomingWebhookUrl?: string;
+  graphAccessToken?: string;
+  teamId?: string;
+  channelId?: string;
+  chatId?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  clientId?: string;
+  clientSecret?: string;
+  tenantId?: string;
+  allowedUsers: string[];
+  allowAllUsers: boolean;
+  port: number;
+  enabled: boolean;
+  source: 'env' | 'config' | 'none';
+}
+
+export function resolveTeamsConfig(config: GatewayConfig, env: NodeJS.ProcessEnv = process.env): ResolvedTeamsConfig {
+  const cfg = config.teams;
+  const envIncomingWebhookUrl = optionalTrim(env.TEAMS_INCOMING_WEBHOOK_URL);
+  const envGraphAccessToken = optionalTrim(env.TEAMS_GRAPH_ACCESS_TOKEN);
+  const envClientId = optionalTrim(env.TEAMS_CLIENT_ID);
+  const envClientSecret = optionalTrim(env.TEAMS_CLIENT_SECRET);
+  const envTenantId = optionalTrim(env.TEAMS_TENANT_ID);
+  const deliveryModeRaw = optionalTrim(env.TEAMS_DELIVERY_MODE) || optionalTrim(cfg?.deliveryMode);
+  const deliveryMode = deliveryModeRaw === 'graph' ? 'graph' : 'incoming_webhook';
+  const incomingWebhookUrl = envIncomingWebhookUrl || optionalTrim(cfg?.incomingWebhookUrl);
+  const graphAccessToken = envGraphAccessToken || optionalTrim(cfg?.graphAccessToken);
+  const teamId = optionalTrim(env.TEAMS_TEAM_ID) || optionalTrim(cfg?.teamId);
+  const channelId = optionalTrim(env.TEAMS_CHANNEL_ID) || optionalTrim(cfg?.channelId);
+  const chatId = optionalTrim(env.TEAMS_CHAT_ID) || optionalTrim(cfg?.chatId);
+  const clientId = envClientId || optionalTrim(cfg?.clientId);
+  const clientSecret = envClientSecret || optionalTrim(cfg?.clientSecret);
+  const tenantId = envTenantId || optionalTrim(cfg?.tenantId);
+  return {
+    deliveryMode,
+    incomingWebhookUrl,
+    graphAccessToken,
+    teamId,
+    channelId,
+    chatId,
+    homeChannel: optionalTrim(env.TEAMS_HOME_CHANNEL) || optionalTrim(cfg?.homeChannel),
+    homeChannelName: optionalTrim(env.TEAMS_HOME_CHANNEL_NAME) || optionalTrim(cfg?.homeChannelName),
+    clientId,
+    clientSecret,
+    tenantId,
+    allowedUsers: env.TEAMS_ALLOWED_USERS ? parseStringList(env.TEAMS_ALLOWED_USERS) : (cfg?.allowedUsers ?? []),
+    allowAllUsers: env.TEAMS_ALLOW_ALL_USERS === '1' || env.TEAMS_ALLOW_ALL_USERS === 'true' || cfg?.allowAllUsers === true,
+    port: parsePositiveInt(env.TEAMS_PORT, cfg?.port ?? 3978),
+    enabled: cfg?.enabled !== false,
+    source:
+      envIncomingWebhookUrl || envGraphAccessToken || envClientId || envClientSecret || envTenantId
+        ? 'env'
+        : incomingWebhookUrl || graphAccessToken || clientId || clientSecret || tenantId
+          ? 'config'
+          : 'none',
+  };
+}
+
 export interface ResolvedWebhookRouteConfig {
   name: string;
   events: string[];
@@ -670,6 +1109,18 @@ export function redactGatewayConfig(config: GatewayConfig): GatewayConfig {
           appToken: config.slack.appToken ? '<secret:SLACK_APP_TOKEN>' : undefined,
         }
       : undefined,
+    mattermost: config.mattermost
+      ? {
+          ...config.mattermost,
+          token: config.mattermost.token ? '<secret:MATTERMOST_TOKEN>' : undefined,
+        }
+      : undefined,
+    homeassistant: config.homeassistant
+      ? {
+          ...config.homeassistant,
+          token: config.homeassistant.token ? '<secret:HASS_TOKEN>' : undefined,
+        }
+      : undefined,
     email: config.email
       ? {
           ...config.email,
@@ -704,6 +1155,31 @@ export function redactGatewayConfig(config: GatewayConfig): GatewayConfig {
           groupAllowedUsers: config.signal.groupAllowedUsers?.map(redactSignalIdentifier).filter((id): id is string => Boolean(id)),
         }
       : undefined,
+    whatsapp: config.whatsapp
+      ? {
+          ...config.whatsapp,
+          accessToken: config.whatsapp.accessToken ? '<secret:WHATSAPP_CLOUD_ACCESS_TOKEN>' : undefined,
+          appSecret: config.whatsapp.appSecret ? '<secret:WHATSAPP_CLOUD_APP_SECRET>' : undefined,
+          verifyToken: config.whatsapp.verifyToken ? '<secret:WHATSAPP_CLOUD_VERIFY_TOKEN>' : undefined,
+          homeChannel: redactPhoneLike(config.whatsapp.homeChannel),
+          allowedUsers: config.whatsapp.allowedUsers?.map(redactPhoneLike).filter((id): id is string => Boolean(id)),
+        }
+      : undefined,
+    matrix: config.matrix
+      ? {
+          ...config.matrix,
+          accessToken: config.matrix.accessToken ? '<secret:MATRIX_ACCESS_TOKEN>' : undefined,
+          password: config.matrix.password ? '<secret:MATRIX_PASSWORD>' : undefined,
+        }
+      : undefined,
+    teams: config.teams
+      ? {
+          ...config.teams,
+          incomingWebhookUrl: config.teams.incomingWebhookUrl ? '<secret:TEAMS_INCOMING_WEBHOOK_URL>' : undefined,
+          graphAccessToken: config.teams.graphAccessToken ? '<secret:TEAMS_GRAPH_ACCESS_TOKEN>' : undefined,
+          clientSecret: config.teams.clientSecret ? '<secret:TEAMS_CLIENT_SECRET>' : undefined,
+        }
+      : undefined,
     webhooks: config.webhooks
       ? {
           ...config.webhooks,
@@ -719,6 +1195,14 @@ export function redactGatewayConfig(config: GatewayConfig): GatewayConfig {
         }
       : undefined,
   };
+}
+
+function redactPhoneLike(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  const visible = trimmed.replace(/[\s()+.-]+/g, '');
+  if (visible.length <= 6) return '<redacted>';
+  return `${visible.slice(0, 4)}…${visible.slice(-4)}`;
 }
 
 function redactSignalIdentifier(value: string | undefined): string | undefined {

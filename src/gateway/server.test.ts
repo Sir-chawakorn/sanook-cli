@@ -27,5 +27,6 @@ describe('gateway server input normalization', () => {
     expect(parseOptionalDeliverTarget(' Slack : C01ABC ')).toEqual({ deliver: 'slack:C01ABC' });
     expect(parseOptionalDeliverTarget('line:U1234567890abcdef')).toEqual({ deliver: 'line:U1234567890abcdef' });
     expect(parseOptionalDeliverTarget('sms:+15551234567')).toEqual({ deliver: 'sms:+15551234567' });
+    expect(parseOptionalDeliverTarget('whatsapp:+1 (555) 123-4567')).toEqual({ deliver: 'whatsapp:15551234567' });
   });
 });

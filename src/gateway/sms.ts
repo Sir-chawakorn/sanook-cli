@@ -77,8 +77,9 @@ export async function sendSmsMessage(config: SmsSendConfig, to: string, text: st
 
   const url = `${TWILIO_API_BASE}/Accounts/${encodeURIComponent(accountSid)}/Messages.json`;
   const auth = Buffer.from(`${accountSid}:${authToken}`, 'utf8').toString('base64');
+  const chunks = splitSmsText(text);
   const messageIds: string[] = [];
-  for (const bodyText of splitSmsText(text)) {
+  for (const bodyText of chunks) {
     const body = new URLSearchParams({ From: from, To: recipient, Body: bodyText });
     const r = await fetch(url, {
       method: 'POST',
@@ -95,7 +96,7 @@ export async function sendSmsMessage(config: SmsSendConfig, to: string, text: st
     const parsed = (await r.json().catch(() => ({}))) as { sid?: string };
     if (parsed.sid) messageIds.push(parsed.sid);
   }
-  return { to: recipient, messageCount: messageIds.length || splitSmsText(text).length, messageIds };
+  return { to: recipient, messageCount: messageIds.length || chunks.length, messageIds };
 }
 
 export function parseTwilioForm(rawBody: string): URLSearchParams {

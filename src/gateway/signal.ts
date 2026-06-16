@@ -146,8 +146,9 @@ export async function sendSignalMessage(config: ResolvedSignalConfig, target: st
   if (!config.httpUrl || !account) throw new Error('Signal config ต้องมี httpUrl และ account');
   if (!to) throw new Error('Signal recipient ว่าง');
 
+  const chunks = splitSignalText(text);
   const messageIds: string[] = [];
-  for (const chunk of splitSignalText(text)) {
+  for (const chunk of chunks) {
     const params: Record<string, unknown> = to.startsWith('group:')
       ? { account, groupId: to.slice('group:'.length), message: chunk }
       : { account, recipient: [to], message: chunk };
@@ -159,7 +160,7 @@ export async function sendSignalMessage(config: ResolvedSignalConfig, target: st
       rememberSentTimestamp(id);
     }
   }
-  return { to, messageCount: splitSignalText(text).length, messageIds };
+  return { to, messageCount: chunks.length, messageIds };
 }
 
 export function parseSignalSseLine(line: string): unknown | null {

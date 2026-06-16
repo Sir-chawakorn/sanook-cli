@@ -4,22 +4,32 @@ import {
   readGatewayConfig,
   resolveDiscordConfig,
   resolveEmailConfig,
+  resolveHomeAssistantConfig,
   resolveLineConfig,
+  resolveMattermostConfig,
+  resolveMatrixConfig,
   resolveNtfyConfig,
   resolveSignalConfig,
   resolveSlackConfig,
   resolveSmsConfig,
   resolveTelegramConfig,
+  resolveTeamsConfig,
+  resolveWhatsAppConfig,
 } from './config.js';
 import { sendDiscordMessage } from './discord.js';
 import { sendEmailMessage } from './email.js';
+import { sendHomeAssistantNotification } from './homeassistant.js';
 import { sendLineMessage } from './line.js';
+import { sendMattermostMessage } from './mattermost.js';
+import { sendMatrixMessage } from './matrix.js';
 import { sendNtfyMessage } from './ntfy.js';
 import { normalizeSignalId, sendSignalMessage } from './signal.js';
 import { sendSlackMessage } from './slack.js';
 import { normalizeSmsPhone, sendSmsMessage } from './sms.js';
 import { formatTarget, parseSendTarget } from './targets.js';
 import { sendTelegramMessage } from './telegram.js';
+import { sendTeamsMessage } from './teams.js';
+import { normalizeWhatsAppId, redactWhatsAppId, sendWhatsAppMessage } from './whatsapp.js';
 
 export interface DeliverOptions {
   config?: GatewayConfig;
@@ -97,6 +107,41 @@ export async function deliverToTarget(rawTarget: string, message: string, option
       platform: 'slack',
       target: formatTarget({ platform: 'slack', address: channelId, thread: target.thread }),
       ...result,
+    };
+  }
+
+  if (target.platform === 'mattermost') {
+    const mattermost = resolveMattermostConfig(config, env);
+    if (!mattermost.serverUrl || !mattermost.token) throw new Error(`ยังไม่ได้ตั้ง Mattermost — รัน: ${BRAND.cliName} gateway setup mattermost`);
+    const channelId = target.address ?? mattermost.homeChannel;
+    if (!channelId) throw new Error('ต้องระบุ Mattermost channel id หรือ home channel ใน gateway config');
+    const allowed = new Set([mattermost.homeChannel, ...mattermost.allowedChannels].filter((v): v is string => Boolean(v?.trim())));
+    if (!mattermost.allowAllUsers && !allowed.size) {
+      throw new Error('ต้องตั้ง Mattermost home channel หรือ allowed channels เพื่อ fail-closed');
+    }
+    if (!mattermost.allowAllUsers && allowed.size && !allowed.has(channelId)) {
+      throw new Error(`Mattermost channel ${channelId} ไม่อยู่ใน allowlist (${[...allowed].join(', ') || 'none'})`);
+    }
+    const result = await sendMattermostMessage(mattermost, channelId, text, target.thread);
+    return {
+      platform: 'mattermost',
+      target: formatTarget({ platform: 'mattermost', address: result.channelId, thread: target.thread }),
+      channelId: result.channelId,
+      messageIds: result.postIds,
+      messageCount: result.messageCount,
+    };
+  }
+
+  if (target.platform === 'homeassistant') {
+    const homeassistant = resolveHomeAssistantConfig(config, env);
+    if (!homeassistant.token) throw new Error(`ยังไม่ได้ตั้ง Home Assistant — รัน: ${BRAND.cliName} gateway setup homeassistant`);
+    const notificationId = target.address ?? homeassistant.homeChannel;
+    const result = await sendHomeAssistantNotification(homeassistant, text, notificationId);
+    return {
+      platform: 'homeassistant',
+      target: formatTarget({ platform: 'homeassistant', address: result.notificationId }),
+      messageId: result.messageId,
+      messageCount: result.messageCount,
     };
   }
 
@@ -207,5 +252,69 @@ export async function deliverToTarget(rawTarget: string, message: string, option
     };
   }
 
-  throw new Error(`ยังไม่รองรับ platform "${target.platform}" — ตอนนี้รองรับ telegram / discord / slack / email / line / sms / ntfy / signal`);
+  if (target.platform === 'whatsapp') {
+    const whatsapp = resolveWhatsAppConfig(config, env);
+    if (!whatsapp.phoneNumberId || !whatsapp.accessToken) {
+      throw new Error(`ยังไม่ได้ตั้ง WhatsApp Cloud — รัน: ${BRAND.cliName} gateway setup whatsapp`);
+    }
+    const to = normalizeWhatsAppId(target.address ?? whatsapp.homeChannel);
+    if (!to) throw new Error('ต้องระบุ WhatsApp wa_id หรือ home channel ใน gateway config');
+    const allowed = new Set([whatsapp.homeChannel, ...whatsapp.allowedUsers].map(normalizeWhatsAppId).filter((v): v is string => Boolean(v)));
+    if (!whatsapp.allowAllUsers && !allowed.has(to)) {
+      throw new Error(`WhatsApp target ${redactWhatsAppId(to)} ไม่อยู่ใน allowlist (${[...allowed].map(redactWhatsAppId).join(', ') || 'none'})`);
+    }
+    const result = await sendWhatsAppMessage(whatsapp, to, text);
+    return {
+      platform: 'whatsapp',
+      target: formatTarget({ platform: 'whatsapp', address: result.to }),
+      to: result.to,
+      messageIds: result.messageIds,
+      messageCount: result.messageCount,
+    };
+  }
+
+  if (target.platform === 'matrix') {
+    const matrix = resolveMatrixConfig(config, env);
+    if (!matrix.homeserver || (!matrix.accessToken && (!matrix.userId || !matrix.password))) {
+      throw new Error(`ยังไม่ได้ตั้ง Matrix — รัน: ${BRAND.cliName} gateway setup matrix`);
+    }
+    const roomId = target.address ?? matrix.homeRoom;
+    if (!roomId) throw new Error('ต้องระบุ Matrix room id หรือ home room ใน gateway config');
+    const allowed = new Set([matrix.homeRoom, ...matrix.allowedRooms].filter((v): v is string => Boolean(v?.trim())));
+    if (!matrix.allowAllUsers && !allowed.size) {
+      throw new Error('ต้องตั้ง Matrix home room หรือ allowed rooms เพื่อ fail-closed');
+    }
+    if (!matrix.allowAllUsers && allowed.size && !allowed.has(roomId)) {
+      throw new Error(`Matrix room ${roomId} ไม่อยู่ใน allowlist (${[...allowed].join(', ') || 'none'})`);
+    }
+    const result = await sendMatrixMessage(matrix, roomId, text);
+    return {
+      platform: 'matrix',
+      target: formatTarget({ platform: 'matrix', address: result.roomId }),
+      to: result.roomId,
+      messageIds: result.eventIds,
+      messageCount: result.messageCount,
+    };
+  }
+
+  if (target.platform === 'teams') {
+    const teams = resolveTeamsConfig(config, env);
+    const graphReady = teams.graphAccessToken && (target.address || teams.chatId || teams.homeChannel || (teams.teamId && teams.channelId));
+    const webhookReady = teams.incomingWebhookUrl || target.address?.startsWith('https://');
+    if (!graphReady && !webhookReady) {
+      throw new Error(`ยังไม่ได้ตั้ง Microsoft Teams delivery — รัน: ${BRAND.cliName} gateway setup teams`);
+    }
+    const result = await sendTeamsMessage(teams, text, target.address);
+    return {
+      platform: 'teams',
+      target: formatTarget({ platform: 'teams', address: result.target === 'webhook' ? undefined : result.target }),
+      to: result.target,
+      messageId: result.messageId,
+      messageCount: result.messageCount,
+    };
+  }
+
+  throw new Error(
+    `ยังไม่รองรับ platform "${target.platform}" — ตอนนี้รองรับ telegram / discord / slack / mattermost / homeassistant / email / line / sms / ntfy / signal / whatsapp / matrix / teams`,
+  );
 }

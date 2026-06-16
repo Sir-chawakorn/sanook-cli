@@ -13,7 +13,7 @@ Bring your own key · 12 providers · MCP · a built-in **"second brain"** that 
 [![License](https://img.shields.io/badge/license-Apache--2.0-22c55e.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-590%20passing-22c55e.svg)](#development)
+[![Tests](https://img.shields.io/badge/tests-628%20passing-22c55e.svg)](#development)
 [![CI](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml)
 
 [Quickstart](#quickstart) · [Providers](#providers) · [Usage](#usage) · [Gateway](#gateway--scheduling) · [Skills](#skills) · [MCP](#mcp) · [Security](#security)
@@ -112,7 +112,7 @@ sanook dump                     # support snapshot; raw secrets are never printe
 | **Custom commands** | Drop a `.sanook/commands/<name>.md` prompt template and call it as `/<name>` (project commands require trust). |
 | **Subagents** | A `task` tool spawns a fresh-context sub-agent for scoped exploration without bloating the main context — read-only by default, depth-guarded. |
 | **Gateway + cron** | `sanook gateway run` (alias: `sanook serve`) runs a long-lived daemon: a loopback OpenAI-compatible HTTP endpoint plus a cron scheduler. Scheduled tasks can use `--to` to deliver results back through the messaging gateway. |
-| **Channels** | `sanook gateway setup telegram|discord|slack|email|line|sms|ntfy|signal|webhooks` stores messaging adapter config, and `sanook gateway run` starts Telegram long-polling, lightweight Discord Gateway / Slack Socket Mode adapters, Email IMAP polling, LINE webhooks, Twilio SMS webhooks, ntfy topic streams, Signal via `signal-cli` HTTP/SSE, and generic event webhooks when configured. Chat history is persisted per platform target, and final responses of `[SILENT]`, `SILENT`, `NO_REPLY`, or `NO REPLY` are stored but not delivered. `sanook send --to telegram|discord|slack|email|line|sms|ntfy|signal`, `sanook webhook subscribe`, and `sanook cron add --to ...` use the same outbound delivery rules. |
+| **Channels** | `sanook gateway setup telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|webhooks` stores messaging adapter config, and `sanook gateway run` starts Telegram long-polling, lightweight Discord Gateway / Slack Socket Mode / Mattermost REST+WebSocket adapters, Home Assistant state-change WebSocket filters, Email IMAP polling, LINE webhooks, Twilio SMS webhooks, ntfy topic streams, Signal via `signal-cli` HTTP/SSE, WhatsApp Cloud webhooks, Matrix Client-Server sync, and generic event webhooks when configured. Chat/event history is persisted per platform target, and final responses of `[SILENT]`, `SILENT`, `NO_REPLY`, or `NO REPLY` are stored but not delivered. `sanook send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix`, `sanook webhook subscribe`, and `sanook cron add --to ...` use the same outbound delivery rules. |
 | **MCP** | Connect any Model Context Protocol server over **stdio or remote Streamable-HTTP** (filesystem, GitHub, Postgres, hosted servers, …) via `~/.sanook/mcp.json`. |
 | **Git** | Branch, uncommitted changes, and recent commits are injected automatically, with `git_status` / `git_diff` / `git_log` / `git_commit` tools. |
 | **Hooks** | Run your own command before/after any tool. A non-zero `PreToolUse` exit blocks the tool — enforce lint, format, or policy. |
@@ -235,13 +235,17 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 
 ### Messaging channels
 
-Use the setup command, or set environment variables before `sanook gateway run`. Telegram uses long-polling (no public URL needed), Discord uses the Gateway websocket, Slack uses Socket Mode, Email uses IMAP polling plus SMTP threaded replies, LINE uses the official Messaging API webhook + Reply/Push endpoints, SMS uses Twilio Programmable Messaging with `X-Twilio-Signature` validation, ntfy uses the HTTP JSON stream + publish API, Signal uses `signal-cli daemon --http` with JSON-RPC + Server-Sent Events, and generic Webhooks accept GitHub/GitLab/Jira/Stripe-style events with HMAC validation.
+Use the setup command, or set environment variables before `sanook gateway run`. Telegram uses long-polling (no public URL needed), Discord uses the Gateway websocket, Slack uses Socket Mode, Mattermost uses REST API v4 plus websocket events, Home Assistant uses `/api/websocket` for watched `state_changed` events plus REST `persistent_notification.create` for replies, Email uses IMAP polling plus SMTP threaded replies, LINE uses the official Messaging API webhook + Reply/Push endpoints, SMS uses Twilio Programmable Messaging with `X-Twilio-Signature` validation, ntfy uses the HTTP JSON stream + publish API, Signal uses `signal-cli daemon --http` with JSON-RPC + Server-Sent Events, WhatsApp Cloud uses Meta's official webhook + Graph Messages API, Matrix uses the Matrix Client-Server sync/send API, and generic Webhooks accept GitHub/GitLab/Jira/Stripe-style events with HMAC validation.
 
 ```bash
 sanook gateway setup                           # platform menu
 sanook gateway setup telegram --bot-token 123:abc --allowed-chats 5222385839
 sanook gateway setup discord --bot-token "$DISCORD_BOT_TOKEN" --channel 123456789012345678
 sanook gateway setup slack --bot-token "$SLACK_BOT_TOKEN" --app-token "$SLACK_APP_TOKEN" --channel C01ABCDEF
+sanook gateway setup mattermost --url https://mm.example.com --token "$MATTERMOST_TOKEN" \
+  --allowed-users user_id_1 --home-channel chan_home_id --thread-replies
+sanook gateway setup homeassistant --url http://homeassistant.local:8123 --token "$HASS_TOKEN" \
+  --home-channel sanook_agent --watch-domains light,binary_sensor,climate
 sanook gateway setup email --address bot@example.com --password "$EMAIL_PASSWORD" \
   --imap-host imap.example.com --smtp-host smtp.example.com --home-address owner@example.com
 sanook gateway setup line --channel-access-token "$LINE_CHANNEL_ACCESS_TOKEN" \
@@ -252,6 +256,12 @@ sanook gateway setup sms --account-sid "$TWILIO_ACCOUNT_SID" --auth-token "$TWIL
 sanook gateway setup ntfy --topic sanook-yourname-2026 --token "$NTFY_TOKEN" --markdown
 sanook gateway setup signal --account +15550000000 --home-channel +15551234567 \
   --http-url http://127.0.0.1:8080
+sanook gateway setup whatsapp --phone-number-id "$WHATSAPP_CLOUD_PHONE_NUMBER_ID" \
+  --access-token "$WHATSAPP_CLOUD_ACCESS_TOKEN" --app-secret "$WHATSAPP_CLOUD_APP_SECRET" \
+  --home-channel 15551234567 --public-url https://your-tunnel.example.com
+sanook gateway setup matrix --homeserver https://matrix.example.org \
+  --access-token "$MATRIX_ACCESS_TOKEN" --allowed-users @alice:matrix.org \
+  --home-room '!abc123:matrix.example.org'
 sanook gateway setup webhooks --secret "$WEBHOOK_SECRET" --public-url https://your-tunnel.example.com
 sanook webhook subscribe github-issues --events issues \
   --prompt "New issue #{issue.number}: {issue.title}\n{issue.html_url}" --to slack:C01ABCDEF
@@ -261,15 +271,24 @@ sanook gateway run
 sanook send --to telegram "deploy finished"
 sanook send --to discord "deploy finished"
 sanook send --to slack:C01ABCDEF "deploy finished"
+sanook send --to mattermost:chan_home_id "deploy finished"
+sanook send --to homeassistant:doorbell "deploy finished"
 sanook send --to email:owner@example.com --subject "[CI]" "deploy finished"
 sanook send --to line "deploy finished"
 sanook send --to sms "deploy finished"
 sanook send --to ntfy "deploy finished"
 sanook send --to signal "deploy finished"
+sanook send --to whatsapp "deploy finished"
+sanook send --to matrix "deploy finished"
+sanook send --to matrix:'!ops:matrix.example.org' "deploy finished"
 sanook cron add "every 30m" "check the CI" --to line
 sanook cron add "09:00" "daily check-in" --to sms
 sanook cron add "09:00" "daily check-in" --to ntfy
+sanook cron add "09:00" "daily check-in" --to mattermost
+sanook cron add "09:00" "daily check-in" --to homeassistant
 sanook cron add "09:00" "daily check-in" --to signal
+sanook cron add "09:00" "daily check-in" --to whatsapp
+sanook cron add "09:00" "daily check-in" --to matrix
 sanook send --to telegram --subject "[CI]" --file build.log
 echo "RAM 92%" | sanook send --to telegram --quiet
 sanook send --to telegram:5222385839:17585 "threaded reply"
@@ -293,11 +312,40 @@ export SMS_WEBHOOK_URL=https://your-tunnel.example.com/sms/webhook
 export NTFY_TOPIC=sanook-yourname-2026
 export NTFY_ALLOWED_USERS=sanook-yourname-2026
 export NTFY_HOME_CHANNEL=sanook-yourname-2026
+export MATTERMOST_URL=https://mm.example.com
+export MATTERMOST_TOKEN=xxx
+export MATTERMOST_HOME_CHANNEL=chan_home_id
+export MATTERMOST_ALLOWED_USERS=user_id_1,user_id_2
+export MATTERMOST_ALLOWED_CHANNELS=chan_home_id,chan_ops_id
+export MATTERMOST_REQUIRE_MENTION=true
+export MATTERMOST_REPLY_MODE=thread
+export HASS_URL=http://homeassistant.local:8123
+export HASS_TOKEN=xxx
+export HASS_HOME_CHANNEL=sanook_agent
+export HASS_WATCH_DOMAINS=light,binary_sensor,climate
+export HASS_WATCH_ENTITIES=sensor.temp,alarm_control_panel.home
+export HASS_COOLDOWN_SECONDS=30
 export SIGNAL_HTTP_URL=http://127.0.0.1:8080
 export SIGNAL_ACCOUNT=+15550000000
 export SIGNAL_HOME_CHANNEL=+15551234567
 export SIGNAL_ALLOWED_USERS=+15551234567
 export SIGNAL_GROUP_ALLOWED_USERS=groupIdBase64
+export WHATSAPP_CLOUD_PHONE_NUMBER_ID=123456789012345
+export WHATSAPP_CLOUD_ACCESS_TOKEN=EAA...
+export WHATSAPP_CLOUD_APP_SECRET=xxx
+export WHATSAPP_CLOUD_VERIFY_TOKEN=choose-a-long-random-token
+export WHATSAPP_CLOUD_HOME_CHANNEL=15551234567
+export WHATSAPP_CLOUD_ALLOWED_USERS=15551234567,15557654321
+export WHATSAPP_CLOUD_PUBLIC_URL=https://your-tunnel.example.com
+export WHATSAPP_CLOUD_API_VERSION=v20.0
+export MATRIX_HOMESERVER=https://matrix.example.org
+export MATRIX_ACCESS_TOKEN=syt_...
+export MATRIX_USER_ID=@sanook:matrix.example.org
+export MATRIX_HOME_ROOM='!abc123:matrix.example.org'
+export MATRIX_ALLOWED_USERS=@alice:matrix.org,@bob:matrix.org
+export MATRIX_ALLOWED_ROOMS='!abc123:matrix.example.org,!ops:matrix.example.org'
+export MATRIX_REQUIRE_MENTION=true
+export MATRIX_FREE_RESPONSE_ROOMS='!free:matrix.example.org'
 export WEBHOOK_ENABLED=true
 export WEBHOOK_SECRET=xxx
 export WEBHOOK_PUBLIC_URL=https://your-tunnel.example.com
@@ -306,11 +354,19 @@ sanook gateway run
 
 Messaging channels are **fail-closed** by default: configure a home target or allowlist before accepting remote users, and internal errors are redacted before they reach chat surfaces. See [Security](#security).
 
-Inside Telegram/Discord/Slack/Email/LINE/SMS/ntfy/Signal conversations, `/new` or `/reset` clears that platform/target history, `/status` shows the current messaging session, and `/help` lists the supported chat commands.
+Inside Telegram/Discord/Slack/Mattermost/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix conversations, `/new` or `/reset` clears that platform/target history, `/status` shows the current messaging session, and `/help` lists the supported chat commands. Matrix and Mattermost also accept `!new`, `!reset`, `!status`, and `!help` aliases for clients that reserve `/`.
 
 For ntfy, the topic is the identity and trust boundary: use a long random topic, a private/reserved topic with `NTFY_TOKEN`, or a self-hosted ntfy server with ACLs. Sanook authorizes inbound ntfy messages by topic, not by the user-controlled notification title.
 
+For Mattermost, use a dedicated bot account/token, set `MATTERMOST_ALLOWED_USERS` to Mattermost user IDs, and optionally restrict shared channels with `MATTERMOST_ALLOWED_CHANNELS`. DMs respond without a mention; public/private channels require `@botname` unless `MATTERMOST_REQUIRE_MENTION=false` or the channel is listed in `MATTERMOST_FREE_RESPONSE_CHANNELS`. Cron/send uses `MATTERMOST_HOME_CHANNEL`, `mattermost:channel_id`, or `mattermost:channel_id:root_post_id` for a threaded reply.
+
+For Home Assistant, create a Long-Lived Access Token, keep `HASS_WATCH_DOMAINS`/`HASS_WATCH_ENTITIES` narrow, and use `HASS_IGNORE_ENTITIES` plus `HASS_COOLDOWN_SECONDS` for noisy sensors. No state events are forwarded unless a watch filter or `HASS_WATCH_ALL=true` is configured. Conversation tools can read entities/states/services, while `ha_call_service` is approval-gated and blocks unsafe domains such as `shell_command`, `command_line`, `python_script`, `pyscript`, `hassio`, and `rest_command`.
+
 For Signal, run `signal-cli daemon --http 127.0.0.1:8080` locally, set `SIGNAL_ACCOUNT`, and keep `SIGNAL_ALLOWED_USERS` or `SIGNAL_HOME_CHANNEL` set so inbound DMs fail closed. Groups are disabled unless explicitly listed in `SIGNAL_GROUP_ALLOWED_USERS` or set to `*`; group send targets use `signal:group:<groupId>`.
+
+For WhatsApp Cloud inbound messages, expose the gateway through a tunnel and set the Meta webhook callback URL to `https://<your-tunnel>/whatsapp/webhook`. Use the generated verify token for Meta's GET challenge, keep `WHATSAPP_CLOUD_APP_SECRET` set so Sanook can validate `X-Hub-Signature-256`, and check `GET /whatsapp/webhook/health` first. Send targets use country-code digits without `+` (for example `whatsapp:15551234567`), and normal WhatsApp 24-hour customer-service window limits still apply.
+
+For Matrix, create a bot account on your homeserver, copy an access token from Element (or use `MATRIX_USER_ID` + `MATRIX_PASSWORD`), invite the bot to rooms, and keep `MATRIX_ALLOWED_USERS` set so inbound users fail closed. DMs respond without a mention; shared rooms require a bot mention unless `MATRIX_REQUIRE_MENTION=false` or the room is listed in `MATRIX_FREE_RESPONSE_ROOMS`. Cron/send uses `MATRIX_HOME_ROOM` or an explicit target like `matrix:!abc123:matrix.example.org`.
 
 For LINE inbound messages, expose the gateway through a tunnel and set the LINE Developers Console webhook URL to `https://<your-tunnel>/line/webhook`. Check the tunnel with `GET /line/webhook/health` first.
 
@@ -456,7 +512,11 @@ Sanook runs shell commands and edits files, so safety is built into the core rat
 - **Email** — use a dedicated mailbox and app password; store only app passwords, require an allowlist/home address by default, and keep SMTP/IMAP credentials in `~/.sanook/gateway/config.json` (chmod 600).
 - **LINE** — use a long-lived Messaging API channel access token, keep a home/allowed target list by default, and store the token/secret in `~/.sanook/gateway/config.json` (chmod 600).
 - **ntfy** — treat the topic as a shared secret unless you protect it with ntfy auth/ACLs; Sanook requires `NTFY_ALLOWED_USERS`/home topic or `NTFY_ALLOW_ALL_USERS` before subscribing.
+- **Mattermost** — use a dedicated bot token, require `MATTERMOST_ALLOWED_USERS` by default, optionally restrict channels with `MATTERMOST_ALLOWED_CHANNELS`, and keep public/private channels on mention-only mode unless you deliberately list free-response channels.
+- **Home Assistant** — use a dedicated Long-Lived Access Token, keep watch filters narrow, leave `HASS_WATCH_ALL` off by default, and require approval for device-control calls through `ha_call_service`.
 - **Signal** — keep `signal-cli` HTTP bound to loopback, require DM allowlists by default, and enable groups only with `SIGNAL_GROUP_ALLOWED_USERS` (or `*` deliberately).
+- **WhatsApp Cloud** — use a dedicated Meta app/access token, keep `WHATSAPP_CLOUD_APP_SECRET` and a long verify token configured, require home/allowed wa_ids by default, and verify every inbound POST with `X-Hub-Signature-256`.
+- **Matrix** — use a dedicated bot account/access token, require `MATRIX_ALLOWED_USERS` by default, optionally restrict shared rooms with `MATRIX_ALLOWED_ROOMS`, and treat password login as a convenience fallback rather than the preferred production mode.
 
 Hardened across several adversarial security reviews covering command injection, prompt injection, concurrency, and credential leakage.
 

@@ -22,6 +22,15 @@ describe('messaging targets', () => {
       address: 'C01ABC',
       thread: '1718584242.000100',
     });
+    expect(parseSendTarget('mattermost:chan-home:root-post-1')).toMatchObject({
+      platform: 'mattermost',
+      address: 'chan-home',
+      thread: 'root-post-1',
+    });
+    expect(parseSendTarget('homeassistant:sanook_agent')).toMatchObject({
+      platform: 'homeassistant',
+      address: 'sanook_agent',
+    });
     expect(parseSendTarget('email:owner@example.com')).toMatchObject({
       platform: 'email',
       address: 'owner@example.com',
@@ -46,6 +55,22 @@ describe('messaging targets', () => {
       platform: 'signal',
       address: 'group:abcd1234',
     });
+    expect(parseSendTarget('whatsapp:+1 (555) 123-4567')).toMatchObject({
+      platform: 'whatsapp',
+      address: '15551234567',
+    });
+    expect(parseSendTarget('matrix:!roomid:matrix.org')).toMatchObject({
+      platform: 'matrix',
+      address: '!roomid:matrix.org',
+    });
+    expect(parseSendTarget('matrix:#alias:matrix.org')).toMatchObject({
+      platform: 'matrix',
+      address: '#alias:matrix.org',
+    });
+    expect(parseSendTarget('matrix:!roomid:matrix.org:8448')).toMatchObject({
+      platform: 'matrix',
+      address: '!roomid:matrix.org:8448',
+    });
   });
 
   it('rejects ambiguous or partial numeric targets', () => {
@@ -58,9 +83,13 @@ describe('messaging targets', () => {
     expect(() => parseSendTarget('telegram:9007199254740993')).toThrow('ใหญ่เกินไป');
     expect(() => parseSendTarget('email:owner@example.com:thread')).toThrow('ไม่รองรับ thread');
     expect(() => parseSendTarget('line:U1234567890abcdef:thread')).toThrow('ไม่รองรับ thread');
+    expect(() => parseSendTarget('homeassistant:sanook_agent:thread')).toThrow('ไม่รองรับ thread');
     expect(() => parseSendTarget('sms:+15551234567:thread')).toThrow('ไม่รองรับ thread');
     expect(() => parseSendTarget('ntfy:sanook-topic:thread')).toThrow('ไม่รองรับ thread');
     expect(() => parseSendTarget('signal:+15551234567:thread')).toThrow('ไม่รองรับ thread');
+    expect(() => parseSendTarget('whatsapp:+15551234567:thread')).toThrow('ไม่รองรับ thread');
+    expect(() => parseSendTarget('whatsapp:not-a-number')).toThrow('wa_id');
+    expect(() => parseSendTarget('matrix:not-a-room')).toThrow('Matrix target');
   });
 
   it('formats targets for user-facing output', () => {
@@ -86,7 +115,7 @@ describe('messaging targets', () => {
     expect(targets[0]).toMatchObject({ target: 'telegram', configured: false });
   });
 
-  it('lists configured Discord, Slack, Email, LINE, SMS, ntfy, and Signal targets', () => {
+  it('lists configured Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, and Matrix targets', () => {
     expect(
       listConfiguredTargets({
         discord: {
@@ -95,6 +124,20 @@ describe('messaging targets', () => {
           allowedChannelIds: ['111111111111111111'],
         },
         slack: { botToken: 'xoxb-token', defaultChannelId: 'C01ABC', allowedChannelIds: ['C01ABC', 'C02DEF'] },
+        mattermost: {
+          serverUrl: 'https://mm.example.com',
+          token: 'mattermost-token',
+          homeChannel: 'chan-home',
+          homeChannelName: 'Owner',
+          allowedChannels: ['chan-home', 'chan-ops'],
+        },
+        homeassistant: {
+          url: 'http://ha.local:8123',
+          token: 'hass-token',
+          homeChannel: 'sanook_agent',
+          homeChannelName: 'Owner',
+          watchDomains: ['light'],
+        },
         email: {
           address: 'bot@example.com',
           password: 'email-password',
@@ -132,6 +175,20 @@ describe('messaging targets', () => {
           allowedUsers: ['+15557654321'],
           groupAllowedUsers: ['group:abcd1234', '*'],
         },
+        whatsapp: {
+          phoneNumberId: '1234567890',
+          accessToken: 'whatsapp-token',
+          homeChannel: '+15551234567',
+          homeChannelName: 'Owner',
+          allowedUsers: ['+15557654321'],
+        },
+        matrix: {
+          homeserver: 'https://matrix.example.org',
+          accessToken: 'matrix-token',
+          homeRoom: '!home:matrix.example.org',
+          homeRoomName: 'Owner',
+          allowedRooms: ['!home:matrix.example.org', '!ops:matrix.example.org'],
+        },
       }).map((t) => t.target),
     ).toEqual([
       'discord',
@@ -139,6 +196,9 @@ describe('messaging targets', () => {
       'slack',
       'slack:C01ABC',
       'slack:C02DEF',
+      'mattermost',
+      'mattermost:chan-ops',
+      'homeassistant',
       'email',
       'email:owner@example.com',
       'line',
@@ -153,6 +213,10 @@ describe('messaging targets', () => {
       'signal',
       'signal:+15557654321',
       'signal:group:abcd1234',
+      'whatsapp',
+      'whatsapp:15557654321',
+      'matrix',
+      'matrix:!ops:matrix.example.org',
     ]);
   });
 });

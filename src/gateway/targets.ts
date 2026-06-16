@@ -2,14 +2,20 @@ import type { GatewayConfig } from './config.js';
 import {
   resolveDiscordConfig,
   resolveEmailConfig,
+  resolveHomeAssistantConfig,
   resolveLineConfig,
+  resolveMattermostConfig,
+  resolveMatrixConfig,
   resolveNtfyConfig,
   resolveSignalConfig,
   resolveSlackConfig,
   resolveSmsConfig,
   resolveTelegramConfig,
+  resolveTeamsConfig,
+  resolveWhatsAppConfig,
 } from './config.js';
 import { normalizeSignalId, redactSignalId } from './signal.js';
+import { normalizeWhatsAppId, redactWhatsAppId } from './whatsapp.js';
 
 export interface SendTarget {
   platform: string;
@@ -33,10 +39,22 @@ export function parseNumericId(raw: string, label: string): number {
 }
 
 export function parseSendTarget(raw: string): SendTarget {
-  const [rawPlatform, rawAddress, rawThread, ...extra] = raw.trim().split(':');
+  const trimmed = raw.trim();
+  const firstColon = trimmed.indexOf(':');
+  const rawPlatform = firstColon === -1 ? trimmed : trimmed.slice(0, firstColon);
   const platform = rawPlatform?.trim().toLowerCase();
-  let address: string | undefined = rawAddress?.trim();
-  let thread: string | undefined = rawThread?.trim();
+  const remainder = firstColon === -1 ? undefined : trimmed.slice(firstColon + 1);
+  let address: string | undefined;
+  let thread: string | undefined;
+  let extra: string[] = [];
+  if (platform === 'matrix' || platform === 'teams') {
+    address = remainder?.trim();
+  } else if (remainder != null) {
+    const parts = remainder.split(':');
+    address = parts[0]?.trim();
+    thread = parts[1]?.trim();
+    extra = parts.slice(2);
+  }
   if (!platform || extra.length) {
     throw new Error('target ต้องเป็น platform, platform:chat_id, หรือ platform:chat_id:thread_id');
   }
@@ -44,13 +62,33 @@ export function parseSendTarget(raw: string): SendTarget {
     address = `group:${thread}`;
     thread = undefined;
   }
-  if (!['telegram', 'discord', 'slack', 'email', 'line', 'sms', 'ntfy', 'signal'].includes(platform)) {
-    throw new Error('platform ต้องเป็น telegram, discord, slack, email, line, sms, ntfy, หรือ signal');
+  if (
+    ![
+      'telegram',
+      'discord',
+      'slack',
+      'mattermost',
+      'homeassistant',
+      'email',
+      'line',
+      'sms',
+      'ntfy',
+      'signal',
+      'whatsapp',
+      'matrix',
+      'teams',
+    ].includes(
+      platform,
+    )
+  ) {
+    throw new Error(
+      'platform ต้องเป็น telegram, discord, slack, mattermost, homeassistant, email, line, sms, ntfy, signal, whatsapp, matrix, หรือ teams',
+    );
   }
   if (address === '' || thread === '') {
     throw new Error('target ต้องเป็น platform, platform:chat_id, หรือ platform:chat_id:thread_id');
   }
-  if (thread && !['telegram', 'discord', 'slack'].includes(platform)) {
+  if (thread && !['telegram', 'discord', 'slack', 'mattermost'].includes(platform)) {
     throw new Error(`${platform} target ไม่รองรับ thread segment`);
   }
   const target: SendTarget = { platform, address, thread };
@@ -59,6 +97,14 @@ export function parseSendTarget(raw: string): SendTarget {
     if (thread) target.threadId = parseNumericId(thread, 'thread_id');
   }
   if (platform === 'signal' && address) target.address = normalizeSignalId(address);
+  if (platform === 'whatsapp' && address) {
+    const waId = normalizeWhatsAppId(address);
+    if (!waId) throw new Error('WhatsApp target ต้องเป็น wa_id ตัวเลขพร้อม country code เช่น whatsapp:15551234567');
+    target.address = waId;
+  }
+  if (platform === 'matrix' && address && !/^[!#][^:\s]+:[^:\s]+(?::\d+)?$/.test(address)) {
+    throw new Error('Matrix target ต้องเป็น room id/alias เช่น matrix:!abc123:matrix.org');
+  }
   return target;
 }
 
@@ -160,6 +206,58 @@ export function listConfiguredTargets(
       });
     }
   }
+  const mattermost = resolveMattermostConfig(config, env);
+  if (mattermost.serverUrl || mattermost.token || mattermost.homeChannel || mattermost.allowedChannels.length) {
+    if (mattermost.homeChannel) {
+      out.push({
+        platform: 'mattermost',
+        address: mattermost.homeChannel,
+        target: 'mattermost',
+        label: `Mattermost ${mattermost.homeChannelName ?? 'home'} (${mattermost.homeChannel})`,
+        configured: Boolean(mattermost.serverUrl && mattermost.token),
+      });
+    }
+    const seen = new Set<string>([mattermost.homeChannel].filter((v): v is string => Boolean(v)));
+    for (const channel of mattermost.allowedChannels) {
+      if (seen.has(channel)) continue;
+      seen.add(channel);
+      out.push({
+        platform: 'mattermost',
+        address: channel,
+        target: `mattermost:${channel}`,
+        label: `Mattermost channel ${channel}`,
+        configured: Boolean(mattermost.serverUrl && mattermost.token),
+      });
+    }
+    if (!mattermost.homeChannel && !mattermost.allowedChannels.length) {
+      out.push({
+        platform: 'mattermost',
+        target: 'mattermost',
+        label: 'Mattermost configured but no home/allowed channel',
+        configured: false,
+      });
+    }
+  }
+  const homeassistant = resolveHomeAssistantConfig(config, env);
+  if (homeassistant.token || homeassistant.homeChannel || homeassistant.url !== 'http://homeassistant.local:8123') {
+    if (homeassistant.homeChannel) {
+      out.push({
+        platform: 'homeassistant',
+        address: homeassistant.homeChannel,
+        target: 'homeassistant',
+        label: `Home Assistant ${homeassistant.homeChannelName ?? 'notification'} (${homeassistant.homeChannel})`,
+        configured: Boolean(homeassistant.token),
+      });
+    } else {
+      out.push({
+        platform: 'homeassistant',
+        target: 'homeassistant',
+        label: 'Home Assistant configured but no home notification id',
+        configured: Boolean(homeassistant.token),
+      });
+    }
+  }
+
   const email = resolveEmailConfig(config, env);
   if (email.address && email.smtpHost && email.password) {
     if (email.homeAddress) {
@@ -323,6 +421,96 @@ export function listConfiguredTargets(
         configured: false,
       });
     }
+  }
+  const whatsapp = resolveWhatsAppConfig(config, env);
+  if (whatsapp.phoneNumberId || whatsapp.accessToken || whatsapp.homeChannel || whatsapp.allowedUsers.length) {
+    if (whatsapp.homeChannel) {
+      const home = normalizeWhatsAppId(whatsapp.homeChannel) ?? whatsapp.homeChannel;
+      out.push({
+        platform: 'whatsapp',
+        address: home,
+        target: 'whatsapp',
+        label: `WhatsApp ${whatsapp.homeChannelName ?? 'home'} (${redactWhatsAppId(home)})`,
+        configured: Boolean(whatsapp.phoneNumberId && whatsapp.accessToken),
+      });
+    }
+    const seen = new Set<string>([normalizeWhatsAppId(whatsapp.homeChannel)].filter((v): v is string => Boolean(v)));
+    for (const id of whatsapp.allowedUsers.map(normalizeWhatsAppId).filter((v): v is string => Boolean(v))) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({
+        platform: 'whatsapp',
+        address: id,
+        target: `whatsapp:${id}`,
+        label: `WhatsApp ${redactWhatsAppId(id)}`,
+        configured: Boolean(whatsapp.phoneNumberId && whatsapp.accessToken),
+      });
+    }
+    if (!whatsapp.homeChannel && !whatsapp.allowedUsers.length) {
+      out.push({
+        platform: 'whatsapp',
+        target: 'whatsapp',
+        label: 'WhatsApp configured but no home/allowed user',
+        configured: false,
+      });
+    }
+  }
+  const matrix = resolveMatrixConfig(config, env);
+  if (matrix.homeserver || matrix.accessToken || matrix.userId || matrix.homeRoom || matrix.allowedRooms.length) {
+    if (matrix.homeRoom) {
+      out.push({
+        platform: 'matrix',
+        address: matrix.homeRoom,
+        target: 'matrix',
+        label: `Matrix ${matrix.homeRoomName ?? 'home'} (${matrix.homeRoom})`,
+        configured: Boolean(matrix.homeserver && (matrix.accessToken || (matrix.userId && matrix.password))),
+      });
+    }
+    const seen = new Set<string>([matrix.homeRoom].filter((v): v is string => Boolean(v)));
+    for (const room of matrix.allowedRooms) {
+      if (seen.has(room)) continue;
+      seen.add(room);
+      out.push({
+        platform: 'matrix',
+        address: room,
+        target: `matrix:${room}`,
+        label: `Matrix room ${room}`,
+        configured: Boolean(matrix.homeserver && (matrix.accessToken || (matrix.userId && matrix.password))),
+      });
+    }
+    if (!matrix.homeRoom && !matrix.allowedRooms.length) {
+      out.push({
+        platform: 'matrix',
+        target: 'matrix',
+        label: 'Matrix configured but no home/allowed room',
+        configured: false,
+      });
+    }
+  }
+  const teams = resolveTeamsConfig(config, env);
+  if (
+    teams.incomingWebhookUrl ||
+    teams.graphAccessToken ||
+    teams.chatId ||
+    teams.homeChannel ||
+    (teams.teamId && teams.channelId) ||
+    teams.clientId
+  ) {
+    const configured =
+      teams.deliveryMode === 'graph'
+        ? Boolean(teams.graphAccessToken && (teams.chatId || teams.homeChannel || (teams.teamId && teams.channelId)))
+        : Boolean(teams.incomingWebhookUrl);
+    const address =
+      teams.homeChannel ||
+      teams.chatId ||
+      (teams.teamId && teams.channelId ? `team/${teams.teamId}/channel/${teams.channelId}` : undefined);
+    out.push({
+      platform: 'teams',
+      address,
+      target: 'teams',
+      label: `Microsoft Teams ${teams.homeChannelName ?? (address ? `target (${address})` : 'configured')}`,
+      configured,
+    });
   }
   return out;
 }

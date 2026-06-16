@@ -20,6 +20,12 @@ function isSearchSource(v: string): v is SearchSource {
   return (SEARCH_SOURCES as readonly string[]).includes(v);
 }
 
+function parsePositiveInteger(raw: string | undefined): number | undefined {
+  if (!raw || !/^[1-9]\d*$/.test(raw)) return undefined;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) ? n : undefined;
+}
+
 export function parseSearchArgs(args: string[]): SearchArgsResult {
   const queryParts: string[] = [];
   let mode: SearchMode = 'auto';
@@ -34,8 +40,8 @@ export function parseSearchArgs(args: string[]): SearchArgsResult {
       mode = v;
     } else if (a === '--limit') {
       const raw = args[++i];
-      const n = Number.parseInt(raw ?? '', 10);
-      if (!Number.isInteger(n) || n <= 0) return { ok: false, message: '--limit ต้องเป็น integer บวก เช่น 8' };
+      const n = parsePositiveInteger(raw);
+      if (n === undefined) return { ok: false, message: '--limit ต้องเป็น integer บวก เช่น 8' };
       limit = n;
     } else if (a === '--source' || a === '--sources') {
       const raw = args[++i];

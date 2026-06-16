@@ -130,6 +130,19 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
     return send(res, 200, { status: 'ok', platform: 'sms' });
   }
 
+  if (req.method === 'GET' && url.pathname === '/whatsapp/webhook/health') {
+    const { readGatewayConfig, resolveWhatsAppConfig } = await import('./config.js');
+    const whatsapp = resolveWhatsAppConfig(await readGatewayConfig());
+    return send(res, 200, {
+      status: 'ok',
+      platform: 'whatsapp',
+      phone_number_id_configured: Boolean(whatsapp.phoneNumberId),
+      access_token_configured: Boolean(whatsapp.accessToken),
+      app_secret_configured: Boolean(whatsapp.appSecret),
+      verify_token_configured: Boolean(whatsapp.verifyToken),
+    });
+  }
+
   if (req.method === 'GET' && url.pathname === '/webhooks/health') {
     return send(res, 200, { status: 'ok', platform: 'webhook' });
   }
@@ -166,6 +179,30 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
       onLog: opts.onLog,
     });
     return sendRaw(res, result.status, result.contentType, result.body);
+  }
+
+  if (req.method === 'GET' && url.pathname === '/whatsapp/webhook') {
+    const { readGatewayConfig, resolveWhatsAppConfig } = await import('./config.js');
+    const { handleWhatsAppChallenge } = await import('./whatsapp.js');
+    const result = handleWhatsAppChallenge(resolveWhatsAppConfig(await readGatewayConfig()), url.searchParams);
+    return sendRaw(res, result.status, result.contentType, result.body);
+  }
+
+  if (req.method === 'POST' && url.pathname === '/whatsapp/webhook') {
+    const rawBody = await readRawBody(req);
+    const signature = Array.isArray(req.headers['x-hub-signature-256']) ? req.headers['x-hub-signature-256'][0] : req.headers['x-hub-signature-256'];
+    const { readGatewayConfig, resolveWhatsAppConfig } = await import('./config.js');
+    const { handleWhatsAppWebhook } = await import('./whatsapp.js');
+    const result = await handleWhatsAppWebhook({
+      rawBody,
+      signature,
+      config: resolveWhatsAppConfig(await readGatewayConfig()),
+      model: opts.defaultModel,
+      budgetUsd: opts.budgetUsd,
+      permissionMode: opts.permissionMode ?? 'ask',
+      onLog: opts.onLog,
+    });
+    return send(res, result.status, result.body);
   }
 
   if (req.method === 'POST' && url.pathname.startsWith('/webhooks/')) {
