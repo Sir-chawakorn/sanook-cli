@@ -60,6 +60,36 @@ describe('permission gate', () => {
   });
   it('block git reset --hard', () => expect(checkBash('git reset --hard HEAD~2').ok).toBe(false));
   it('block git push --force', () => expect(checkBash('git push origin main --force').ok).toBe(false));
+  it('allow reading .env.example documentation through bash guard', () => {
+    expect(checkBash('cat .env.example').ok).toBe(true);
+    expect(checkBash("sed -n '1,20p' .env.example").ok).toBe(true);
+    expect(checkBash('cat <.env.example').ok).toBe(true);
+    expect(checkBash('grep API_KEY .env.example').ok).toBe(true);
+  });
+  it('block reading secret .env variants through bash guard', () => {
+    expect(checkBash('cat .env').ok).toBe(false);
+    expect(checkBash('cat .env/secret').ok).toBe(false);
+    expect(checkBash('cat config/.env.local').ok).toBe(false);
+    expect(checkBash('cat config/.env.local/API_KEY').ok).toBe(false);
+    expect(checkBash('cat .env.example.backup').ok).toBe(false);
+    expect(checkBash('cat config/.env.example.backup/value').ok).toBe(false);
+    expect(checkBash('cat <.env').ok).toBe(false);
+    expect(checkBash('sed -n 1p <.env.local').ok).toBe(false);
+    expect(checkBash('grep API_KEY .env').ok).toBe(false);
+    expect(checkBash('rg API_KEY config/.env.local').ok).toBe(false);
+    expect(checkBash('echo $(cat .env)').ok).toBe(false);
+    expect(checkBash('echo `cat .env.local`').ok).toBe(false);
+    expect(checkBash('if cat .env; then echo ok; fi').ok).toBe(false);
+    expect(checkBash('while cat .env.local; do break; done').ok).toBe(false);
+    expect(checkBash('time cat .env').ok).toBe(false);
+    expect(checkBash('command cat .env').ok).toBe(false);
+    expect(checkBash("grep -E 'API_KEY|TOKEN' .env").ok).toBe(false);
+    expect(checkBash("awk 'BEGIN { print \"a;b\" } { print }' .env.local").ok).toBe(false);
+    expect(checkBash('env LC_ALL=C cat .env').ok).toBe(false);
+    expect(checkBash('cat \\.env').ok).toBe(false);
+    expect(checkBash('echo ok\ncat .env').ok).toBe(false);
+    expect(checkBash('echo ok\r\ncat .env.local').ok).toBe(false);
+  });
   it('allow safe cmd', () => expect(checkBash('ls -la && grep foo bar').ok).toBe(true));
   it('block write to .env', async () => expect((await checkWritePath('.env')).ok).toBe(false));
   it('block write inside .git', async () => expect((await checkWritePath('repo/.git/config')).ok).toBe(false));

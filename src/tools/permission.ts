@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
 import { realpath, stat } from 'node:fs/promises';
-import { basename, dirname, resolve, join, sep } from 'node:path';
+import { dirname, resolve, join, sep } from 'node:path';
 import { getBrainPath } from '../memory.js';
 import { BRAND_ENV, envFlag } from '../brand.js';
 import { agentCwd } from '../agentContext.js';
@@ -10,7 +10,9 @@ import { agentCwd } from '../agentContext.js';
 const DESTRUCTIVE_CMD =
   /(\bgit\s+reset\s+--hard\b|\bgit\s+push\b.*--force|\bmkfs\b|\bdd\s+if=|:\(\)\s*\{|\bchmod\s+-R\s+777\b|>\s*\/dev\/sd|\bsudo\b|\bcrontab\b)/i;
 const PROTECTED_CMD_PATH =
-  /(\$HOME|~)?\/?(\.ssh|\.aws|\.gnupg|\.sanook)(\/|\b)|(^|\s)(cat|less|more|sed|awk|tail|head)\s+[^|;&]*\.env(\.|\b)/i;
+  /(\$HOME|~)?\/?(\.ssh|\.aws|\.gnupg|\.sanook)(\/|\b)/i;
+const ENV_READ_CMD =
+  /(?:^|[\r\n;&|]\s*|\$\(\s*|`\s*)(?:(?:if|then|elif|while|until|do|time|command|builtin|exec)\s+)*(?:env\s+(?:-\S+\s+)*(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*)?(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*(cat|less|more|sed|awk|tail|head|grep|rg)\b/gi;
 
 const HOME = homedir();
 // ไฟล์ที่ห้ามเขียน (persistence backdoor): shell rc, git/npm config, ~/.sanook (token/mcp/hooks)
@@ -34,11 +36,76 @@ function hasRmRecursiveForce(cmd: string): boolean {
   return false;
 }
 
+function protectedEnvToken(token: string): boolean {
+  const clean = token
+    .trim()
+    .replace(/^['"`]+|['"`]+$/g, '')
+    .replace(/\\(.)/g, '$1')
+    .replace(/^\d*(?:<|>)+/, '')
+    .replace(/[),\]}]+$/g, '');
+  if (!clean || clean.startsWith('-')) return false;
+  return hasProtectedEnvSegment(clean);
+}
+
+function hasProtectedEnvSegment(path: string): boolean {
+  return path.split(/[\\/]+/).some((part) => part.startsWith('.env') && part !== '.env.example');
+}
+
+function shellishArgsAfter(cmd: string, start: number): string[] {
+  const args: string[] = [];
+  let token = '';
+  let quote = '';
+  let escaping = false;
+
+  for (let i = start; i < cmd.length; i += 1) {
+    const ch = cmd[i];
+    if (escaping) {
+      token += ch;
+      escaping = false;
+      continue;
+    }
+    if (ch === '\\' && quote !== "'") {
+      escaping = true;
+      token += ch;
+      continue;
+    }
+    if (quote) {
+      token += ch;
+      if (ch === quote) quote = '';
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      token += ch;
+      continue;
+    }
+    if (ch === '`' || ch === ';' || ch === '&' || ch === '|') break;
+    if (/\s/.test(ch)) {
+      if (token) {
+        args.push(token);
+        token = '';
+      }
+      continue;
+    }
+    token += ch;
+  }
+  if (token) args.push(token);
+  return args;
+}
+
+function readsProtectedEnvFile(cmd: string): boolean {
+  for (const match of cmd.matchAll(ENV_READ_CMD)) {
+    const args = shellishArgsAfter(cmd, match.index + match[0].length);
+    if (args.some(protectedEnvToken)) return true;
+  }
+  return false;
+}
+
 export function checkBash(cmd: string): GateResult {
   if (hasRmRecursiveForce(cmd) || DESTRUCTIVE_CMD.test(cmd)) {
     return { ok: false, reason: `คำสั่งทำลายล้าง/irreversible ถูกปฏิเสธ: "${cmd}"` };
   }
-  if (PROTECTED_CMD_PATH.test(cmd)) {
+  if (PROTECTED_CMD_PATH.test(cmd) || readsProtectedEnvFile(cmd)) {
     return { ok: false, reason: `คำสั่งที่อ่าน/แตะ path ลับถูกปฏิเสธ: "${cmd}"` };
   }
   return { ok: true };
@@ -83,8 +150,7 @@ function inside(abs: string, root: string): boolean {
 function protectedSegment(abs: string): boolean {
   const parts = abs.split(/[\\/]+/);
   if (parts.some((p) => PROTECTED_SEGMENTS.has(p))) return true;
-  const base = basename(abs);
-  return base.startsWith('.env') && base !== '.env.example';
+  return hasProtectedEnvSegment(abs);
 }
 
 async function checkPathScope(path: string, intent: 'read' | 'write'): Promise<GateResult> {
