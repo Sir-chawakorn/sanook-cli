@@ -21,8 +21,12 @@ export async function jsGrep(pattern: string, base: string, target: string): Pro
     return `ERROR: grep regex ไม่ถูกต้อง: "${pattern}"`;
   }
   const root = isAbsolute(target) ? target : join(base, target);
+  const rootGuard = await checkReadPath(root);
+  if (!rootGuard.ok) return `BLOCKED: ${rootGuard.reason}`;
   const out: string[] = [];
   const scanFile = async (full: string): Promise<void> => {
+    const guard = await checkReadPath(full);
+    if (!guard.ok) return;
     let s;
     try {
       s = await stat(full);

@@ -1,6 +1,7 @@
 # AGENTS — Operating Config for "{{VAULT_NAME}}"
 
 > สำหรับ Codex / Cursor / agent อื่นๆ — รัฐธรรมนูญเต็มอยู่ที่ **`CLAUDE.md`** (agent-agnostic)
+> Hermes CLI ใช้ **`HERMES.md`** แยกต่างหาก เพราะ Hermes ให้ priority ไฟล์นั้นก่อน `AGENTS.md`
 
 ## Identity
 - AI = **{{AI_NAME}}** ({{AI_PRONOUN}}) · เรียกเจ้าของ **{{OWNER_NAME}}** · ภาษา {{LANGUAGE}} · โทน {{TONE}} · Autonomy {{AUTONOMY}}

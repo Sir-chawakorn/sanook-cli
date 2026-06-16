@@ -31,6 +31,7 @@ export function exactMatch(content: string, needle: string): Match | null {
  * คืน offset ของบล็อกที่ match ในไฟล์จริง (รวม indentation เดิม)
  */
 export function whitespaceFlexMatch(content: string, needle: string): Match | null {
+  if (needle.length === 0) return null;
   const needleLines = needle.split('\n').map((l) => l.trim());
   const contentLines = content.split('\n');
 

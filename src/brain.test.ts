@@ -57,6 +57,7 @@ describe('scaffoldBrain', () => {
       'CLAUDE.md',
       'GEMINI.md',
       'AGENTS.md',
+      'HERMES.md',
       'Shared/AI-Context-Index.md',
       'Shared/Operating-State/current-state.md',
       'Templates/session.md',
@@ -208,7 +209,7 @@ describe('scaffoldBrain', () => {
 
   it('bundled markdown ทุกไฟล์มี purpose สำหรับ AI และ graph link ที่เหมาะสม', async () => {
     const templateRoot = join(process.cwd(), 'second-brain');
-    const rootFilesWithoutUp = new Set(['Home.md', 'README.md', 'CLAUDE.md', 'GEMINI.md', 'AGENTS.md']);
+    const rootFilesWithoutUp = new Set(['Home.md', 'README.md', 'CLAUDE.md', 'GEMINI.md', 'AGENTS.md', 'HERMES.md']);
     const markdownFiles = (await walkFiles(templateRoot)).filter((f) => f.endsWith('.md'));
     expect(markdownFiles.length).toBeGreaterThan(90);
     for (const f of markdownFiles) {
@@ -227,7 +228,7 @@ describe('scaffoldBrain', () => {
   it('แทน placeholder หมด (ไม่เหลือ {{KEY}} ของเรา) + owner ถูกแทน', async () => {
     const target = join(dir, 'vault');
     await scaffoldBrain(target, CFG);
-    for (const f of ['Home.md', 'USER.md', 'CLAUDE.md', 'Shared/AI-Context-Index.md', 'Shared/Core-Facts/protected-facts.md']) {
+    for (const f of ['Home.md', 'USER.md', 'CLAUDE.md', 'HERMES.md', 'Shared/AI-Context-Index.md', 'Shared/Core-Facts/protected-facts.md']) {
       const content = await readFile(join(target, f), 'utf8');
       expect(content).not.toMatch(/\{\{[A-Z_]+\}\}/);
       expect(content).toContain('ปิ๊ก');
@@ -237,7 +238,7 @@ describe('scaffoldBrain', () => {
     expect(aiContext).toContain('AI Routing Contract');
     expect(aiContext).toContain('priority/current focus เปลี่ยน');
     expect(aiContext).toContain('session checkpoint / งานจบ');
-    for (const f of ['Home.md', 'README.md', 'CLAUDE.md', 'GEMINI.md', 'AGENTS.md']) {
+    for (const f of ['Home.md', 'README.md', 'CLAUDE.md', 'GEMINI.md', 'AGENTS.md', 'HERMES.md']) {
       const content = await readFile(join(target, f), 'utf8');
       expect(content, `${f} ไม่บอกให้ใช้ target _Index`).toContain('_Index');
       expect(content, `${f} ไม่บอก AI Routing Contract`).toContain('AI Routing Contract');

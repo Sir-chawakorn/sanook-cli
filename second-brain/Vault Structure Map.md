@@ -108,8 +108,9 @@ ai_surface: hot
 | `Shared/Assets/` | รูป/logo/binary | image/logo/asset | โน้ต .md |
 
 ### AI agent config / vendor (root-level)
-| Folder | Role | ใส่ที่นี่ | ห้ามใส่ |
+| Path | Role | ใส่ที่นี่ | ห้ามใส่ |
 |---|---|---|---|
+| `HERMES.md` | Hermes CLI context adapter | กฎย่อเฉพาะ `hermes` / `hermes chat` ที่ชี้กลับ `CLAUDE.md` | durable note หรือ gateway/desktop setup |
 | `.agents/` `.agents/skills/` | skill folders (SKILL.md) | SKILL.md ที่ agent โหลด on-demand | prose how-to (→Runbooks) |
 | `.agents/workflows/` | workflow guides | multi-step orchestration ที่ทำซ้ำ | one-off task |
 | `copilot/` | vendor export (review/promote) | export จาก Copilot | durable (promote เข้า durable layer) |

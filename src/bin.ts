@@ -101,11 +101,17 @@ const HELP = `${BRAND.productName} — a terminal AI coding agent (BYOK)
 usage:
   ${BRAND.cliName} "<task>"            run one task (headless)
   ${BRAND.cliName}                     interactive REPL
+  ${BRAND.cliName} setup [section]      setup wizard (model | gateway | tools | agent | brain)
+  ${BRAND.cliName} model                choose provider + model
   ${BRAND.cliName} --json "<task>"     headless, JSONL output (for CI/scripts)
   ${BRAND.cliName} update              update ${BRAND.cliName} to the latest npm release
   ${BRAND.cliName} doctor              ตรวจการติดตั้ง + วิธีแก้ PATH (เมื่อพิมพ์ "${BRAND.cliName}" แล้วไม่เจอ)
 
 gateway (อยู่ยาว 24/7 — HTTP loopback + cron):
+  ${BRAND.cliName} gateway setup telegram          ตั้งค่า Telegram token + allowlist
+  ${BRAND.cliName} gateway run [--port 8787]       เปิด gateway (เหมือน serve)
+  ${BRAND.cliName} gateway status                  ดู config/status gateway
+  ${BRAND.cliName} send --to telegram[:chat] "msg" ส่งข้อความออก platform โดยไม่เรียก LLM
   ${BRAND.cliName} serve [--port 8787]            เปิด gateway (OpenAI-compat /v1/chat/completions + scheduler)
   ${BRAND.cliName} cron add "<when>" "<task>"     ตั้งงานล่วงหน้า (when: "every 30m" | "09:00" | ISO | now)
   ${BRAND.cliName} cron list                      ดู task ทั้งหมด
@@ -126,6 +132,8 @@ search (BM25 + optional BYOK semantic เหนือ vault + memory + sessions 
   ${BRAND.cliName} mcp serve                       expose brain เป็น MCP server (stdio) ให้ Claude Desktop/Cursor
 
 config & mcp:
+  ${BRAND.cliName} status                         ดู provider/key/brain/gateway status แบบ redacted
+  ${BRAND.cliName} tools                          ดู tool surface ที่ agent ใช้ได้
   ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/budgetUsd/permissionMode/cacheTtl/compaction/thinking/embeddingModel)
   ${BRAND.cliName} mcp [list|add <name> <cmd> …|remove <name>]   จัดการ MCP servers
   ${BRAND.cliName} trust [status|add|remove]      อนุญาต/ยกเลิก project .sanook mcp/hooks/skills/commands

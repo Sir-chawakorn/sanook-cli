@@ -20,6 +20,7 @@ export interface TelegramOpts {
   model: string;
   budgetUsd?: number;
   allowedChatIds?: number[]; // REQUIRED — ว่าง = ไม่ start (fail-closed)
+  allowWrite?: boolean;
   onLog?: (m: string) => void;
 }
 
@@ -31,7 +32,7 @@ async function getUpdates(token: string, offset: number, signal: AbortSignal): P
   return j.result ?? [];
 }
 
-async function sendMessage(token: string, chatId: number, text: string): Promise<void> {
+export async function sendTelegramMessage(token: string, chatId: number, text: string): Promise<void> {
   await fetch(api(token, 'sendMessage'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -90,18 +91,18 @@ export function startTelegram(opts: TelegramOpts): () => void {
           }
           if (!isAllowed(chat.id, opts.allowedChatIds)) {
             opts.onLog?.(`Telegram: ปฏิเสธ chat ${chat.id} (ไม่อยู่ใน allowlist)`);
-            await sendMessage(opts.token, chat.id, '⛔ ไม่ได้รับอนุญาตให้ใช้ bot นี้');
+            await sendTelegramMessage(opts.token, chat.id, '⛔ ไม่ได้รับอนุญาตให้ใช้ bot นี้');
             continue;
           }
           if (running.has(chat.id)) {
-            await sendMessage(opts.token, chat.id, '⏳ กำลังทำงานก่อนหน้าอยู่ รอสักครู่');
+            await sendTelegramMessage(opts.token, chat.id, '⏳ กำลังทำงานก่อนหน้าอยู่ รอสักครู่');
             continue;
           }
           running.add(chat.id);
           opts.onLog?.(`Telegram ${chat.id}: ${text.slice(0, 50)}`);
           void (async () => {
             try {
-              await sendMessage(opts.token, chat.id, '⏳ กำลังคิด…');
+              await sendTelegramMessage(opts.token, chat.id, '⏳ กำลังคิด…');
               const { text: out } = await runAgent({
                 model: opts.model,
                 prompt: text,
@@ -109,13 +110,13 @@ export function startTelegram(opts: TelegramOpts): () => void {
                 budgetUsd: opts.budgetUsd,
                 // remote surface: default ask-mode + ไม่มี approve fn → mutate tools (bash/write/edit/MCP-write)
                 // ถูกปฏิเสธอัตโนมัติ (single-factor chat-id ไม่พอจะให้ RCE). opt-in: TELEGRAM_ALLOW_WRITE=1
-                permissionMode: process.env.TELEGRAM_ALLOW_WRITE === '1' ? 'auto' : 'ask',
+                permissionMode: opts.allowWrite === true ? 'auto' : 'ask',
               });
-              await sendMessage(opts.token, chat.id, out || '(ไม่มีผลลัพธ์)');
+              await sendTelegramMessage(opts.token, chat.id, out || '(ไม่มีผลลัพธ์)');
             } catch (e) {
               // ไม่ส่ง internal detail ให้ remote — log ฝั่ง server เท่านั้น
               opts.onLog?.(`Telegram run error (${chat.id}): ${redactKey((e as Error).message)}`);
-              await sendMessage(opts.token, chat.id, 'เกิดข้อผิดพลาดภายใน');
+              await sendTelegramMessage(opts.token, chat.id, 'เกิดข้อผิดพลาดภายใน');
             } finally {
               running.delete(chat.id);
             }

@@ -26,6 +26,14 @@ describe('edit matcher (pure functions)', () => {
   it('exactMatch คืน null เมื่อ needle ว่าง (กัน infinite loop)', () => {
     expect(exactMatch('abc', '')).toBeNull();
   });
+  it('whitespaceFlexMatch คืน null เมื่อ needle ว่าง', () => {
+    expect(whitespaceFlexMatch('abc', '')).toBeNull();
+    expect(whitespaceFlexMatch('\n', '')).toBeNull();
+  });
+  it('findMatch คืน null เมื่อ needle ว่าง', () => {
+    expect(findMatch('abc', '')).toBeNull();
+    expect(findMatch('\n', '')).toBeNull();
+  });
   it('exactMatch คืน null เมื่อไม่เจอ', () => {
     expect(exactMatch('abc', 'xyz')).toBeNull();
   });
@@ -84,11 +92,30 @@ describe('permission gate', () => {
     expect(checkBash('time cat .env').ok).toBe(false);
     expect(checkBash('command cat .env').ok).toBe(false);
     expect(checkBash("grep -E 'API_KEY|TOKEN' .env").ok).toBe(false);
+    expect(checkBash('grep --file=.env haystack.txt').ok).toBe(false);
+    expect(checkBash("grep --file='.env' haystack.txt").ok).toBe(false);
+    expect(checkBash('grep -R --include=.env API_KEY .').ok).toBe(false);
+    expect(checkBash('grep -R --include=".env.local" API_KEY .').ok).toBe(false);
+    expect(checkBash('rg --file=.env.local needle .').ok).toBe(false);
+    expect(checkBash('rg --glob=.env.local API_KEY .').ok).toBe(false);
+    expect(checkBash("rg --glob='.env.local' API_KEY .").ok).toBe(false);
+    expect(checkBash('rg -g.env API_KEY .').ok).toBe(false);
+    expect(checkBash("rg -g'.env.local' API_KEY .").ok).toBe(false);
+    expect(checkBash('sed -f.env input.txt').ok).toBe(false);
+    expect(checkBash('sed -f".env.local" input.txt').ok).toBe(false);
     expect(checkBash("awk 'BEGIN { print \"a;b\" } { print }' .env.local").ok).toBe(false);
+    expect(checkBash('awk -f.env.local input.txt').ok).toBe(false);
+    expect(checkBash("awk -f'.env.local' input.txt").ok).toBe(false);
     expect(checkBash('env LC_ALL=C cat .env').ok).toBe(false);
     expect(checkBash('cat \\.env').ok).toBe(false);
     expect(checkBash('echo ok\ncat .env').ok).toBe(false);
     expect(checkBash('echo ok\r\ncat .env.local').ok).toBe(false);
+  });
+  it('allow reader options that exclude protected env files or target .env.example', () => {
+    expect(checkBash('grep -R --include=.env.example SAFE .').ok).toBe(true);
+    expect(checkBash('rg --glob=!.env API_KEY .').ok).toBe(true);
+    expect(checkBash("rg --glob='!.env' API_KEY .").ok).toBe(true);
+    expect(checkBash('rg -g!.env.local API_KEY .').ok).toBe(true);
   });
   it('allow safe cmd', () => expect(checkBash('ls -la && grep foo bar').ok).toBe(true));
   it('block write to .env', async () => expect((await checkWritePath('.env')).ok).toBe(false));

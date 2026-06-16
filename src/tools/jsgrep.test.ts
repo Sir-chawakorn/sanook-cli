@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,6 +9,7 @@ describe('jsGrep (ripgrep-less fallback)', () => {
   let dir: string;
   const NUL = String.fromCharCode(0);
   beforeEach(async () => {
+    vi.stubEnv('SANOOK_ALLOW_OUTSIDE_WORKSPACE', '1');
     dir = await mkdtemp(join(tmpdir(), 'jsgrep-'));
     await writeFile(join(dir, 'a.ts'), 'const x = 1;\nfunction needleHere() {}\nconst y = 2;\n');
     await writeFile(join(dir, 'b.ts'), 'no match in here\n');
@@ -20,6 +21,7 @@ describe('jsGrep (ripgrep-less fallback)', () => {
     await writeFile(join(dir, 'blob.dat'), `needleHere${NUL}withnull`); // null byte → binary
   });
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await rm(dir, { recursive: true, force: true });
   });
 
@@ -34,6 +36,25 @@ describe('jsGrep (ripgrep-less fallback)', () => {
     const out = await jsGrep('needleHere', dir, '.');
     expect(out).not.toContain('node_modules');
     expect(out).not.toContain('blob.dat'); // null byte → treated as binary, skipped
+  });
+
+  it('skips protected env files during broad fallback searches', async () => {
+    await writeFile(join(dir, '.env'), 'SECRET=needleHere\n');
+    await writeFile(join(dir, '.env.local'), 'SECRET=needleHere\n');
+    await writeFile(join(dir, '.env.example'), 'SAFE=needleHere\n');
+
+    const out = await jsGrep('needleHere', dir, '.');
+    expect(out).toContain('.env.example:1:');
+    expect(out).not.toMatch(/(^|\n)\.env:/);
+    expect(out).not.toContain('.env.local');
+  });
+
+  it('blocks an unreadable root before scanning fallback entries', async () => {
+    vi.unstubAllEnvs();
+
+    const out = await jsGrep('needleHere', dir, '.');
+    expect(out).toMatch(/^BLOCKED:/);
+    expect(out).toContain('นอก workspace');
   });
 
   it('no match -> (no matches)', async () => {

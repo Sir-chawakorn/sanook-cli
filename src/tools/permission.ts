@@ -37,14 +37,47 @@ function hasRmRecursiveForce(cmd: string): boolean {
 }
 
 function protectedEnvToken(token: string): boolean {
-  const clean = token
+  const clean = cleanShellToken(token);
+  if (!clean || clean.startsWith('-')) return false;
+  return hasProtectedEnvSegment(clean);
+}
+
+function cleanShellToken(token: string): string {
+  return token
     .trim()
     .replace(/^['"`]+|['"`]+$/g, '')
     .replace(/\\(.)/g, '$1')
     .replace(/^\d*(?:<|>)+/, '')
     .replace(/[),\]}]+$/g, '');
-  if (!clean || clean.startsWith('-')) return false;
-  return hasProtectedEnvSegment(clean);
+}
+
+function readerOptionReadsProtectedEnv(command: string, token: string): boolean {
+  if (!['awk', 'grep', 'rg', 'sed'].includes(command)) return false;
+  const clean = cleanShellToken(token);
+  const longFile = clean.match(/^--file=(.+)$/);
+  if (longFile) return optionValueHasProtectedEnvSegment(longFile[1]);
+  const shortFile = clean.match(/^-f(.+)$/);
+  if (shortFile) return optionValueHasProtectedEnvSegment(shortFile[1]);
+  if (command === 'grep') {
+    const include = clean.match(/^--include=(.+)$/);
+    return include ? optionValueHasProtectedEnvSegment(include[1]) : false;
+  }
+  if (command === 'rg') {
+    const glob = clean.match(/^--i?glob=(.+)$/);
+    if (glob) return rgGlobReadsProtectedEnv(glob[1]);
+    const shortGlob = clean.match(/^-g(.+)$/);
+    return shortGlob ? rgGlobReadsProtectedEnv(shortGlob[1]) : false;
+  }
+  return false;
+}
+
+function optionValueHasProtectedEnvSegment(value: string): boolean {
+  return hasProtectedEnvSegment(cleanShellToken(value));
+}
+
+function rgGlobReadsProtectedEnv(value: string): boolean {
+  const clean = cleanShellToken(value);
+  return !clean.startsWith('!') && hasProtectedEnvSegment(clean);
 }
 
 function hasProtectedEnvSegment(path: string): boolean {
@@ -96,7 +129,8 @@ function shellishArgsAfter(cmd: string, start: number): string[] {
 function readsProtectedEnvFile(cmd: string): boolean {
   for (const match of cmd.matchAll(ENV_READ_CMD)) {
     const args = shellishArgsAfter(cmd, match.index + match[0].length);
-    if (args.some(protectedEnvToken)) return true;
+    const command = match[1].toLowerCase();
+    if (args.some((arg) => protectedEnvToken(arg) || readerOptionReadsProtectedEnv(command, arg))) return true;
   }
   return false;
 }

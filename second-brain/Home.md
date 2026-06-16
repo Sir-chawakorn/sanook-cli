@@ -37,4 +37,4 @@ ai_surface: starter
 ## Reference
 
 - [[README]] — vault นี้คืออะไร
-- constitution: `CLAUDE.md` / `GEMINI.md` / `AGENTS.md`
+- constitution: `CLAUDE.md` / `GEMINI.md` / `AGENTS.md` / `HERMES.md`

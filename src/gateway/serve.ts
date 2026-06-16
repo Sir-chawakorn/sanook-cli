@@ -5,6 +5,7 @@ import { loadOrCreateToken } from './auth.js';
 import { startServer } from './server.js';
 import { startScheduler } from './scheduler.js';
 import { appHomePath, BRAND, BRAND_ENV, envFlag } from '../brand.js';
+import { readGatewayConfig, resolveTelegramConfig } from './config.js';
 
 const GATEWAY_DIR = appHomePath('gateway');
 const SERVE_LOCK = join(GATEWAY_DIR, 'serve.lock');
@@ -52,15 +53,18 @@ export async function startGateway(opts: GatewayOpts): Promise<() => void> {
     onLog: log,
   });
 
-  // Telegram channel (ถ้าตั้ง TELEGRAM_BOT_TOKEN) — long-polling, ไม่ต้อง public URL
+  // Telegram channel (env หรือ ~/.sanook/gateway/config.json) — long-polling, ไม่ต้อง public URL
   let stopTelegram: (() => void) | undefined;
-  if (process.env.TELEGRAM_BOT_TOKEN) {
+  const gatewayConfig = await readGatewayConfig();
+  const telegram = resolveTelegramConfig(gatewayConfig);
+  if (telegram.enabled && telegram.token) {
     const { startTelegram, parseAllowedChats } = await import('./telegram.js');
     stopTelegram = startTelegram({
-      token: process.env.TELEGRAM_BOT_TOKEN,
+      token: telegram.token,
       model: opts.model,
       budgetUsd: opts.budgetUsd,
-      allowedChatIds: parseAllowedChats(process.env.TELEGRAM_ALLOWED_CHATS),
+      allowedChatIds: process.env.TELEGRAM_ALLOWED_CHATS ? parseAllowedChats(process.env.TELEGRAM_ALLOWED_CHATS) : telegram.allowedChatIds,
+      allowWrite: telegram.allowWrite,
       onLog: log,
     });
     // หมายเหตุ: log "เริ่มแล้ว" อยู่ใน startTelegram (success path) — ถ้า fail-closed จะ log "ไม่เริ่ม" แทน
