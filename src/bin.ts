@@ -136,14 +136,17 @@ gateway (อยู่ยาว 24/7 — HTTP loopback + cron):
   ${BRAND.cliName} gateway setup signal            ตั้งค่า Signal ผ่าน signal-cli HTTP daemon
   ${BRAND.cliName} gateway setup whatsapp          ตั้งค่า WhatsApp Cloud API webhook + send
   ${BRAND.cliName} gateway setup matrix            ตั้งค่า Matrix homeserver sync + send
+  ${BRAND.cliName} gateway setup feishu            ตั้งค่า Feishu/Lark bot send
+  ${BRAND.cliName} gateway setup dingtalk          ตั้งค่า DingTalk bot send
+  ${BRAND.cliName} gateway setup googlechat        ตั้งค่า Google Chat bot send
   ${BRAND.cliName} gateway setup teams             ตั้งค่า Microsoft Teams delivery
   ${BRAND.cliName} gateway setup webhooks          เปิด generic webhook routes + HMAC
   ${BRAND.cliName} gateway run [--port 8787]       เปิด gateway (เหมือน serve)
   ${BRAND.cliName} gateway start [--port 8787]     เปิด gateway เป็น background process
   ${BRAND.cliName} gateway stop|restart|install    จัดการ gateway service
   ${BRAND.cliName} gateway status                  ดู config/status gateway
-  ${BRAND.cliName} send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|teams[:target] "msg" ส่งข้อความออก platform โดยไม่เรียก LLM
-  ${BRAND.cliName} webhook subscribe <route> [--prompt "..."] [--to telegram|slack|mattermost|homeassistant|sms|ntfy|signal|whatsapp|matrix|teams]
+  ${BRAND.cliName} send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|teams[:target] "msg" ส่งข้อความออก platform โดยไม่เรียก LLM
+  ${BRAND.cliName} webhook subscribe <route> [--prompt "..."] [--to telegram|slack|mattermost|homeassistant|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|teams]
                                            รับ event จาก GitHub/GitLab/Jira/Stripe แล้ว trigger agent/delivery
   ${BRAND.cliName} send --list [platform]          ดู messaging targets ที่ตั้งค่าไว้
   ${BRAND.cliName} serve [--port 8787]            เปิด gateway (OpenAI-compat /v1/chat/completions + scheduler)
@@ -264,8 +267,11 @@ async function runGatewayStatus(): Promise<void> {
   const {
     readGatewayConfig,
     redactGatewayConfig,
+    resolveDingTalkConfig,
     resolveDiscordConfig,
     resolveEmailConfig,
+    resolveFeishuConfig,
+    resolveGoogleChatConfig,
     resolveHomeAssistantConfig,
     resolveLineConfig,
     resolveMattermostConfig,
@@ -293,6 +299,9 @@ async function runGatewayStatus(): Promise<void> {
   const signal = resolveSignalConfig(cfg);
   const whatsapp = resolveWhatsAppConfig(cfg);
   const matrix = resolveMatrixConfig(cfg);
+  const feishu = resolveFeishuConfig(cfg);
+  const dingtalk = resolveDingTalkConfig(cfg);
+  const googleChat = resolveGoogleChatConfig(cfg);
   const teams = resolveTeamsConfig(cfg);
   const webhooks = resolveWebhookConfig(cfg);
   const { redactSignalId } = await import('./gateway/signal.js');
@@ -416,6 +425,49 @@ async function runGatewayStatus(): Promise<void> {
     console.log(`    require mention: ${matrix.requireMention ? 'yes' : 'no'}`);
     console.log(`    auto join:       ${matrix.autoJoin ? 'yes' : 'no'}`);
   }
+  console.log(`  feishu:   ${feishu.appId || feishu.appSecret ? `configured via ${feishu.source}` : 'not configured'}`);
+  if (feishu.appId || feishu.appSecret) {
+    console.log(`    domain:          ${feishu.domain}`);
+    console.log(`    base url:        ${feishu.baseUrl}`);
+    console.log(`    app id:          ${feishu.appId ? 'set' : '(not set)'}`);
+    console.log(`    app secret:      ${feishu.appSecret ? 'set' : '(not set)'}`);
+    console.log(`    verify token:    ${feishu.verificationToken ? 'set' : '(not set — needed for webhook)'}`);
+    console.log(`    encrypt key:     ${feishu.encryptKey ? 'set' : '(not set)'}`);
+    console.log(`    home channel:    ${feishu.homeChannel ?? '(not set)'}`);
+    console.log(`    allowed chats:   ${feishu.allowedChats.length ? feishu.allowedChats.join(', ') : feishu.allowAllChats ? '(all chats)' : '(none)'}`);
+    console.log(`    allowed users:   ${feishu.allowedUsers.length ? feishu.allowedUsers.join(', ') : feishu.allowAllUsers ? '(all users)' : '(none)'}`);
+  }
+  console.log(
+    `  dingtalk: ${dingtalk.clientId || dingtalk.clientSecret || dingtalk.webhookUrl ? `configured via ${dingtalk.source}` : 'not configured'}`,
+  );
+  if (dingtalk.clientId || dingtalk.clientSecret || dingtalk.webhookUrl) {
+    console.log(`    api base url:    ${dingtalk.apiBaseUrl}`);
+    console.log(`    client id:       ${dingtalk.clientId ? 'set' : '(not set)'}`);
+    console.log(`    client secret:   ${dingtalk.clientSecret ? 'set' : '(not set)'}`);
+    console.log(`    robot code:      ${dingtalk.robotCode ?? '(not set)'}`);
+    console.log(`    webhook url:     ${dingtalk.webhookUrl ? 'set' : '(not set)'}`);
+    console.log(`    webhook secret:  ${dingtalk.webhookSecret ? 'set' : '(not set)'}`);
+    console.log(`    home channel:    ${dingtalk.homeChannel ?? '(not set)'}`);
+    console.log(`    allowed chats:   ${dingtalk.allowedChats.length ? dingtalk.allowedChats.join(', ') : dingtalk.allowAllChats ? '(all chats)' : '(none)'}`);
+    console.log(`    allowed users:   ${dingtalk.allowedUsers.length ? dingtalk.allowedUsers.join(', ') : dingtalk.allowAllUsers ? '(all users)' : '(none)'}`);
+    console.log(`    free chats:      ${dingtalk.freeResponseChats.length ? dingtalk.freeResponseChats.join(', ') : '(none)'}`);
+    console.log(`    require mention: ${dingtalk.requireMention ? 'yes' : 'no'}`);
+  }
+  console.log(
+    `  googlechat: ${googleChat.serviceAccountJson || googleChat.incomingWebhookUrl ? `configured via ${googleChat.source}` : 'not configured'}`,
+  );
+  if (googleChat.serviceAccountJson || googleChat.incomingWebhookUrl) {
+    console.log(`    project id:      ${googleChat.projectId ?? '(not set)'}`);
+    console.log(`    subscription:    ${googleChat.subscriptionName ? 'set' : '(not set — needed for Pub/Sub inbound)'}`);
+    console.log(`    service account: ${googleChat.serviceAccountJson ? 'set' : '(not set)'}`);
+    console.log(`    api base url:    ${googleChat.apiBaseUrl}`);
+    console.log(`    webhook url:     ${googleChat.incomingWebhookUrl ? 'set' : '(not set)'}`);
+    console.log(`    home channel:    ${googleChat.homeChannel ?? '(not set)'}`);
+    console.log(`    allowed spaces:  ${googleChat.allowedSpaces.length ? googleChat.allowedSpaces.join(', ') : googleChat.allowAllSpaces ? '(all spaces)' : '(none)'}`);
+    console.log(`    allowed users:   ${googleChat.allowedUsers.length ? googleChat.allowedUsers.join(', ') : googleChat.allowAllUsers ? '(all users)' : '(none)'}`);
+    console.log(`    free spaces:     ${googleChat.freeResponseSpaces.length ? googleChat.freeResponseSpaces.join(', ') : '(none)'}`);
+    console.log(`    flow control:    messages=${googleChat.maxMessages}, bytes=${googleChat.maxBytes}`);
+  }
   console.log(`  teams:    ${teams.incomingWebhookUrl || teams.graphAccessToken || teams.clientId ? `configured via ${teams.source}` : 'not configured'}`);
   if (teams.incomingWebhookUrl || teams.graphAccessToken || teams.clientId) {
     console.log(`    delivery mode:   ${teams.deliveryMode}`);
@@ -443,13 +495,16 @@ async function runGatewaySetup(args: string[]): Promise<void> {
   const rest = platformArgProvided ? args.slice(1) : args;
   if (!platform) {
     if (!process.stdin.isTTY) {
-      console.error(`ใช้: ${BRAND.cliName} gateway setup <telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|teams|webhooks> [options]`);
+      console.error(`ใช้: ${BRAND.cliName} gateway setup <telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|teams|webhooks> [options]`);
       process.exit(1);
     }
     const {
       readGatewayConfig,
+      resolveDingTalkConfig,
       resolveDiscordConfig,
       resolveEmailConfig,
+      resolveFeishuConfig,
+      resolveGoogleChatConfig,
       resolveHomeAssistantConfig,
       resolveLineConfig,
       resolveMattermostConfig,
@@ -477,17 +532,23 @@ async function runGatewaySetup(args: string[]): Promise<void> {
       { id: 'signal', label: `Signal ${resolveSignalConfig(cfg).account ? '(configured)' : ''}` },
       { id: 'whatsapp', label: `WhatsApp Cloud ${resolveWhatsAppConfig(cfg).phoneNumberId ? '(configured)' : ''}` },
       { id: 'matrix', label: `Matrix ${resolveMatrixConfig(cfg).homeserver ? '(configured)' : ''}` },
+      { id: 'feishu', label: `Feishu/Lark ${resolveFeishuConfig(cfg).appId ? '(configured)' : ''}` },
+      { id: 'dingtalk', label: `DingTalk ${resolveDingTalkConfig(cfg).clientId || resolveDingTalkConfig(cfg).webhookUrl ? '(configured)' : ''}` },
+      { id: 'googlechat', label: `Google Chat ${resolveGoogleChatConfig(cfg).serviceAccountJson || resolveGoogleChatConfig(cfg).incomingWebhookUrl ? '(configured)' : ''}` },
       { id: 'teams', label: `Microsoft Teams ${resolveTeamsConfig(cfg).incomingWebhookUrl || resolveTeamsConfig(cfg).graphAccessToken ? '(configured)' : ''}` },
       { id: 'webhooks', label: `Webhooks ${resolveWebhookConfig(cfg).enabled ? '(configured)' : ''}` },
     ];
     console.log(`${BRAND.productName} gateway setup`);
     for (const [i, option] of options.entries()) console.log(`  ${i + 1}. ${option.label}`);
-    const answer = await askText('เลือก platform [1-14]: ');
+    const answer = await askText('เลือก platform [1-17]: ');
     const index = Number(answer || '1') - 1;
     platform = options[index]?.id;
   }
   if (platform === 'whatsapp-cloud') platform = 'whatsapp';
   if (platform === 'msteams' || platform === 'ms-teams' || platform === 'microsoft-teams') platform = 'teams';
+  if (platform === 'lark' || platform === 'feishu-lark') platform = 'feishu';
+  if (platform === 'ding' || platform === 'ding-talk') platform = 'dingtalk';
+  if (platform === 'google-chat' || platform === 'google_chat' || platform === 'gchat') platform = 'googlechat';
   if (
     !platform ||
     ![
@@ -504,12 +565,15 @@ async function runGatewaySetup(args: string[]): Promise<void> {
       'signal',
       'whatsapp',
       'matrix',
+      'feishu',
+      'dingtalk',
+      'googlechat',
       'teams',
       'webhooks',
     ].includes(platform)
   ) {
     console.error(
-      `ตอนนี้ setup อัตโนมัติรองรับ telegram / discord / slack / mattermost / homeassistant / email / line / sms / ntfy / signal / whatsapp / matrix / teams / webhooks — ได้ "${platform ?? ''}"`,
+      `ตอนนี้ setup อัตโนมัติรองรับ telegram / discord / slack / mattermost / homeassistant / email / line / sms / ntfy / signal / whatsapp / matrix / feishu / dingtalk / googlechat / teams / webhooks — ได้ "${platform ?? ''}"`,
     );
     process.exit(1);
   }
@@ -525,6 +589,9 @@ async function runGatewaySetup(args: string[]): Promise<void> {
   if (platform === 'signal') return runSignalGatewaySetup(rest);
   if (platform === 'whatsapp') return runWhatsAppGatewaySetup(rest);
   if (platform === 'matrix') return runMatrixGatewaySetup(rest);
+  if (platform === 'feishu') return runFeishuGatewaySetup(rest);
+  if (platform === 'dingtalk') return runDingTalkGatewaySetup(rest);
+  if (platform === 'googlechat') return runGoogleChatGatewaySetup(rest);
   if (platform === 'teams') return runTeamsGatewaySetup(rest);
   if (platform === 'webhooks') return runWebhookGatewaySetup(rest);
 
@@ -1228,6 +1295,279 @@ async function runMatrixGatewaySetup(args: string[]): Promise<void> {
   console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to matrix "hello"${cleanHomeRoom ? '' : ` หรือ ${BRAND.cliName} send --to matrix:!room:server "hello"`}`);
 }
 
+async function runFeishuGatewaySetup(args: string[]): Promise<void> {
+  const domainRaw = argValue(args, '--domain');
+  const baseUrl = argValue(args, '--base-url', '--url');
+  let appId = argValue(args, '--app-id');
+  let appSecret = argValue(args, '--app-secret');
+  let homeChannel = argValue(args, '--home-channel', '--chat-id', '--to');
+  const homeChannelName = argValue(args, '--home-channel-name');
+  const verificationToken = argValue(args, '--verification-token', '--verify-token');
+  const encryptKey = argValue(args, '--encrypt-key');
+  const allowedChatsRaw = argValue(args, '--allowed-chats');
+  const allowedUsersRaw = argValue(args, '--allowed-users');
+  const allowAllChats = args.includes('--allow-all-chats');
+  const allowAllUsers = args.includes('--allow-all-users');
+
+  if (!appId || !appSecret || !homeChannel) {
+    if (!process.stdin.isTTY) {
+      console.error(
+        `ใช้: ${BRAND.cliName} gateway setup feishu --app-id <cli_xxx> --app-secret <secret> --home-channel <oc_xxx> [--domain feishu|lark]`,
+      );
+      process.exit(1);
+    }
+    console.log(`${BRAND.productName} Feishu/Lark setup`);
+    console.log('ต้องมี internal app credentials และ chat_id ของกลุ่ม/DM ที่ bot ส่งข้อความได้');
+    appId ||= await askText('Feishu/Lark app id (cli_...): ');
+    appSecret ||= await askText('Feishu/Lark app secret: ');
+    homeChannel ||= await askText('Home chat id (oc_...): ');
+  }
+
+  const { normalizeFeishuBaseUrl, normalizeFeishuDomain } = await import('./gateway/feishu.js');
+  const domain = normalizeFeishuDomain(domainRaw);
+  if (!domain) {
+    console.error('--domain ต้องเป็น feishu หรือ lark');
+    process.exit(1);
+  }
+  const cleanBaseUrl = normalizeFeishuBaseUrl(baseUrl, domain);
+  if (!cleanBaseUrl) {
+    console.error('Feishu/Lark base URL ต้องเป็น https:// URL');
+    process.exit(1);
+  }
+  const cleanAppId = appId?.trim();
+  const cleanAppSecret = appSecret?.trim();
+  const cleanHomeChannel = homeChannel?.trim();
+  if (!cleanAppId || !cleanAppSecret || !cleanHomeChannel) {
+    console.error('Feishu/Lark setup ต้องมี app id, app secret และ home channel');
+    process.exit(1);
+  }
+
+  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
+  await patchGatewayConfig({
+    feishu: {
+      enabled: true,
+      domain,
+      baseUrl: cleanBaseUrl,
+      appId: cleanAppId,
+      appSecret: cleanAppSecret,
+      verificationToken: verificationToken?.trim() || undefined,
+      encryptKey: encryptKey?.trim() || undefined,
+      homeChannel: cleanHomeChannel,
+      homeChannelName: homeChannelName?.trim() || undefined,
+      allowedChats: parseStringCsv(allowedChatsRaw),
+      allowAllChats,
+      allowedUsers: parseStringCsv(allowedUsersRaw),
+      allowAllUsers,
+    },
+  });
+  console.log(`บันทึก Feishu/Lark gateway config แล้ว: ${gatewayConfigPath()}`);
+  console.log(`Feishu/Lark domain: ${domain} (${cleanBaseUrl})`);
+  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to feishu "hello" หรือ ${BRAND.cliName} send --to feishu:${cleanHomeChannel} "hello"`);
+}
+
+async function runDingTalkGatewaySetup(args: string[]): Promise<void> {
+  const apiBaseUrl = argValue(args, '--api-base-url', '--base-url');
+  let clientId = argValue(args, '--client-id', '--app-key');
+  let clientSecret = argValue(args, '--client-secret', '--app-secret');
+  let robotCode = argValue(args, '--robot-code');
+  let webhookUrl = argValue(args, '--webhook-url', '--incoming-webhook-url', '--url');
+  const webhookSecret = argValue(args, '--webhook-secret', '--secret');
+  let homeChannel = argValue(args, '--home-channel', '--conversation-id', '--chat-id', '--to');
+  const homeChannelName = argValue(args, '--home-channel-name');
+  const allowedUsersRaw = argValue(args, '--allowed-users');
+  const allowedChatsRaw = argValue(args, '--allowed-chats');
+  const freeResponseChatsRaw = argValue(args, '--free-response-chats');
+  const allowAllUsers = args.includes('--allow-all-users');
+  const allowAllChats = args.includes('--allow-all-chats');
+  const requireMention = !args.includes('--no-require-mention');
+  const groupSessionsPerUser = !args.includes('--shared-group-session');
+
+  if ((!webhookUrl && (!clientId || !clientSecret || !robotCode)) || (!webhookUrl && !homeChannel && !allowedUsersRaw && !allowedChatsRaw)) {
+    if (!process.stdin.isTTY) {
+      console.error(
+        `ใช้: ${BRAND.cliName} gateway setup dingtalk --client-id <appKey> --client-secret <appSecret> --robot-code <robotCode> --home-channel <openConversationId> หรือ --webhook-url <https://oapi.dingtalk.com/robot/send?...>`,
+      );
+      process.exit(1);
+    }
+    console.log(`${BRAND.productName} DingTalk setup`);
+    console.log('ใช้ Client ID/AppKey + Client Secret/AppSecret + Robot Code สำหรับ OpenAPI หรือใช้ custom robot webhook URL สำหรับส่งง่าย ๆ');
+    clientId ||= await askText('DingTalk client id / app key (blank = webhook mode): ');
+    if (clientId) {
+      clientSecret ||= await askText('DingTalk client secret / app secret: ');
+      robotCode ||= await askText('DingTalk robot code: ');
+      homeChannel ||= await askText('Home openConversationId (cid...; blank = skip): ');
+    } else {
+      webhookUrl ||= await askText('DingTalk custom robot webhook URL: ');
+    }
+  }
+
+  const { normalizeDingTalkApiBaseUrl, normalizeDingTalkWebhookUrl } = await import('./gateway/dingtalk.js');
+  const cleanApiBaseUrl = normalizeDingTalkApiBaseUrl(apiBaseUrl);
+  const cleanWebhookUrl = normalizeDingTalkWebhookUrl(webhookUrl);
+  const cleanClientId = clientId?.trim();
+  const cleanClientSecret = clientSecret?.trim();
+  const cleanRobotCode = robotCode?.trim();
+  const cleanHomeChannel = homeChannel?.trim();
+
+  if (!cleanApiBaseUrl) {
+    console.error('DingTalk API base URL ต้องเป็น https:// URL');
+    process.exit(1);
+  }
+  if (webhookUrl?.trim() && !cleanWebhookUrl) {
+    console.error('DingTalk webhook URL ต้องเป็น https:// URL');
+    process.exit(1);
+  }
+  if (!cleanWebhookUrl && (!cleanClientId || !cleanClientSecret || !cleanRobotCode)) {
+    console.error('DingTalk OpenAPI setup ต้องมี client id, client secret และ robot code หรือระบุ --webhook-url');
+    process.exit(1);
+  }
+  if (!cleanWebhookUrl && !cleanHomeChannel && !allowedUsersRaw?.trim() && !allowedChatsRaw?.trim()) {
+    console.error('DingTalk OpenAPI setup ต้องมี home channel, allowed chats หรือ allowed users อย่างน้อย 1 ค่า');
+    process.exit(1);
+  }
+
+  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
+  await patchGatewayConfig({
+    dingtalk: {
+      enabled: true,
+      clientId: cleanClientId,
+      clientSecret: cleanClientSecret,
+      robotCode: cleanRobotCode,
+      apiBaseUrl: cleanApiBaseUrl,
+      webhookUrl: cleanWebhookUrl,
+      webhookSecret: webhookSecret?.trim() || undefined,
+      homeChannel: cleanHomeChannel || (cleanWebhookUrl ? 'webhook' : undefined),
+      homeChannelName: homeChannelName?.trim() || undefined,
+      allowedUsers: parseStringCsv(allowedUsersRaw),
+      allowedChats: parseStringCsv(allowedChatsRaw),
+      freeResponseChats: parseStringCsv(freeResponseChatsRaw),
+      allowAllUsers,
+      allowAllChats,
+      requireMention,
+      groupSessionsPerUser,
+    },
+  });
+  console.log(`บันทึก DingTalk gateway config แล้ว: ${gatewayConfigPath()}`);
+  console.log(cleanWebhookUrl ? 'DingTalk delivery mode: custom robot webhook' : 'DingTalk delivery mode: OpenAPI robot');
+  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to dingtalk "hello"${cleanHomeChannel ? '' : ` หรือ ${BRAND.cliName} send --to dingtalk:user/<userId> "hello"`}`);
+}
+
+async function runGoogleChatGatewaySetup(args: string[]): Promise<void> {
+  const projectId = argValue(args, '--project-id');
+  const subscriptionName = argValue(args, '--subscription-name', '--subscription');
+  let serviceAccountJson = argValue(args, '--service-account-json', '--service-account', '--credentials');
+  const apiBaseUrl = argValue(args, '--api-base-url', '--base-url');
+  let incomingWebhookUrl = argValue(args, '--incoming-webhook-url', '--webhook-url', '--url');
+  let homeChannel = argValue(args, '--home-channel', '--space', '--to');
+  const homeChannelName = argValue(args, '--home-channel-name');
+  const allowedUsersRaw = argValue(args, '--allowed-users');
+  const allowedSpacesRaw = argValue(args, '--allowed-spaces', '--spaces');
+  const freeResponseSpacesRaw = argValue(args, '--free-response-spaces');
+  const maxMessagesRaw = argValue(args, '--max-messages');
+  const maxBytesRaw = argValue(args, '--max-bytes');
+  const allowAllUsers = args.includes('--allow-all-users');
+  const allowAllSpaces = args.includes('--allow-all-spaces');
+
+  if ((!incomingWebhookUrl && !serviceAccountJson) || (!incomingWebhookUrl && !homeChannel && !allowedSpacesRaw && !allowAllSpaces)) {
+    if (!process.stdin.isTTY) {
+      console.error(
+        `ใช้: ${BRAND.cliName} gateway setup googlechat --service-account-json <path> --home-channel <spaces/AAA> หรือ --incoming-webhook-url <https://chat.googleapis.com/v1/spaces/.../messages?...>`,
+      );
+      process.exit(1);
+    }
+    console.log(`${BRAND.productName} Google Chat setup`);
+    console.log('ใช้ Service Account JSON + Chat REST API สำหรับ bot app หรือ incoming webhook URL สำหรับส่งง่าย ๆ');
+    serviceAccountJson ||= await askText('Service Account JSON path (blank = webhook mode): ');
+    if (serviceAccountJson) {
+      homeChannel ||= await askText('Home space (spaces/AAA...; blank = skip): ');
+    } else {
+      incomingWebhookUrl ||= await askText('Google Chat incoming webhook URL: ');
+    }
+  }
+
+  const { normalizeGoogleChatApiBaseUrl, normalizeGoogleChatWebhookUrl, parseGoogleChatTarget } = await import('./gateway/googlechat.js');
+  const cleanApiBaseUrl = normalizeGoogleChatApiBaseUrl(apiBaseUrl);
+  const cleanWebhookUrl = normalizeGoogleChatWebhookUrl(incomingWebhookUrl);
+  const cleanServiceAccountJson = serviceAccountJson?.trim();
+  const cleanHomeChannel = homeChannel?.trim();
+  const maxMessages = maxMessagesRaw ? Number(maxMessagesRaw) : undefined;
+  const maxBytes = maxBytesRaw ? Number(maxBytesRaw) : undefined;
+
+  if (!cleanApiBaseUrl) {
+    console.error('Google Chat API base URL ต้องเป็น https:// URL');
+    process.exit(1);
+  }
+  if (incomingWebhookUrl?.trim() && !cleanWebhookUrl) {
+    console.error('Google Chat incoming webhook URL ต้องเป็น https:// URL');
+    process.exit(1);
+  }
+  if (!cleanWebhookUrl && !cleanServiceAccountJson) {
+    console.error('Google Chat setup ต้องมี service account JSON หรือ incoming webhook URL');
+    process.exit(1);
+  }
+  if (cleanHomeChannel) {
+    try {
+      parseGoogleChatTarget(
+        {
+          apiBaseUrl: cleanApiBaseUrl,
+          homeChannel: cleanHomeChannel,
+          allowedUsers: [],
+          allowedSpaces: [],
+          freeResponseSpaces: [],
+          allowAllUsers: false,
+          allowAllSpaces: false,
+          maxMessages: 1,
+          maxBytes: 16_777_216,
+          enabled: true,
+          source: 'config',
+          serviceAccountJson: cleanServiceAccountJson,
+          incomingWebhookUrl: cleanWebhookUrl,
+        },
+        cleanHomeChannel,
+      );
+    } catch (e) {
+      console.error(e instanceof Error ? e.message : 'Google Chat home channel ไม่ถูกต้อง');
+      process.exit(1);
+    }
+  }
+  if (!cleanWebhookUrl && !cleanHomeChannel && !allowedSpacesRaw?.trim() && !allowAllSpaces) {
+    console.error('Google Chat service-account setup ต้องมี home channel, allowed spaces หรือ --allow-all-spaces');
+    process.exit(1);
+  }
+  if (maxMessagesRaw && (!Number.isInteger(maxMessages) || Number(maxMessages) <= 0)) {
+    console.error('--max-messages ต้องเป็น integer มากกว่า 0');
+    process.exit(1);
+  }
+  if (maxBytesRaw && (!Number.isInteger(maxBytes) || Number(maxBytes) <= 0)) {
+    console.error('--max-bytes ต้องเป็น integer มากกว่า 0');
+    process.exit(1);
+  }
+
+  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
+  await patchGatewayConfig({
+    googleChat: {
+      enabled: true,
+      projectId: projectId?.trim() || undefined,
+      subscriptionName: subscriptionName?.trim() || undefined,
+      serviceAccountJson: cleanServiceAccountJson || undefined,
+      apiBaseUrl: cleanApiBaseUrl,
+      incomingWebhookUrl: cleanWebhookUrl,
+      homeChannel: cleanHomeChannel || (cleanWebhookUrl ? 'webhook' : undefined),
+      homeChannelName: homeChannelName?.trim() || undefined,
+      allowedUsers: parseStringCsv(allowedUsersRaw),
+      allowedSpaces: parseStringCsv(allowedSpacesRaw),
+      freeResponseSpaces: parseStringCsv(freeResponseSpacesRaw),
+      allowAllUsers,
+      allowAllSpaces,
+      maxMessages,
+      maxBytes,
+    },
+  });
+  console.log(`บันทึก Google Chat gateway config แล้ว: ${gatewayConfigPath()}`);
+  console.log(cleanWebhookUrl ? 'Google Chat delivery mode: incoming webhook' : 'Google Chat delivery mode: Chat REST API');
+  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to googlechat "hello"${cleanHomeChannel ? '' : ` หรือ ${BRAND.cliName} send --to googlechat:spaces/<space> "hello"`}`);
+}
+
 async function runTeamsGatewaySetup(args: string[]): Promise<void> {
   let incomingWebhookUrl = argValue(args, '--incoming-webhook-url', '--webhook-url', '--url');
   const graphAccessToken = argValue(args, '--graph-access-token', '--access-token', '--token');
@@ -1535,8 +1875,11 @@ async function runStatus(): Promise<void> {
   const keyReady = provider ? (!provider.requiresKey || Boolean(resolveKeyFromEnv(provider.envVar, provider.envFallbacks))) : false;
   const {
     readGatewayConfig,
+    resolveDingTalkConfig,
     resolveDiscordConfig,
     resolveEmailConfig,
+    resolveFeishuConfig,
+    resolveGoogleChatConfig,
     resolveHomeAssistantConfig,
     resolveLineConfig,
     resolveMattermostConfig,
@@ -1563,6 +1906,9 @@ async function runStatus(): Promise<void> {
   const signal = resolveSignalConfig(gatewayConfig);
   const whatsapp = resolveWhatsAppConfig(gatewayConfig);
   const matrix = resolveMatrixConfig(gatewayConfig);
+  const feishu = resolveFeishuConfig(gatewayConfig);
+  const dingtalk = resolveDingTalkConfig(gatewayConfig);
+  const googleChat = resolveGoogleChatConfig(gatewayConfig);
   const teams = resolveTeamsConfig(gatewayConfig);
   const webhooks = resolveWebhookConfig(gatewayConfig);
   console.log(`${BRAND.productName} status`);
@@ -1586,6 +1932,9 @@ async function runStatus(): Promise<void> {
   console.log(`  signal:    ${signal.account ? `configured (${signal.allowedUsers.length} allowed user${signal.allowedUsers.length === 1 ? '' : 's'}, ${signal.groupAllowedUsers.length} group${signal.groupAllowedUsers.length === 1 ? '' : 's'})` : 'not configured'}`);
   console.log(`  whatsapp:  ${whatsapp.phoneNumberId && whatsapp.accessToken ? `configured (${whatsapp.allowedUsers.length} allowed user${whatsapp.allowedUsers.length === 1 ? '' : 's'})` : 'not configured'}`);
   console.log(`  matrix:    ${matrix.homeserver && (matrix.accessToken || (matrix.userId && matrix.password)) ? `configured (${matrix.allowedUsers.length} allowed user${matrix.allowedUsers.length === 1 ? '' : 's'}, ${matrix.allowedRooms.length} room${matrix.allowedRooms.length === 1 ? '' : 's'})` : 'not configured'}`);
+  console.log(`  feishu:    ${feishu.appId && feishu.appSecret ? `configured (${feishu.allowedChats.length} allowed chat${feishu.allowedChats.length === 1 ? '' : 's'})` : 'not configured'}`);
+  console.log(`  dingtalk:  ${dingtalk.clientId || dingtalk.webhookUrl ? `configured (${dingtalk.webhookUrl ? 'webhook' : 'openapi'})` : 'not configured'}`);
+  console.log(`  googlechat:${googleChat.serviceAccountJson || googleChat.incomingWebhookUrl ? ` configured (${googleChat.serviceAccountJson ? 'chat api' : 'webhook'})` : ' not configured'}`);
   console.log(`  teams:     ${teams.incomingWebhookUrl || teams.graphAccessToken ? `configured (${teams.deliveryMode})` : 'not configured'}`);
   console.log(`  webhooks:  ${webhooks.enabled ? `enabled (${Object.keys(webhooks.routes).length} route${Object.keys(webhooks.routes).length === 1 ? '' : 's'})` : 'not enabled'}`);
   console.log(`  config:    ${appHomePath('config.json')}`);
@@ -2199,14 +2548,17 @@ async function runSend(args: string[]): Promise<void> {
   ${BRAND.cliName} send --to mattermost[:channel_id[:root_post_id]] "message"
   ${BRAND.cliName} send --to homeassistant[:notification_id] "message"
   ${BRAND.cliName} send --to email[:recipient@example.com] --subject "[CI]" "message"
-	  ${BRAND.cliName} send --to line[:U/C/R-id] "message"
-	  ${BRAND.cliName} send --to sms[:+15558675310] "message"
-	  ${BRAND.cliName} send --to ntfy[:topic] "message"
-	  ${BRAND.cliName} send --to signal[:+15558675310|group:<id>] "message"
-	  ${BRAND.cliName} send --to whatsapp[:15558675310] "message"
-	  ${BRAND.cliName} send --to matrix[:!roomid:matrix.org] "message"
-	  ${BRAND.cliName} send --to teams[:chat_id|team/<team-id>/channel/<channel-id>] "message"
-	  ${BRAND.cliName} send --to slack --subject "[CI]" --file build.log
+  ${BRAND.cliName} send --to line[:U/C/R-id] "message"
+  ${BRAND.cliName} send --to sms[:+15558675310] "message"
+  ${BRAND.cliName} send --to ntfy[:topic] "message"
+  ${BRAND.cliName} send --to signal[:+15558675310|group:<id>] "message"
+  ${BRAND.cliName} send --to whatsapp[:15558675310] "message"
+  ${BRAND.cliName} send --to matrix[:!roomid:matrix.org] "message"
+  ${BRAND.cliName} send --to feishu[:oc_xxx] "message"
+  ${BRAND.cliName} send --to dingtalk[:cid_xxx|user/<userId>] "message"
+  ${BRAND.cliName} send --to googlechat[:spaces/AAA|spaces/AAA/threads/BBB] "message"
+  ${BRAND.cliName} send --to teams[:chat_id|team/<team-id>/channel/<channel-id>] "message"
+  ${BRAND.cliName} send --to slack --subject "[CI]" --file build.log
   echo "done" | ${BRAND.cliName} send --to telegram --quiet
   ${BRAND.cliName} send --list [platform] [--json]`);
     return;
@@ -2233,7 +2585,7 @@ async function runSend(args: string[]): Promise<void> {
 
   const to = argValue(args, '--to', '-t');
   if (!to) {
-    console.error(`ใช้: ${BRAND.cliName} send --to <telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|teams>[:target] "message"`);
+    console.error(`ใช้: ${BRAND.cliName} send --to <telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|teams>[:target] "message"`);
     process.exit(2);
   }
   const file = argValue(args, '--file', '-f');
@@ -2288,7 +2640,7 @@ async function runWebhook(args: string[]): Promise<void> {
 
   if (args.includes('-h') || args.includes('--help') || action === 'help') {
     console.log(`ใช้:
-	  ${BRAND.cliName} webhook subscribe <route> [--events issues,push] [--prompt "..."] [--to telegram|slack:C01|mattermost:chan|homeassistant|sms|ntfy|signal|whatsapp|matrix|teams]
+	  ${BRAND.cliName} webhook subscribe <route> [--events issues,push] [--prompt "..."] [--to telegram|slack:C01|mattermost:chan|homeassistant|sms|ntfy|signal|whatsapp|matrix|googlechat|teams]
   ${BRAND.cliName} webhook subscribe <route> --deliver telegram --deliver-chat-id 123 --deliver-only --prompt "New event: {__raw__}"
   ${BRAND.cliName} webhook list
   ${BRAND.cliName} webhook remove <route>

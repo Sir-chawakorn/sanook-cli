@@ -61,7 +61,7 @@ describe('gateway config', () => {
     });
   });
 
-  it('persists and redacts Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, Teams, and Webhooks gateway config', async () => {
+  it('persists and redacts Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, Matrix, Feishu, DingTalk, Google Chat, Teams, and Webhooks gateway config', async () => {
     await C.patchGatewayConfig({
       discord: {
         enabled: true,
@@ -174,6 +174,50 @@ describe('gateway config', () => {
         allowedUsers: [' user@example.com '],
         port: 3979,
       },
+      feishu: {
+        enabled: true,
+        domain: 'lark',
+        baseUrl: ' https://open.larksuite.com/ ',
+        appId: ' cli_app ',
+        appSecret: 'feishu-app-secret',
+        verificationToken: 'feishu-verify-token',
+        encryptKey: 'feishu-encrypt-key',
+        homeChannel: ' oc_home ',
+        homeChannelName: 'Owner Feishu',
+        allowedChats: [' oc_home ', ' oc_ops '],
+        allowedUsers: [' ou_user '],
+      },
+      dingtalk: {
+        enabled: true,
+        clientId: ' ding-app-key ',
+        clientSecret: 'dingtalk-client-secret',
+        robotCode: ' ding-robot ',
+        apiBaseUrl: ' https://api.dingtalk.com/ ',
+        webhookUrl: ' https://oapi.dingtalk.com/robot/send?access_token=secret-token ',
+        webhookSecret: 'dingtalk-webhook-secret',
+        homeChannel: ' cid-home ',
+        homeChannelName: 'Owner DingTalk',
+        allowedUsers: [' manager '],
+        allowedChats: [' cid-home ', ' cid-ops '],
+        freeResponseChats: [' cid-free '],
+        requireMention: false,
+        groupSessionsPerUser: false,
+      },
+      googleChat: {
+        enabled: true,
+        projectId: ' project-1 ',
+        subscriptionName: ' projects/project-1/subscriptions/hermes-chat-events-sub ',
+        serviceAccountJson: ' /home/you/.sanook/google-chat-sa.json ',
+        apiBaseUrl: ' https://chat.googleapis.com/ ',
+        incomingWebhookUrl: ' https://chat.googleapis.com/v1/spaces/AAAA/messages?key=secret&token=token ',
+        homeChannel: ' spaces/AAAA ',
+        homeChannelName: 'Owner Google Chat',
+        allowedUsers: [' owner@example.com '],
+        allowedSpaces: [' spaces/AAAA ', ' spaces/BBBB '],
+        freeResponseSpaces: [' spaces/FREE '],
+        maxMessages: 2,
+        maxBytes: 1024,
+      },
       webhooks: {
         enabled: true,
         secret: 'global-webhook-secret',
@@ -217,6 +261,33 @@ describe('gateway config', () => {
     expect(cfg.teams?.incomingWebhookUrl).toBe('https://example.webhook.office.com/webhookb2/id');
     expect(cfg.teams?.chatId).toBe('19:chat@thread.v2');
     expect(cfg.teams?.allowedUsers).toEqual(['user@example.com']);
+    expect(cfg.feishu?.domain).toBe('lark');
+    expect(cfg.feishu?.baseUrl).toBe('https://open.larksuite.com/');
+    expect(cfg.feishu?.appId).toBe('cli_app');
+    expect(cfg.feishu?.homeChannel).toBe('oc_home');
+    expect(cfg.feishu?.allowedChats).toEqual(['oc_home', 'oc_ops']);
+    expect(cfg.feishu?.allowedUsers).toEqual(['ou_user']);
+    expect(cfg.dingtalk?.clientId).toBe('ding-app-key');
+    expect(cfg.dingtalk?.robotCode).toBe('ding-robot');
+    expect(cfg.dingtalk?.apiBaseUrl).toBe('https://api.dingtalk.com/');
+    expect(cfg.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=secret-token');
+    expect(cfg.dingtalk?.homeChannel).toBe('cid-home');
+    expect(cfg.dingtalk?.allowedUsers).toEqual(['manager']);
+    expect(cfg.dingtalk?.allowedChats).toEqual(['cid-home', 'cid-ops']);
+    expect(cfg.dingtalk?.freeResponseChats).toEqual(['cid-free']);
+    expect(cfg.dingtalk?.requireMention).toBe(false);
+    expect(cfg.dingtalk?.groupSessionsPerUser).toBe(false);
+    expect(cfg.googleChat?.projectId).toBe('project-1');
+    expect(cfg.googleChat?.subscriptionName).toBe('projects/project-1/subscriptions/hermes-chat-events-sub');
+    expect(cfg.googleChat?.serviceAccountJson).toBe('/home/you/.sanook/google-chat-sa.json');
+    expect(cfg.googleChat?.apiBaseUrl).toBe('https://chat.googleapis.com/');
+    expect(cfg.googleChat?.incomingWebhookUrl).toBe('https://chat.googleapis.com/v1/spaces/AAAA/messages?key=secret&token=token');
+    expect(cfg.googleChat?.homeChannel).toBe('spaces/AAAA');
+    expect(cfg.googleChat?.allowedUsers).toEqual(['owner@example.com']);
+    expect(cfg.googleChat?.allowedSpaces).toEqual(['spaces/AAAA', 'spaces/BBBB']);
+    expect(cfg.googleChat?.freeResponseSpaces).toEqual(['spaces/FREE']);
+    expect(cfg.googleChat?.maxMessages).toBe(2);
+    expect(cfg.googleChat?.maxBytes).toBe(1024);
     expect(cfg.webhooks?.routes?.issues.events).toEqual(['issues', 'push']);
     expect(C.redactGatewayConfig(cfg).discord?.botToken).toBe('<secret:DISCORD_BOT_TOKEN>');
     expect(C.redactGatewayConfig(cfg).slack?.botToken).toBe('<secret:SLACK_BOT_TOKEN>');
@@ -237,11 +308,19 @@ describe('gateway config', () => {
     expect(C.redactGatewayConfig(cfg).teams?.incomingWebhookUrl).toBe('<secret:TEAMS_INCOMING_WEBHOOK_URL>');
     expect(C.redactGatewayConfig(cfg).teams?.graphAccessToken).toBe('<secret:TEAMS_GRAPH_ACCESS_TOKEN>');
     expect(C.redactGatewayConfig(cfg).teams?.clientSecret).toBe('<secret:TEAMS_CLIENT_SECRET>');
+    expect(C.redactGatewayConfig(cfg).feishu?.appSecret).toBe('<secret:FEISHU_APP_SECRET>');
+    expect(C.redactGatewayConfig(cfg).feishu?.verificationToken).toBe('<secret:FEISHU_VERIFICATION_TOKEN>');
+    expect(C.redactGatewayConfig(cfg).feishu?.encryptKey).toBe('<secret:FEISHU_ENCRYPT_KEY>');
+    expect(C.redactGatewayConfig(cfg).dingtalk?.clientSecret).toBe('<secret:DINGTALK_CLIENT_SECRET>');
+    expect(C.redactGatewayConfig(cfg).dingtalk?.webhookUrl).toBe('<secret:DINGTALK_WEBHOOK_URL>');
+    expect(C.redactGatewayConfig(cfg).dingtalk?.webhookSecret).toBe('<secret:DINGTALK_WEBHOOK_SECRET>');
+    expect(C.redactGatewayConfig(cfg).googleChat?.serviceAccountJson).toBe('<secret:GOOGLE_CHAT_SERVICE_ACCOUNT_JSON>');
+    expect(C.redactGatewayConfig(cfg).googleChat?.incomingWebhookUrl).toBe('<secret:GOOGLE_CHAT_INCOMING_WEBHOOK_URL>');
     expect(C.redactGatewayConfig(cfg).webhooks?.secret).toBe('<secret:WEBHOOK_SECRET>');
     expect(C.redactGatewayConfig(cfg).webhooks?.routes?.issues.secret).toBe('<secret:WEBHOOK_ROUTE_SECRET>');
   });
 
-  it('env Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, Teams, and Webhooks settings override persisted messaging config', () => {
+  it('env Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, Feishu, DingTalk, Google Chat, Teams, and Webhooks settings override persisted messaging config', () => {
     const cfg = {
       discord: {
         botToken: 'config-discord',
@@ -322,6 +401,51 @@ describe('gateway config', () => {
         allowedUsers: ['15551111111'],
         publicUrl: 'https://old-wa.example.com',
         apiVersion: 'v19.0',
+      },
+      teams: {
+        deliveryMode: 'incoming_webhook' as const,
+        incomingWebhookUrl: 'https://old.webhook.office.com/webhook',
+        graphAccessToken: 'config-graph-token',
+        chatId: 'old-chat',
+        allowedUsers: ['old-user'],
+      },
+      feishu: {
+        domain: 'feishu' as const,
+        baseUrl: 'https://old.feishu.example.com',
+        appId: 'old-app',
+        appSecret: 'old-secret',
+        verificationToken: 'old-verify',
+        encryptKey: 'old-encrypt',
+        homeChannel: 'old-home',
+        allowedChats: ['old-home'],
+        allowedUsers: ['old-user'],
+      },
+      dingtalk: {
+        clientId: 'old-ding-client',
+        clientSecret: 'old-ding-secret',
+        robotCode: 'old-ding-robot',
+        apiBaseUrl: 'https://old-ding.example.com',
+        webhookUrl: 'https://old-ding.example.com/webhook',
+        webhookSecret: 'old-ding-webhook-secret',
+        homeChannel: 'old-ding-home',
+        allowedUsers: ['old-ding-user'],
+        allowedChats: ['old-ding-home'],
+        freeResponseChats: ['old-ding-free'],
+        requireMention: false,
+        groupSessionsPerUser: false,
+      },
+      googleChat: {
+        projectId: 'old-project',
+        subscriptionName: 'projects/old/subscriptions/old-sub',
+        serviceAccountJson: '/old/google-chat-sa.json',
+        apiBaseUrl: 'https://old-chat.example.com',
+        incomingWebhookUrl: 'https://old-chat.example.com/webhook',
+        homeChannel: 'spaces/OLD',
+        allowedUsers: ['old@example.com'],
+        allowedSpaces: ['spaces/OLD'],
+        freeResponseSpaces: ['spaces/OLDFREE'],
+        maxMessages: 1,
+        maxBytes: 1024,
       },
       webhooks: {
         enabled: true,
@@ -584,6 +708,144 @@ describe('gateway config', () => {
       apiVersion: 'v20.0',
       source: 'env',
     });
+
+    expect(
+      C.resolveFeishuConfig(cfg, {
+        FEISHU_DOMAIN: 'lark',
+        FEISHU_BASE_URL: 'https://open.larksuite.com/',
+        FEISHU_APP_ID: 'cli_env',
+        FEISHU_APP_SECRET: 'env-feishu-secret',
+        FEISHU_VERIFICATION_TOKEN: 'env-feishu-verify',
+        FEISHU_ENCRYPT_KEY: 'env-feishu-encrypt',
+        FEISHU_HOME_CHANNEL: 'oc_env',
+        FEISHU_HOME_CHANNEL_NAME: 'Owner Feishu',
+        FEISHU_ALLOWED_CHATS: 'oc_env,oc_ops',
+        FEISHU_ALLOW_ALL_CHATS: 'true',
+        FEISHU_ALLOWED_USERS: 'ou_env,ou_other',
+        FEISHU_ALLOW_ALL_USERS: 'true',
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({
+      domain: 'lark',
+      baseUrl: 'https://open.larksuite.com',
+      appId: 'cli_env',
+      appSecret: 'env-feishu-secret',
+      verificationToken: 'env-feishu-verify',
+      encryptKey: 'env-feishu-encrypt',
+      homeChannel: 'oc_env',
+      homeChannelName: 'Owner Feishu',
+      allowedChats: ['oc_env', 'oc_ops'],
+      allowAllChats: true,
+      allowedUsers: ['ou_env', 'ou_other'],
+      allowAllUsers: true,
+      source: 'env',
+    });
+
+    expect(
+      C.resolveDingTalkConfig(cfg, {
+        DINGTALK_CLIENT_ID: 'env-ding-client',
+        DINGTALK_CLIENT_SECRET: 'env-ding-secret',
+        DINGTALK_ROBOT_CODE: 'env-ding-robot',
+        DINGTALK_API_BASE_URL: 'https://api.dingtalk.com/',
+        DINGTALK_WEBHOOK_URL: 'https://oapi.dingtalk.com/robot/send?access_token=env',
+        DINGTALK_WEBHOOK_SECRET: 'env-ding-webhook-secret',
+        DINGTALK_HOME_CHANNEL: 'env-ding-home',
+        DINGTALK_HOME_CHANNEL_NAME: 'Owner DingTalk',
+        DINGTALK_ALLOWED_USERS: 'manager,owner',
+        DINGTALK_ALLOWED_CHATS: 'env-ding-home,env-ding-ops',
+        DINGTALK_FREE_RESPONSE_CHATS: 'env-ding-free',
+        DINGTALK_ALLOW_ALL_USERS: 'true',
+        DINGTALK_ALLOW_ALL_CHATS: 'true',
+        DINGTALK_REQUIRE_MENTION: 'true',
+        DINGTALK_GROUP_SESSIONS_PER_USER: 'true',
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({
+      clientId: 'env-ding-client',
+      clientSecret: 'env-ding-secret',
+      robotCode: 'env-ding-robot',
+      apiBaseUrl: 'https://api.dingtalk.com',
+      webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=env',
+      webhookSecret: 'env-ding-webhook-secret',
+      homeChannel: 'env-ding-home',
+      homeChannelName: 'Owner DingTalk',
+      allowedUsers: ['manager', 'owner'],
+      allowedChats: ['env-ding-home', 'env-ding-ops'],
+      freeResponseChats: ['env-ding-free'],
+      allowAllUsers: true,
+      allowAllChats: true,
+      requireMention: true,
+      groupSessionsPerUser: true,
+      source: 'env',
+    });
+
+    expect(
+      C.resolveGoogleChatConfig(cfg, {
+        GOOGLE_CHAT_PROJECT_ID: 'project-env',
+        GOOGLE_CHAT_SUBSCRIPTION_NAME: 'projects/project-env/subscriptions/hermes-chat-events-sub',
+        GOOGLE_CHAT_SERVICE_ACCOUNT_JSON: '/env/google-chat-sa.json',
+        GOOGLE_CHAT_API_BASE_URL: 'https://chat.googleapis.com/',
+        GOOGLE_CHAT_INCOMING_WEBHOOK_URL: 'https://chat.googleapis.com/v1/spaces/AAAA/messages?key=env&token=env',
+        GOOGLE_CHAT_HOME_CHANNEL: 'spaces/AAAA',
+        GOOGLE_CHAT_HOME_CHANNEL_NAME: 'Owner Google Chat',
+        GOOGLE_CHAT_ALLOWED_USERS: 'owner@example.com,teammate@example.com',
+        GOOGLE_CHAT_ALLOWED_SPACES: 'spaces/AAAA,spaces/BBBB',
+        GOOGLE_CHAT_FREE_RESPONSE_SPACES: 'spaces/FREE',
+        GOOGLE_CHAT_ALLOW_ALL_USERS: 'true',
+        GOOGLE_CHAT_ALLOW_ALL_SPACES: 'true',
+        GOOGLE_CHAT_MAX_MESSAGES: '3',
+        GOOGLE_CHAT_MAX_BYTES: '2048',
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({
+      projectId: 'project-env',
+      subscriptionName: 'projects/project-env/subscriptions/hermes-chat-events-sub',
+      serviceAccountJson: '/env/google-chat-sa.json',
+      apiBaseUrl: 'https://chat.googleapis.com',
+      incomingWebhookUrl: 'https://chat.googleapis.com/v1/spaces/AAAA/messages?key=env&token=env',
+      homeChannel: 'spaces/AAAA',
+      homeChannelName: 'Owner Google Chat',
+      allowedUsers: ['owner@example.com', 'teammate@example.com'],
+      allowedSpaces: ['spaces/AAAA', 'spaces/BBBB'],
+      freeResponseSpaces: ['spaces/FREE'],
+      allowAllUsers: true,
+      allowAllSpaces: true,
+      maxMessages: 3,
+      maxBytes: 2048,
+      source: 'env',
+    });
+
+    expect(
+      C.resolveTeamsConfig(cfg, {
+        TEAMS_DELIVERY_MODE: 'graph',
+        TEAMS_INCOMING_WEBHOOK_URL: 'https://teams.example.com/webhook',
+        TEAMS_GRAPH_ACCESS_TOKEN: 'env-graph-token',
+        TEAMS_TEAM_ID: 'team-1',
+        TEAMS_CHANNEL_ID: 'channel-1',
+        TEAMS_CHAT_ID: '19:newchat@thread.v2',
+        TEAMS_HOME_CHANNEL: '19:home@thread.v2',
+        TEAMS_HOME_CHANNEL_NAME: 'Owner Teams',
+        TEAMS_CLIENT_ID: 'client-id',
+        TEAMS_CLIENT_SECRET: 'client-secret',
+        TEAMS_TENANT_ID: 'tenant-id',
+        TEAMS_ALLOWED_USERS: 'alice@example.com,bob@example.com',
+        TEAMS_ALLOW_ALL_USERS: 'true',
+        TEAMS_PORT: '3979',
+      } as NodeJS.ProcessEnv),
+    ).toMatchObject({
+      deliveryMode: 'graph',
+      incomingWebhookUrl: 'https://teams.example.com/webhook',
+      graphAccessToken: 'env-graph-token',
+      teamId: 'team-1',
+      channelId: 'channel-1',
+      chatId: '19:newchat@thread.v2',
+      homeChannel: '19:home@thread.v2',
+      homeChannelName: 'Owner Teams',
+      clientId: 'client-id',
+      clientSecret: 'client-secret',
+      tenantId: 'tenant-id',
+      allowedUsers: ['alice@example.com', 'bob@example.com'],
+      allowAllUsers: true,
+      port: 3979,
+      source: 'env',
+    });
   });
 
   it('trims ntfy scalar settings before resolving topics and URLs', () => {
@@ -789,6 +1051,60 @@ describe('gateway config', () => {
     expect(C.redactGatewayConfig(cfg).matrix).toMatchObject({
       accessToken: '<secret:MATRIX_ACCESS_TOKEN>',
       password: '<secret:MATRIX_PASSWORD>',
+    });
+  });
+
+  it('persists, resolves, and redacts Feishu/Lark gateway config', async () => {
+    await C.patchGatewayConfig({
+      feishu: {
+        enabled: true,
+        domain: 'lark',
+        baseUrl: ' https://open.larksuite.com/ ',
+        appId: ' cli_lark ',
+        appSecret: 'lark-secret',
+        verificationToken: 'lark-verify',
+        encryptKey: 'lark-encrypt',
+        homeChannel: ' oc_home ',
+        homeChannelName: 'Owner Lark',
+        allowedChats: [' oc_ops '],
+        allowAllChats: false,
+        allowedUsers: [' ou_user '],
+        allowAllUsers: false,
+      },
+    });
+
+    const cfg = await C.readGatewayConfig();
+    expect(cfg.feishu).toMatchObject({
+      domain: 'lark',
+      baseUrl: 'https://open.larksuite.com/',
+      appId: 'cli_lark',
+      appSecret: 'lark-secret',
+      verificationToken: 'lark-verify',
+      encryptKey: 'lark-encrypt',
+      homeChannel: 'oc_home',
+      homeChannelName: 'Owner Lark',
+      allowedChats: ['oc_ops'],
+      allowedUsers: ['ou_user'],
+    });
+
+    expect(C.resolveFeishuConfig(cfg, {} as NodeJS.ProcessEnv)).toMatchObject({
+      domain: 'lark',
+      baseUrl: 'https://open.larksuite.com',
+      appId: 'cli_lark',
+      appSecret: 'lark-secret',
+      verificationToken: 'lark-verify',
+      encryptKey: 'lark-encrypt',
+      homeChannel: 'oc_home',
+      homeChannelName: 'Owner Lark',
+      allowedChats: ['oc_ops'],
+      allowedUsers: ['ou_user'],
+      source: 'config',
+    });
+
+    expect(C.redactGatewayConfig(cfg).feishu).toMatchObject({
+      appSecret: '<secret:FEISHU_APP_SECRET>',
+      verificationToken: '<secret:FEISHU_VERIFICATION_TOKEN>',
+      encryptKey: '<secret:FEISHU_ENCRYPT_KEY>',
     });
   });
 });

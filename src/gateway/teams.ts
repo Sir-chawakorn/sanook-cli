@@ -82,8 +82,12 @@ export async function sendTeamsMessage(
   explicitTarget?: string,
 ): Promise<TeamsSendResult> {
   const target = explicitTarget?.trim();
-  const webhookUrl = target?.startsWith('https://') ? normalizeTeamsWebhookUrl(target) : config.incomingWebhookUrl;
-  if (config.deliveryMode === 'incoming_webhook' || webhookUrl) {
+  const targetLooksLikeWebhook = /^https:\/\//i.test(target ?? '');
+  const targetWebhookUrl = targetLooksLikeWebhook ? normalizeTeamsWebhookUrl(target) : undefined;
+  if (targetLooksLikeWebhook && !targetWebhookUrl) throw new Error('Teams incoming webhook target ต้องเป็น HTTPS URL ที่ถูกต้อง');
+  const useWebhook = Boolean(targetWebhookUrl) || (!target && config.deliveryMode === 'incoming_webhook');
+  if (useWebhook) {
+    const webhookUrl = targetWebhookUrl ?? config.incomingWebhookUrl;
     if (!webhookUrl) throw new Error('ยังไม่ได้ตั้ง Microsoft Teams incoming webhook URL');
     const r = await fetch(webhookUrl, {
       method: 'POST',
@@ -91,7 +95,7 @@ export async function sendTeamsMessage(
       body: JSON.stringify({ text: truncateTeamsText(text) }),
     });
     await readTeamsJsonOrThrow<unknown>(r, 'Microsoft Teams incoming webhook');
-    return { mode: 'incoming_webhook', target: target || config.homeChannel || 'webhook', messageCount: 1 };
+    return { mode: 'incoming_webhook', target: targetWebhookUrl ? 'webhook' : config.homeChannel || 'webhook', messageCount: 1 };
   }
 
   const graph = teamsGraphMessageUrl(config, target);

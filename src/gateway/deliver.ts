@@ -2,8 +2,11 @@ import { BRAND } from '../brand.js';
 import type { GatewayConfig } from './config.js';
 import {
   readGatewayConfig,
+  resolveDingTalkConfig,
   resolveDiscordConfig,
   resolveEmailConfig,
+  resolveFeishuConfig,
+  resolveGoogleChatConfig,
   resolveHomeAssistantConfig,
   resolveLineConfig,
   resolveMattermostConfig,
@@ -17,7 +20,10 @@ import {
   resolveWhatsAppConfig,
 } from './config.js';
 import { sendDiscordMessage } from './discord.js';
+import { parseDingTalkTarget, sendDingTalkMessage } from './dingtalk.js';
 import { sendEmailMessage } from './email.js';
+import { sendFeishuMessage } from './feishu.js';
+import { parseGoogleChatTarget, sendGoogleChatMessage } from './googlechat.js';
 import { sendHomeAssistantNotification } from './homeassistant.js';
 import { sendLineMessage } from './line.js';
 import { sendMattermostMessage } from './mattermost.js';
@@ -297,6 +303,100 @@ export async function deliverToTarget(rawTarget: string, message: string, option
     };
   }
 
+  if (target.platform === 'feishu') {
+    const feishu = resolveFeishuConfig(config, env);
+    if (!feishu.appId || !feishu.appSecret) throw new Error(`ยังไม่ได้ตั้ง Feishu/Lark — รัน: ${BRAND.cliName} gateway setup feishu`);
+    const chatId = target.address ?? feishu.homeChannel;
+    if (!chatId) throw new Error('ต้องระบุ Feishu/Lark chat id หรือ home channel ใน gateway config');
+    const allowed = new Set([feishu.homeChannel, ...feishu.allowedChats].filter((v): v is string => Boolean(v?.trim())));
+    if (!feishu.allowAllChats && !allowed.size) {
+      throw new Error('ต้องตั้ง Feishu/Lark home channel หรือ allowed chats เพื่อ fail-closed');
+    }
+    if (!feishu.allowAllChats && allowed.size && !allowed.has(chatId)) {
+      throw new Error(`Feishu/Lark chat ${chatId} ไม่อยู่ใน allowlist (${[...allowed].join(', ') || 'none'})`);
+    }
+    const result = await sendFeishuMessage(feishu, chatId, text);
+    return {
+      platform: 'feishu',
+      target: formatTarget({ platform: 'feishu', address: result.chatId }),
+      to: result.chatId,
+      messageIds: result.messageIds,
+      messageCount: result.messageCount,
+    };
+  }
+
+  if (target.platform === 'dingtalk') {
+    const dingtalk = resolveDingTalkConfig(config, env);
+    const parsedTarget = parseDingTalkTarget(dingtalk, target.address);
+    const hasWebhook = parsedTarget.type === 'webhook' && (dingtalk.webhookUrl || /^https:\/\//i.test(target.address ?? ''));
+    const hasOpenApi = dingtalk.clientId && dingtalk.clientSecret && dingtalk.robotCode;
+    if (!hasWebhook && !hasOpenApi) throw new Error(`ยังไม่ได้ตั้ง DingTalk — รัน: ${BRAND.cliName} gateway setup dingtalk`);
+    if (parsedTarget.type === 'user') {
+      const allowedUsers = new Set(dingtalk.allowedUsers);
+      if (!dingtalk.allowAllUsers && !allowedUsers.size) throw new Error('ต้องตั้ง DingTalk allowed users เพื่อ fail-closed');
+      if (!dingtalk.allowAllUsers && !allowedUsers.has(parsedTarget.value)) {
+        throw new Error(`DingTalk user ${parsedTarget.value} ไม่อยู่ใน allowlist (${[...allowedUsers].join(', ') || 'none'})`);
+      }
+    } else {
+      const allowedChats = new Set(
+        [dingtalk.homeChannel, dingtalk.webhookUrl, ...dingtalk.allowedChats].filter((v): v is string => Boolean(v?.trim())),
+      );
+      if (!dingtalk.allowAllChats && !allowedChats.size) throw new Error('ต้องตั้ง DingTalk home channel/webhook หรือ allowed chats เพื่อ fail-closed');
+      if (!dingtalk.allowAllChats && !allowedChats.has(parsedTarget.value)) {
+        throw new Error(`DingTalk target ${parsedTarget.type === 'webhook' ? 'webhook' : parsedTarget.value} ไม่อยู่ใน allowlist`);
+      }
+    }
+    const result = await sendDingTalkMessage(dingtalk, text, target.address);
+    return {
+      platform: 'dingtalk',
+      target: formatTarget({ platform: 'dingtalk', address: result.target === 'webhook' ? undefined : result.target }),
+      to: result.target,
+      messageIds: result.messageIds,
+      messageCount: result.messageCount,
+    };
+  }
+
+  if (target.platform === 'googlechat') {
+    const googleChat = resolveGoogleChatConfig(config, env);
+    const parsedTarget = parseGoogleChatTarget(googleChat, target.address);
+    const hasWebhook = parsedTarget.type === 'webhook' && (googleChat.incomingWebhookUrl || /^https:\/\//i.test(target.address ?? ''));
+    const hasChatApi = Boolean(googleChat.serviceAccountJson);
+    if (!hasWebhook && !hasChatApi) throw new Error(`ยังไม่ได้ตั้ง Google Chat — รัน: ${BRAND.cliName} gateway setup googlechat`);
+    if (parsedTarget.type === 'space') {
+      const allowed = new Set(
+        [googleChat.homeChannel, ...googleChat.allowedSpaces]
+          .flatMap((id) => {
+            const value = id?.trim();
+            if (!value) return [];
+            const space = /^spaces\/[^/\s]+/.exec(value)?.[0];
+            return space && space !== value ? [value, space] : [value];
+          })
+          .filter(Boolean),
+      );
+      const targetAllowed = allowed.has(parsedTarget.value) || Boolean(parsedTarget.space && allowed.has(parsedTarget.space));
+      if (!googleChat.allowAllSpaces && !allowed.size) {
+        throw new Error('ต้องตั้ง Google Chat home channel หรือ allowed spaces เพื่อ fail-closed');
+      }
+      if (!googleChat.allowAllSpaces && allowed.size && !targetAllowed) {
+        throw new Error(`Google Chat space ${parsedTarget.space ?? parsedTarget.value} ไม่อยู่ใน allowlist (${[...allowed].join(', ') || 'none'})`);
+      }
+    } else {
+      const allowed = new Set([googleChat.incomingWebhookUrl, googleChat.homeChannel, ...googleChat.allowedSpaces].filter((v): v is string => Boolean(v?.trim())));
+      if (!googleChat.allowAllSpaces && !allowed.size) throw new Error('ต้องตั้ง Google Chat webhook/home/allowed spaces เพื่อ fail-closed');
+      if (!googleChat.allowAllSpaces && allowed.size && !allowed.has(parsedTarget.value)) {
+        throw new Error('Google Chat webhook target ไม่อยู่ใน allowlist');
+      }
+    }
+    const result = await sendGoogleChatMessage(googleChat, text, target.address);
+    return {
+      platform: 'googlechat',
+      target: formatTarget({ platform: 'googlechat', address: result.target === 'webhook' ? undefined : result.target }),
+      to: result.target,
+      messageIds: result.messageIds,
+      messageCount: result.messageCount,
+    };
+  }
+
   if (target.platform === 'teams') {
     const teams = resolveTeamsConfig(config, env);
     const graphReady = teams.graphAccessToken && (target.address || teams.chatId || teams.homeChannel || (teams.teamId && teams.channelId));
@@ -315,6 +415,6 @@ export async function deliverToTarget(rawTarget: string, message: string, option
   }
 
   throw new Error(
-    `ยังไม่รองรับ platform "${target.platform}" — ตอนนี้รองรับ telegram / discord / slack / mattermost / homeassistant / email / line / sms / ntfy / signal / whatsapp / matrix / teams`,
+    `ยังไม่รองรับ platform "${target.platform}" — ตอนนี้รองรับ telegram / discord / slack / mattermost / homeassistant / email / line / sms / ntfy / signal / whatsapp / matrix / feishu / dingtalk / googlechat / teams`,
   );
 }

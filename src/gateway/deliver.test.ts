@@ -410,6 +410,263 @@ describe('gateway delivery helper', () => {
     });
   });
 
+  it('delivers to Microsoft Teams incoming webhooks', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response('1'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('teams', 'hello teams', {
+        config: {
+          teams: {
+            deliveryMode: 'incoming_webhook',
+            incomingWebhookUrl: 'https://example.webhook.office.com/webhookb2/id',
+            homeChannel: 'webhook',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'teams',
+      target: 'teams',
+      to: 'webhook',
+      messageCount: 1,
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://example.webhook.office.com/webhookb2/id');
+    expect(JSON.parse(String(init.body))).toEqual({ text: 'hello teams' });
+  });
+
+  it('delivers to configured Feishu/Lark home chats', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, tenant_access_token: 'tenant-token' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ code: 0, data: { message_id: 'om_message_1' } })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('feishu', 'hello feishu', {
+        config: {
+          feishu: {
+            domain: 'feishu',
+            appId: 'cli_app',
+            appSecret: 'feishu-secret',
+            homeChannel: 'oc_home',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'feishu',
+      target: 'feishu:oc_home',
+      to: 'oc_home',
+      messageIds: ['om_message_1'],
+      messageCount: 1,
+    });
+
+    const [tokenUrl, tokenInit] = fetchMock.mock.calls[0];
+    expect(tokenUrl).toBe('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal');
+    expect(JSON.parse(String(tokenInit.body))).toEqual({ app_id: 'cli_app', app_secret: 'feishu-secret' });
+    const [messageUrl, messageInit] = fetchMock.mock.calls[1];
+    expect(messageUrl).toBe('https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id');
+    expect(messageInit.headers).toMatchObject({ authorization: 'Bearer tenant-token' });
+    expect(JSON.parse(String(messageInit.body))).toEqual({
+      receive_id: 'oc_home',
+      msg_type: 'text',
+      content: JSON.stringify({ text: 'hello feishu' }),
+    });
+  });
+
+  it('rejects Feishu/Lark chat targets outside the configured allowlist before sending', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('lark:oc_other', 'hello lark', {
+        config: {
+          feishu: {
+            domain: 'lark',
+            appId: 'cli_app',
+            appSecret: 'feishu-secret',
+            homeChannel: 'oc_home',
+            allowedChats: ['oc_home'],
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).rejects.toThrow('ไม่อยู่ใน allowlist');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('delivers to configured DingTalk OpenAPI home chats', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ accessToken: 'ding-token' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ processQueryKey: 'query-1' })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('dingtalk', 'hello dingtalk', {
+        config: {
+          dingtalk: {
+            clientId: 'ding-client',
+            clientSecret: 'ding-secret',
+            robotCode: 'ding-robot',
+            homeChannel: 'cid-home',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'dingtalk',
+      target: 'dingtalk:cid-home',
+      to: 'cid-home',
+      messageIds: ['query-1'],
+      messageCount: 1,
+    });
+
+    const [tokenUrl, tokenInit] = fetchMock.mock.calls[0];
+    expect(tokenUrl).toBe('https://api.dingtalk.com/v1.0/oauth2/accessToken');
+    expect(JSON.parse(String(tokenInit.body))).toEqual({ appKey: 'ding-client', appSecret: 'ding-secret' });
+    const [messageUrl, messageInit] = fetchMock.mock.calls[1];
+    expect(messageUrl).toBe('https://api.dingtalk.com/v1.0/robot/groupMessages/send');
+    expect(messageInit.headers).toMatchObject({ 'x-acs-dingtalk-access-token': 'ding-token' });
+    expect(JSON.parse(String(messageInit.body))).toMatchObject({
+      robotCode: 'ding-robot',
+      openConversationId: 'cid-home',
+      msgKey: 'sampleMarkdown',
+    });
+  });
+
+  it('delivers to configured DingTalk custom robot webhooks', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify({ errcode: 0, errmsg: 'ok' })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('dingtalk', 'hello webhook', {
+        config: {
+          dingtalk: {
+            webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=abc',
+            webhookSecret: 'ding-webhook-secret',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'dingtalk',
+      target: 'dingtalk',
+      to: 'webhook',
+      messageCount: 1,
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('https://oapi.dingtalk.com/robot/send?access_token=abc');
+    expect(String(url)).toContain('timestamp=');
+    expect(String(url)).toContain('sign=');
+    expect(JSON.parse(String(init.body))).toEqual({
+      msgtype: 'markdown',
+      markdown: { title: 'Sanook', text: 'hello webhook' },
+    });
+  });
+
+  it('rejects DingTalk targets outside configured allowlists before sending', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('dingtalk:cid-other', 'hello dingtalk', {
+        config: {
+          dingtalk: {
+            clientId: 'ding-client',
+            clientSecret: 'ding-secret',
+            robotCode: 'ding-robot',
+            homeChannel: 'cid-home',
+            allowedChats: ['cid-home'],
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).rejects.toThrow('ไม่อยู่ใน allowlist');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('delivers to configured Google Chat incoming webhooks', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify({ name: 'spaces/AAAA/messages/msg-1' })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('gchat', 'hello google chat', {
+        config: {
+          googleChat: {
+            incomingWebhookUrl: 'https://chat.googleapis.com/v1/spaces/AAAA/messages?key=k&token=t',
+            homeChannel: 'webhook',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'googlechat',
+      target: 'googlechat',
+      to: 'webhook',
+      messageIds: ['spaces/AAAA/messages/msg-1'],
+      messageCount: 1,
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://chat.googleapis.com/v1/spaces/AAAA/messages?key=k&token=t');
+    expect(JSON.parse(String(init.body))).toEqual({ text: 'hello google chat' });
+  });
+
+  it('rejects Google Chat spaces outside configured allowlists before sending', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('googlechat:spaces/OTHER', 'hello google chat', {
+        config: {
+          googleChat: {
+            serviceAccountJson: '/tmp/google-chat-sa.json',
+            homeChannel: 'spaces/HOME',
+            allowedSpaces: ['spaces/HOME'],
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).rejects.toThrow('ไม่อยู่ใน allowlist');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('delivers to Microsoft Teams Graph chat targets', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify({ id: 'teams-message-1' })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      deliverToTarget('teams:19:chatid@thread.v2', 'hello graph', {
+        config: {
+          teams: {
+            deliveryMode: 'graph',
+            graphAccessToken: 'graph-token',
+            chatId: '19:home@thread.v2',
+          },
+        },
+        env: CLEAN_ENV,
+      }),
+    ).resolves.toMatchObject({
+      platform: 'teams',
+      target: 'teams:19:chatid@thread.v2',
+      to: '19:chatid@thread.v2',
+      messageId: 'teams-message-1',
+      messageCount: 1,
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://graph.microsoft.com/v1.0/chats/19%3Achatid%40thread.v2/messages');
+    expect(init.headers).toMatchObject({ authorization: 'Bearer graph-token' });
+  });
+
   it('requires an email recipient or configured home address', async () => {
     await expect(
       deliverToTarget('email', 'hello', {

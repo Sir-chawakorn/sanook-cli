@@ -90,6 +90,51 @@ describe('Microsoft Teams gateway adapter', () => {
     });
   });
 
+  it('uses Graph for explicit chat targets even when a webhook URL is configured', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify({ id: 'teams-message-2' })));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      sendTeamsMessage(
+        config({
+          deliveryMode: 'graph',
+          graphAccessToken: 'graph-token',
+          chatId: '19:home@thread.v2',
+        }),
+        'hello explicit chat',
+        '19:explicit@thread.v2',
+      ),
+    ).resolves.toEqual({
+      mode: 'graph',
+      target: '19:explicit@thread.v2',
+      messageId: 'teams-message-2',
+      messageCount: 1,
+    });
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://graph.microsoft.com/v1.0/chats/19%3Aexplicit%40thread.v2/messages');
+  });
+
+  it('does not echo explicit webhook URLs in send results', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response('1'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      sendTeamsMessage(
+        config({ incomingWebhookUrl: undefined, homeChannel: '19:home@thread.v2' }),
+        'hello webhook',
+        'https://example.webhook.office.com/webhookb2/secret',
+      ),
+    ).resolves.toEqual({
+      mode: 'incoming_webhook',
+      target: 'webhook',
+      messageCount: 1,
+    });
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://example.webhook.office.com/webhookb2/secret');
+  });
+
   it('builds Graph team/channel URLs from explicit Teams targets', () => {
     expect(teamsGraphMessageUrl(config({ deliveryMode: 'graph', graphAccessToken: 'graph-token' }), 'team/team-1/channel/channel-1')).toEqual({
       url: 'https://graph.microsoft.com/v1.0/teams/team-1/channels/channel-1/messages',

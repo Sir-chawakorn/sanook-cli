@@ -89,6 +89,15 @@ sanook gateway setup whatsapp --phone-number-id "$WHATSAPP_CLOUD_PHONE_NUMBER_ID
 sanook gateway setup matrix --homeserver https://matrix.example.org \
   --access-token "$MATRIX_ACCESS_TOKEN" --allowed-users @alice:matrix.org \
   --home-room '!abc123:matrix.example.org'
+sanook gateway setup feishu --domain feishu --app-id "$FEISHU_APP_ID" \
+  --app-secret "$FEISHU_APP_SECRET" --home-channel oc_xxx
+sanook gateway setup dingtalk --client-id "$DINGTALK_CLIENT_ID" \
+  --client-secret "$DINGTALK_CLIENT_SECRET" --robot-code "$DINGTALK_ROBOT_CODE" \
+  --home-channel cid_xxx --allowed-users user_id_1
+sanook gateway setup googlechat --service-account-json "$GOOGLE_CHAT_SERVICE_ACCOUNT_JSON" \
+  --home-channel spaces/AAAA --allowed-spaces spaces/AAAA
+sanook gateway setup googlechat --incoming-webhook-url "$GOOGLE_CHAT_INCOMING_WEBHOOK_URL"
+sanook gateway setup teams --incoming-webhook-url "$TEAMS_INCOMING_WEBHOOK_URL"
 sanook gateway setup webhooks --secret "$WEBHOOK_SECRET" --public-url https://your-tunnel.example.com
 sanook webhook subscribe github-issues --events issues \
   --prompt "Issue #{issue.number}: {issue.title}" --to slack:C01ABCDEF
@@ -99,16 +108,32 @@ sanook send --to homeassistant "deploy finished"
 sanook send --to signal "deploy finished"
 sanook send --to whatsapp "deploy finished"
 sanook send --to matrix "deploy finished"
+sanook send --to feishu "deploy finished"
+sanook send --to dingtalk "deploy finished"
+sanook send --to googlechat "deploy finished"
+sanook send --to teams "deploy finished"
 sanook cron add "09:00" "สรุปงานเช้านี้" --to ntfy
 sanook cron add "09:00" "สรุปงานเช้านี้" --to mattermost
 sanook cron add "09:00" "สรุปงานเช้านี้" --to homeassistant
 sanook cron add "09:00" "สรุปงานเช้านี้" --to whatsapp
 sanook cron add "09:00" "สรุปงานเช้านี้" --to matrix
+sanook cron add "09:00" "สรุปงานเช้านี้" --to feishu
+sanook cron add "09:00" "สรุปงานเช้านี้" --to dingtalk
+sanook cron add "09:00" "สรุปงานเช้านี้" --to googlechat
+sanook cron add "09:00" "สรุปงานเช้านี้" --to teams
 ```
 
 ใน Telegram/Discord/Slack/Mattermost/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix พิมพ์ `/new` หรือ `/reset` เพื่อล้าง history ของ target นั้น, `/status` เพื่อดู session ปัจจุบัน และ `/help` เพื่อดูคำสั่งที่รองรับ; Matrix/Mattermost ใช้ `!new`, `!reset`, `!status`, `!help` ได้ด้วยสำหรับ client ที่กันคำสั่ง `/`
 
 Home Assistant ใช้ Long-Lived Access Token, รับเฉพาะ `state_changed` ที่ตรง `--watch-domains`, `--watch-entities` หรือ `--watch-all`, และตอบกลับผ่าน persistent notification (`homeassistant[:notification_id]`). Tools อ่านสถานะ/บริการได้ ส่วน `ha_call_service` ต้องผ่าน approval และ block domain เสี่ยงเช่น `shell_command`, `command_line`, `python_script`, `pyscript`, `hassio`, `rest_command`
+
+Feishu/Lark ตอนนี้รองรับ proactive delivery/cron ผ่าน internal app (`feishu` หรือ alias `lark:oc_xxx`). ใช้ `sanook gateway setup feishu --app-id ... --app-secret ... --home-channel oc_xxx` แล้วส่งด้วย `sanook send --to feishu "hello"`
+
+DingTalk ตอนนี้รองรับ proactive delivery/cron ผ่าน Robot OpenAPI (`dingtalk:cid_xxx`, `dingtalk:user/<userId>`) หรือ custom robot webhook. ใช้ `sanook gateway setup dingtalk --client-id ... --client-secret ... --robot-code ... --home-channel cid_xxx`
+
+Google Chat ตอนนี้รองรับ proactive delivery/cron ผ่าน incoming webhook (`googlechat`) หรือ Service Account + Chat REST API (`googlechat:spaces/...`). ค่าของ Hermes-style Pub/Sub (`GOOGLE_CHAT_PROJECT_ID`, `GOOGLE_CHAT_SUBSCRIPTION_NAME`, `GOOGLE_CHAT_ALLOWED_USERS`) บันทึกไว้เพื่อทำ inbound parity ต่อ
+
+Microsoft Teams ตอนนี้รองรับ proactive delivery/cron ผ่าน Incoming Webhook (`teams`) หรือ Graph mode (`teams:'19:chatid@thread.v2'`). ใช้ `sanook gateway setup teams --incoming-webhook-url ...` สำหรับเริ่มง่ายที่สุด
 
 ## ทำอะไรได้บ้าง
 
@@ -116,8 +141,8 @@ Home Assistant ใช้ Long-Lived Access Token, รับเฉพาะ `stat
 - **Hermes-style CLI** — `sanook setup`, `sanook model`, `sanook auth`, `sanook chat -q`, `sanook gateway`, `sanook status`, `sanook sessions`, `sanook dump`, `sanook tools`, `sanook send`
 - **Second brain** — `sanook brain init` สร้าง workspace Obsidian ให้ AI จำงานข้ามวัน
 - **Tools** — อ่าน/เขียน/แก้ไฟล์ · รัน bash · git · grep/glob พร้อม permission gate
-- **Gateway + cron** — `sanook gateway run` (alias: `sanook serve`) รัน 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram/Discord/Slack/Mattermost/Home Assistant/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix/Webhooks; task ใช้ `--to` เพื่อส่งผลลัพธ์กลับไปยัง messaging target ได้
-- **Messaging setup/send** — `sanook gateway setup telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|webhooks` บันทึก token/allowlist หรือ SMTP/IMAP/LINE/Twilio/ntfy/Mattermost/Home Assistant/Signal/WhatsApp/Matrix/Webhook config; `sanook gateway run` เริ่ม Telegram long-polling, Discord Gateway, Slack Socket Mode, Mattermost REST/WebSocket, Home Assistant state-change WebSocket, Email IMAP polling + SMTP threaded replies, LINE webhook, Twilio SMS webhook, ntfy topic stream, Signal ผ่าน `signal-cli` HTTP/SSE, WhatsApp Cloud webhook + Graph Messages API, Matrix Client-Server sync/send และ generic webhooks เมื่อ config พร้อม; history ถูกเก็บต่อ platform/target และถ้าคำตอบสุดท้ายเป็น `[SILENT]`, `SILENT`, `NO_REPLY`, หรือ `NO REPLY` จะบันทึกไว้แต่ไม่ส่งกลับ; `sanook send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix "..."`, `sanook webhook subscribe` และ `sanook cron add --to ...` ใช้กฎส่งออกชุดเดียวกัน
+- **Gateway + cron** — `sanook gateway run` (alias: `sanook serve`) รัน 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram/Discord/Slack/Mattermost/Home Assistant/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix/Feishu/Lark/DingTalk/Google Chat/Teams/Webhooks; task ใช้ `--to` เพื่อส่งผลลัพธ์กลับไปยัง messaging target ได้
+- **Messaging setup/send** — `sanook gateway setup telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|teams|webhooks` บันทึก token/allowlist หรือ SMTP/IMAP/LINE/Twilio/ntfy/Mattermost/Home Assistant/Signal/WhatsApp/Matrix/Feishu/Lark/DingTalk/Google Chat/Teams/Webhook config; `sanook gateway run` เริ่ม Telegram long-polling, Discord Gateway, Slack Socket Mode, Mattermost REST/WebSocket, Home Assistant state-change WebSocket, Email IMAP polling + SMTP threaded replies, LINE webhook, Twilio SMS webhook, ntfy topic stream, Signal ผ่าน `signal-cli` HTTP/SSE, WhatsApp Cloud webhook + Graph Messages API, Matrix Client-Server sync/send, Feishu/Lark outbound ผ่าน tenant token + `im/v1/messages`, DingTalk outbound ผ่าน OpenAPI robot/custom webhook, Google Chat outbound ผ่าน incoming webhook/Chat REST API, Teams Incoming Webhook/Graph delivery และ generic webhooks เมื่อ config พร้อม; history ถูกเก็บต่อ platform/target และถ้าคำตอบสุดท้ายเป็น `[SILENT]`, `SILENT`, `NO_REPLY`, หรือ `NO REPLY` จะบันทึกไว้แต่ไม่ส่งกลับ; `sanook send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|teams "..."`, `sanook webhook subscribe` และ `sanook cron add --to ...` ใช้กฎส่งออกชุดเดียวกัน
 - **MCP + Skills** — ต่อ MCP server ได้ + มี built-in skills และติดตั้งเพิ่มได้
 - **Update ง่าย** — ใช้ `sanook update` เพื่ออัปเดต CLI เป็นเวอร์ชันล่าสุดจาก npm
 

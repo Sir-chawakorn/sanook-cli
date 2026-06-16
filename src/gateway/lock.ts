@@ -7,12 +7,14 @@ import { unlinkSync } from 'node:fs';
 // แคบมาก (ต้องมี 2 mutator พร้อมกัน + holder ตายเป๊ะจังหวะ) ซึ่งแทบเป็นไปไม่ได้ใน workload นี้
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const LOCK_TTL_MS = 5 * 60_000; // mutate สั้นระดับ ms — lock เก่ากว่านี้ = ค้างแน่ → ยึดได้ (กัน pid-reuse deadlock)
+const LOCK_WRITE_GRACE_MS = 1_000; // open('wx') สร้างไฟล์ก่อนเขียน pid; อย่า evict lock สดที่ยังเขียนไม่จบ
 
 /** holder ตายไหม — เช็คจาก pid อย่างเดียว (ใช้กับ singleton ที่ถือยาว, ไม่มี TTL) */
 async function holderDead(lockPath: string): Promise<boolean> {
   try {
+    const st = await stat(lockPath);
     const pid = parseInt((await readFile(lockPath, 'utf8')).trim(), 10);
-    if (!Number.isInteger(pid) || pid <= 0) return true; // pid พัง → ยึดได้
+    if (!Number.isInteger(pid) || pid <= 0) return Date.now() - st.mtimeMs > LOCK_WRITE_GRACE_MS; // pid ยังไม่ถูกเขียน/พัง → รอ grace สั้นๆ ก่อนยึด
     try {
       process.kill(pid, 0); // เช็คว่ามี process นี้ (ไม่ส่ง signal จริง)
       return false;

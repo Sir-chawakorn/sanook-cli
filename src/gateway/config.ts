@@ -151,6 +151,59 @@ export interface MatrixGatewayConfig {
   pollTimeoutMs?: number;
 }
 
+export interface FeishuGatewayConfig {
+  enabled?: boolean;
+  domain?: 'feishu' | 'lark';
+  baseUrl?: string;
+  appId?: string;
+  appSecret?: string;
+  verificationToken?: string;
+  encryptKey?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  allowedChats?: string[];
+  allowAllChats?: boolean;
+  allowedUsers?: string[];
+  allowAllUsers?: boolean;
+}
+
+export interface DingTalkGatewayConfig {
+  enabled?: boolean;
+  clientId?: string;
+  clientSecret?: string;
+  robotCode?: string;
+  apiBaseUrl?: string;
+  webhookUrl?: string;
+  webhookSecret?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  allowedUsers?: string[];
+  allowedChats?: string[];
+  freeResponseChats?: string[];
+  allowAllUsers?: boolean;
+  allowAllChats?: boolean;
+  requireMention?: boolean;
+  groupSessionsPerUser?: boolean;
+}
+
+export interface GoogleChatGatewayConfig {
+  enabled?: boolean;
+  projectId?: string;
+  subscriptionName?: string;
+  serviceAccountJson?: string;
+  apiBaseUrl?: string;
+  incomingWebhookUrl?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  allowedUsers?: string[];
+  allowedSpaces?: string[];
+  freeResponseSpaces?: string[];
+  allowAllUsers?: boolean;
+  allowAllSpaces?: boolean;
+  maxMessages?: number;
+  maxBytes?: number;
+}
+
 export interface TeamsGatewayConfig {
   enabled?: boolean;
   deliveryMode?: 'incoming_webhook' | 'graph';
@@ -200,6 +253,9 @@ export interface GatewayConfig {
   signal?: SignalGatewayConfig;
   whatsapp?: WhatsAppGatewayConfig;
   matrix?: MatrixGatewayConfig;
+  feishu?: FeishuGatewayConfig;
+  dingtalk?: DingTalkGatewayConfig;
+  googleChat?: GoogleChatGatewayConfig;
   teams?: TeamsGatewayConfig;
   webhooks?: WebhookGatewayConfig;
 }
@@ -227,6 +283,9 @@ export async function readGatewayConfig(): Promise<GatewayConfig> {
     const signal = raw.signal;
     const whatsapp = raw.whatsapp;
     const matrix = raw.matrix;
+    const feishu = raw.feishu;
+    const dingtalk = raw.dingtalk;
+    const googleChat = raw.googleChat;
     const teams = raw.teams;
     const webhooks = raw.webhooks;
     return {
@@ -432,6 +491,78 @@ export async function readGatewayConfig(): Promise<GatewayConfig> {
             pollTimeoutMs: Number.isInteger(matrix.pollTimeoutMs) ? matrix.pollTimeoutMs : undefined,
           }
         : undefined,
+      feishu: feishu
+        ? {
+            enabled: feishu.enabled !== false,
+            domain: feishu.domain === 'lark' ? 'lark' : 'feishu',
+            baseUrl: typeof feishu.baseUrl === 'string' ? feishu.baseUrl.trim() : undefined,
+            appId: typeof feishu.appId === 'string' ? feishu.appId.trim() : undefined,
+            appSecret: typeof feishu.appSecret === 'string' ? feishu.appSecret : undefined,
+            verificationToken: typeof feishu.verificationToken === 'string' ? feishu.verificationToken : undefined,
+            encryptKey: typeof feishu.encryptKey === 'string' ? feishu.encryptKey : undefined,
+            homeChannel: typeof feishu.homeChannel === 'string' ? feishu.homeChannel.trim() : undefined,
+            homeChannelName: typeof feishu.homeChannelName === 'string' ? feishu.homeChannelName : undefined,
+            allowedChats: Array.isArray(feishu.allowedChats)
+              ? feishu.allowedChats.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            allowAllChats: feishu.allowAllChats === true,
+            allowedUsers: Array.isArray(feishu.allowedUsers)
+              ? feishu.allowedUsers.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            allowAllUsers: feishu.allowAllUsers === true,
+          }
+        : undefined,
+      dingtalk: dingtalk
+        ? {
+            enabled: dingtalk.enabled !== false,
+            clientId: typeof dingtalk.clientId === 'string' ? dingtalk.clientId.trim() : undefined,
+            clientSecret: typeof dingtalk.clientSecret === 'string' ? dingtalk.clientSecret : undefined,
+            robotCode: typeof dingtalk.robotCode === 'string' ? dingtalk.robotCode.trim() : undefined,
+            apiBaseUrl: typeof dingtalk.apiBaseUrl === 'string' ? dingtalk.apiBaseUrl.trim() : undefined,
+            webhookUrl: typeof dingtalk.webhookUrl === 'string' ? dingtalk.webhookUrl.trim() : undefined,
+            webhookSecret: typeof dingtalk.webhookSecret === 'string' ? dingtalk.webhookSecret : undefined,
+            homeChannel: typeof dingtalk.homeChannel === 'string' ? dingtalk.homeChannel.trim() : undefined,
+            homeChannelName: typeof dingtalk.homeChannelName === 'string' ? dingtalk.homeChannelName : undefined,
+            allowedUsers: Array.isArray(dingtalk.allowedUsers)
+              ? dingtalk.allowedUsers.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            allowedChats: Array.isArray(dingtalk.allowedChats)
+              ? dingtalk.allowedChats.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            freeResponseChats: Array.isArray(dingtalk.freeResponseChats)
+              ? dingtalk.freeResponseChats.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            allowAllUsers: dingtalk.allowAllUsers === true,
+            allowAllChats: dingtalk.allowAllChats === true,
+            requireMention: dingtalk.requireMention !== false,
+            groupSessionsPerUser: dingtalk.groupSessionsPerUser !== false,
+          }
+        : undefined,
+      googleChat: googleChat
+        ? {
+            enabled: googleChat.enabled !== false,
+            projectId: typeof googleChat.projectId === 'string' ? googleChat.projectId.trim() : undefined,
+            subscriptionName: typeof googleChat.subscriptionName === 'string' ? googleChat.subscriptionName.trim() : undefined,
+            serviceAccountJson: typeof googleChat.serviceAccountJson === 'string' ? googleChat.serviceAccountJson.trim() : undefined,
+            apiBaseUrl: typeof googleChat.apiBaseUrl === 'string' ? googleChat.apiBaseUrl.trim() : undefined,
+            incomingWebhookUrl: typeof googleChat.incomingWebhookUrl === 'string' ? googleChat.incomingWebhookUrl.trim() : undefined,
+            homeChannel: typeof googleChat.homeChannel === 'string' ? googleChat.homeChannel.trim() : undefined,
+            homeChannelName: typeof googleChat.homeChannelName === 'string' ? googleChat.homeChannelName : undefined,
+            allowedUsers: Array.isArray(googleChat.allowedUsers)
+              ? googleChat.allowedUsers.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            allowedSpaces: Array.isArray(googleChat.allowedSpaces)
+              ? googleChat.allowedSpaces.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            freeResponseSpaces: Array.isArray(googleChat.freeResponseSpaces)
+              ? googleChat.freeResponseSpaces.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
+              : undefined,
+            allowAllUsers: googleChat.allowAllUsers === true,
+            allowAllSpaces: googleChat.allowAllSpaces === true,
+            maxMessages: Number.isInteger(googleChat.maxMessages) ? googleChat.maxMessages : undefined,
+            maxBytes: Number.isInteger(googleChat.maxBytes) ? googleChat.maxBytes : undefined,
+          }
+        : undefined,
       teams: teams
         ? {
             enabled: teams.enabled !== false,
@@ -515,6 +646,9 @@ export async function patchGatewayConfig(patch: GatewayConfig): Promise<GatewayC
     signal: patch.signal ? { ...current.signal, ...patch.signal } : current.signal,
     whatsapp: patch.whatsapp ? { ...current.whatsapp, ...patch.whatsapp } : current.whatsapp,
     matrix: patch.matrix ? { ...current.matrix, ...patch.matrix } : current.matrix,
+    feishu: patch.feishu ? { ...current.feishu, ...patch.feishu } : current.feishu,
+    dingtalk: patch.dingtalk ? { ...current.dingtalk, ...patch.dingtalk } : current.dingtalk,
+    googleChat: patch.googleChat ? { ...current.googleChat, ...patch.googleChat } : current.googleChat,
     teams: patch.teams ? { ...current.teams, ...patch.teams } : current.teams,
     webhooks: patch.webhooks
       ? {
@@ -976,6 +1110,163 @@ export function resolveMatrixConfig(config: GatewayConfig, env: NodeJS.ProcessEn
   };
 }
 
+export interface ResolvedFeishuConfig {
+  domain: 'feishu' | 'lark';
+  baseUrl: string;
+  appId?: string;
+  appSecret?: string;
+  verificationToken?: string;
+  encryptKey?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  allowedChats: string[];
+  allowAllChats: boolean;
+  allowedUsers: string[];
+  allowAllUsers: boolean;
+  enabled: boolean;
+  source: 'env' | 'config' | 'none';
+}
+
+export function resolveFeishuConfig(config: GatewayConfig, env: NodeJS.ProcessEnv = process.env): ResolvedFeishuConfig {
+  const cfg = config.feishu;
+  const envAppId = optionalTrim(env.FEISHU_APP_ID);
+  const envAppSecret = optionalTrim(env.FEISHU_APP_SECRET);
+  const envBaseUrl = optionalTrim(env.FEISHU_BASE_URL);
+  const envDomain = optionalTrim(env.FEISHU_DOMAIN);
+  const domainRaw = (envDomain || optionalTrim(cfg?.domain))?.toLowerCase();
+  const domain = domainRaw === 'lark' || domainRaw === 'larksuite' || domainRaw === 'global' ? 'lark' : 'feishu';
+  const baseUrl =
+    (envBaseUrl || optionalTrim(cfg?.baseUrl) || (domain === 'lark' ? 'https://open.larksuite.com' : 'https://open.feishu.cn')).replace(
+      /\/+$/,
+      '',
+    );
+  return {
+    domain,
+    baseUrl,
+    appId: envAppId || optionalTrim(cfg?.appId),
+    appSecret: envAppSecret || optionalTrim(cfg?.appSecret),
+    verificationToken: optionalTrim(env.FEISHU_VERIFICATION_TOKEN) || optionalTrim(cfg?.verificationToken),
+    encryptKey: optionalTrim(env.FEISHU_ENCRYPT_KEY) || optionalTrim(cfg?.encryptKey),
+    homeChannel: optionalTrim(env.FEISHU_HOME_CHANNEL) || optionalTrim(cfg?.homeChannel),
+    homeChannelName: optionalTrim(env.FEISHU_HOME_CHANNEL_NAME) || optionalTrim(cfg?.homeChannelName),
+    allowedChats: env.FEISHU_ALLOWED_CHATS ? parseStringList(env.FEISHU_ALLOWED_CHATS) : (cfg?.allowedChats ?? []),
+    allowAllChats: env.FEISHU_ALLOW_ALL_CHATS === '1' || env.FEISHU_ALLOW_ALL_CHATS === 'true' || cfg?.allowAllChats === true,
+    allowedUsers: env.FEISHU_ALLOWED_USERS ? parseStringList(env.FEISHU_ALLOWED_USERS) : (cfg?.allowedUsers ?? []),
+    allowAllUsers: env.FEISHU_ALLOW_ALL_USERS === '1' || env.FEISHU_ALLOW_ALL_USERS === 'true' || cfg?.allowAllUsers === true,
+    enabled: cfg?.enabled !== false,
+    source: envAppId || envAppSecret || envBaseUrl || envDomain ? 'env' : cfg?.appId || cfg?.appSecret || cfg?.baseUrl || cfg?.domain ? 'config' : 'none',
+  };
+}
+
+export interface ResolvedDingTalkConfig {
+  clientId?: string;
+  clientSecret?: string;
+  robotCode?: string;
+  apiBaseUrl: string;
+  webhookUrl?: string;
+  webhookSecret?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  allowedUsers: string[];
+  allowedChats: string[];
+  freeResponseChats: string[];
+  allowAllUsers: boolean;
+  allowAllChats: boolean;
+  requireMention: boolean;
+  groupSessionsPerUser: boolean;
+  enabled: boolean;
+  source: 'env' | 'config' | 'none';
+}
+
+export function resolveDingTalkConfig(config: GatewayConfig, env: NodeJS.ProcessEnv = process.env): ResolvedDingTalkConfig {
+  const cfg = config.dingtalk;
+  const envClientId = optionalTrim(env.DINGTALK_CLIENT_ID) || optionalTrim(env.DINGTALK_APP_KEY);
+  const envClientSecret = optionalTrim(env.DINGTALK_CLIENT_SECRET) || optionalTrim(env.DINGTALK_APP_SECRET);
+  const envRobotCode = optionalTrim(env.DINGTALK_ROBOT_CODE);
+  const envApiBaseUrl = optionalTrim(env.DINGTALK_API_BASE_URL);
+  const envWebhookUrl = optionalTrim(env.DINGTALK_WEBHOOK_URL);
+  const envWebhookSecret = optionalTrim(env.DINGTALK_WEBHOOK_SECRET);
+  const requireMentionEnv = env.DINGTALK_REQUIRE_MENTION;
+  const groupSessionsEnv = env.DINGTALK_GROUP_SESSIONS_PER_USER;
+  return {
+    clientId: envClientId || optionalTrim(cfg?.clientId),
+    clientSecret: envClientSecret || optionalTrim(cfg?.clientSecret),
+    robotCode: envRobotCode || optionalTrim(cfg?.robotCode),
+    apiBaseUrl: (envApiBaseUrl || optionalTrim(cfg?.apiBaseUrl) || 'https://api.dingtalk.com').replace(/\/+$/, ''),
+    webhookUrl: envWebhookUrl || optionalTrim(cfg?.webhookUrl),
+    webhookSecret: envWebhookSecret || optionalTrim(cfg?.webhookSecret),
+    homeChannel: optionalTrim(env.DINGTALK_HOME_CHANNEL) || optionalTrim(cfg?.homeChannel),
+    homeChannelName: optionalTrim(env.DINGTALK_HOME_CHANNEL_NAME) || optionalTrim(cfg?.homeChannelName),
+    allowedUsers: env.DINGTALK_ALLOWED_USERS ? parseStringList(env.DINGTALK_ALLOWED_USERS) : (cfg?.allowedUsers ?? []),
+    allowedChats: env.DINGTALK_ALLOWED_CHATS ? parseStringList(env.DINGTALK_ALLOWED_CHATS) : (cfg?.allowedChats ?? []),
+    freeResponseChats: env.DINGTALK_FREE_RESPONSE_CHATS ? parseStringList(env.DINGTALK_FREE_RESPONSE_CHATS) : (cfg?.freeResponseChats ?? []),
+    allowAllUsers: env.DINGTALK_ALLOW_ALL_USERS === '1' || env.DINGTALK_ALLOW_ALL_USERS === 'true' || cfg?.allowAllUsers === true,
+    allowAllChats: env.DINGTALK_ALLOW_ALL_CHATS === '1' || env.DINGTALK_ALLOW_ALL_CHATS === 'true' || cfg?.allowAllChats === true,
+    requireMention: requireMentionEnv == null ? cfg?.requireMention !== false : requireMentionEnv === '1' || requireMentionEnv === 'true',
+    groupSessionsPerUser: groupSessionsEnv == null ? cfg?.groupSessionsPerUser !== false : groupSessionsEnv === '1' || groupSessionsEnv === 'true',
+    enabled: cfg?.enabled !== false,
+    source:
+      envClientId || envClientSecret || envRobotCode || envApiBaseUrl || envWebhookUrl || envWebhookSecret
+        ? 'env'
+        : cfg?.clientId || cfg?.clientSecret || cfg?.robotCode || cfg?.apiBaseUrl || cfg?.webhookUrl || cfg?.webhookSecret
+          ? 'config'
+          : 'none',
+  };
+}
+
+export interface ResolvedGoogleChatConfig {
+  projectId?: string;
+  subscriptionName?: string;
+  serviceAccountJson?: string;
+  apiBaseUrl: string;
+  incomingWebhookUrl?: string;
+  homeChannel?: string;
+  homeChannelName?: string;
+  allowedUsers: string[];
+  allowedSpaces: string[];
+  freeResponseSpaces: string[];
+  allowAllUsers: boolean;
+  allowAllSpaces: boolean;
+  maxMessages: number;
+  maxBytes: number;
+  enabled: boolean;
+  source: 'env' | 'config' | 'none';
+}
+
+export function resolveGoogleChatConfig(config: GatewayConfig, env: NodeJS.ProcessEnv = process.env): ResolvedGoogleChatConfig {
+  const cfg = config.googleChat;
+  const envProjectId = optionalTrim(env.GOOGLE_CHAT_PROJECT_ID) || optionalTrim(env.GOOGLE_CLOUD_PROJECT);
+  const envSubscriptionName = optionalTrim(env.GOOGLE_CHAT_SUBSCRIPTION_NAME);
+  const envServiceAccountJson = optionalTrim(env.GOOGLE_CHAT_SERVICE_ACCOUNT_JSON) || optionalTrim(env.GOOGLE_APPLICATION_CREDENTIALS);
+  const envApiBaseUrl = optionalTrim(env.GOOGLE_CHAT_API_BASE_URL);
+  const envIncomingWebhookUrl = optionalTrim(env.GOOGLE_CHAT_INCOMING_WEBHOOK_URL) || optionalTrim(env.GOOGLE_CHAT_WEBHOOK_URL);
+  return {
+    projectId: envProjectId || optionalTrim(cfg?.projectId),
+    subscriptionName: envSubscriptionName || optionalTrim(cfg?.subscriptionName),
+    serviceAccountJson: envServiceAccountJson || optionalTrim(cfg?.serviceAccountJson),
+    apiBaseUrl: (envApiBaseUrl || optionalTrim(cfg?.apiBaseUrl) || 'https://chat.googleapis.com').replace(/\/+$/, ''),
+    incomingWebhookUrl: envIncomingWebhookUrl || optionalTrim(cfg?.incomingWebhookUrl),
+    homeChannel: optionalTrim(env.GOOGLE_CHAT_HOME_CHANNEL) || optionalTrim(cfg?.homeChannel),
+    homeChannelName: optionalTrim(env.GOOGLE_CHAT_HOME_CHANNEL_NAME) || optionalTrim(cfg?.homeChannelName),
+    allowedUsers: env.GOOGLE_CHAT_ALLOWED_USERS ? parseStringList(env.GOOGLE_CHAT_ALLOWED_USERS) : (cfg?.allowedUsers ?? []),
+    allowedSpaces: env.GOOGLE_CHAT_ALLOWED_SPACES ? parseStringList(env.GOOGLE_CHAT_ALLOWED_SPACES) : (cfg?.allowedSpaces ?? []),
+    freeResponseSpaces: env.GOOGLE_CHAT_FREE_RESPONSE_SPACES
+      ? parseStringList(env.GOOGLE_CHAT_FREE_RESPONSE_SPACES)
+      : (cfg?.freeResponseSpaces ?? []),
+    allowAllUsers: env.GOOGLE_CHAT_ALLOW_ALL_USERS === '1' || env.GOOGLE_CHAT_ALLOW_ALL_USERS === 'true' || cfg?.allowAllUsers === true,
+    allowAllSpaces: env.GOOGLE_CHAT_ALLOW_ALL_SPACES === '1' || env.GOOGLE_CHAT_ALLOW_ALL_SPACES === 'true' || cfg?.allowAllSpaces === true,
+    maxMessages: parsePositiveInt(env.GOOGLE_CHAT_MAX_MESSAGES, cfg?.maxMessages ?? 1),
+    maxBytes: parsePositiveInt(env.GOOGLE_CHAT_MAX_BYTES, cfg?.maxBytes ?? 16_777_216),
+    enabled: cfg?.enabled !== false,
+    source:
+      envProjectId || envSubscriptionName || envServiceAccountJson || envApiBaseUrl || envIncomingWebhookUrl
+        ? 'env'
+        : cfg?.projectId || cfg?.subscriptionName || cfg?.serviceAccountJson || cfg?.apiBaseUrl || cfg?.incomingWebhookUrl
+          ? 'config'
+          : 'none',
+  };
+}
+
 export interface ResolvedTeamsConfig {
   deliveryMode: 'incoming_webhook' | 'graph';
   incomingWebhookUrl?: string;
@@ -1170,6 +1461,29 @@ export function redactGatewayConfig(config: GatewayConfig): GatewayConfig {
           ...config.matrix,
           accessToken: config.matrix.accessToken ? '<secret:MATRIX_ACCESS_TOKEN>' : undefined,
           password: config.matrix.password ? '<secret:MATRIX_PASSWORD>' : undefined,
+        }
+      : undefined,
+    feishu: config.feishu
+      ? {
+          ...config.feishu,
+          appSecret: config.feishu.appSecret ? '<secret:FEISHU_APP_SECRET>' : undefined,
+          verificationToken: config.feishu.verificationToken ? '<secret:FEISHU_VERIFICATION_TOKEN>' : undefined,
+          encryptKey: config.feishu.encryptKey ? '<secret:FEISHU_ENCRYPT_KEY>' : undefined,
+        }
+      : undefined,
+    dingtalk: config.dingtalk
+      ? {
+          ...config.dingtalk,
+          clientSecret: config.dingtalk.clientSecret ? '<secret:DINGTALK_CLIENT_SECRET>' : undefined,
+          webhookUrl: config.dingtalk.webhookUrl ? '<secret:DINGTALK_WEBHOOK_URL>' : undefined,
+          webhookSecret: config.dingtalk.webhookSecret ? '<secret:DINGTALK_WEBHOOK_SECRET>' : undefined,
+        }
+      : undefined,
+    googleChat: config.googleChat
+      ? {
+          ...config.googleChat,
+          serviceAccountJson: config.googleChat.serviceAccountJson ? '<secret:GOOGLE_CHAT_SERVICE_ACCOUNT_JSON>' : undefined,
+          incomingWebhookUrl: config.googleChat.incomingWebhookUrl ? '<secret:GOOGLE_CHAT_INCOMING_WEBHOOK_URL>' : undefined,
         }
       : undefined,
     teams: config.teams

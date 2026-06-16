@@ -71,6 +71,38 @@ describe('messaging targets', () => {
       platform: 'matrix',
       address: '!roomid:matrix.org:8448',
     });
+    expect(parseSendTarget('feishu:oc_abc123')).toMatchObject({
+      platform: 'feishu',
+      address: 'oc_abc123',
+    });
+    expect(parseSendTarget('lark:oc_lark123')).toMatchObject({
+      platform: 'feishu',
+      address: 'oc_lark123',
+    });
+    expect(parseSendTarget('dingtalk:cid_home')).toMatchObject({
+      platform: 'dingtalk',
+      address: 'cid_home',
+    });
+    expect(parseSendTarget('ding:user/manager')).toMatchObject({
+      platform: 'dingtalk',
+      address: 'user/manager',
+    });
+    expect(parseSendTarget('google-chat:spaces/AAAA/threads/thread-1')).toMatchObject({
+      platform: 'googlechat',
+      address: 'spaces/AAAA/threads/thread-1',
+    });
+    expect(parseSendTarget('googlechat:space/AAAA')).toMatchObject({
+      platform: 'googlechat',
+      address: 'space/AAAA',
+    });
+    expect(parseSendTarget('gchat:https://chat.googleapis.com/v1/spaces/AAAA/messages?key=k&token=t')).toMatchObject({
+      platform: 'googlechat',
+      address: 'https://chat.googleapis.com/v1/spaces/AAAA/messages?key=k&token=t',
+    });
+    expect(parseSendTarget('teams:19:chatid@thread.v2')).toMatchObject({
+      platform: 'teams',
+      address: '19:chatid@thread.v2',
+    });
   });
 
   it('rejects ambiguous or partial numeric targets', () => {
@@ -90,6 +122,8 @@ describe('messaging targets', () => {
     expect(() => parseSendTarget('whatsapp:+15551234567:thread')).toThrow('ไม่รองรับ thread');
     expect(() => parseSendTarget('whatsapp:not-a-number')).toThrow('wa_id');
     expect(() => parseSendTarget('matrix:not-a-room')).toThrow('Matrix target');
+    expect(() => parseSendTarget('feishu:oc_abc:thread')).toThrow('ไม่รองรับ thread');
+    expect(() => parseSendTarget('googlechat:not-a-space')).toThrow('Google Chat target');
   });
 
   it('formats targets for user-facing output', () => {
@@ -115,7 +149,25 @@ describe('messaging targets', () => {
     expect(targets[0]).toMatchObject({ target: 'telegram', configured: false });
   });
 
-  it('lists configured Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, and Matrix targets', () => {
+  it('marks webhook-mode DingTalk and Google Chat homes ready', () => {
+    expect(
+      listConfiguredTargets({
+        dingtalk: {
+          webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=abc',
+          homeChannel: 'webhook',
+        },
+        googleChat: {
+          incomingWebhookUrl: 'https://chat.googleapis.com/v1/spaces/AAAA/messages?key=k&token=t',
+          homeChannel: 'webhook',
+        },
+      }).map((t) => ({ target: t.target, configured: t.configured })),
+    ).toEqual([
+      { target: 'dingtalk', configured: true },
+      { target: 'googlechat', configured: true },
+    ]);
+  });
+
+  it('lists configured Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, Matrix, Feishu, DingTalk, Google Chat, and Teams targets', () => {
     expect(
       listConfiguredTargets({
         discord: {
@@ -189,6 +241,37 @@ describe('messaging targets', () => {
           homeRoomName: 'Owner',
           allowedRooms: ['!home:matrix.example.org', '!ops:matrix.example.org'],
         },
+        feishu: {
+          domain: 'feishu',
+          appId: 'cli_app',
+          appSecret: 'feishu-secret',
+          homeChannel: 'oc_home',
+          homeChannelName: 'Owner',
+          allowedChats: ['oc_home', 'oc_ops'],
+        },
+        dingtalk: {
+          clientId: 'ding-client',
+          clientSecret: 'ding-secret',
+          robotCode: 'ding-robot',
+          homeChannel: 'cid_home',
+          homeChannelName: 'Owner',
+          allowedChats: ['cid_home', 'cid_ops'],
+          allowedUsers: ['manager'],
+        },
+        googleChat: {
+          serviceAccountJson: '/home/you/.sanook/google-chat-sa.json',
+          incomingWebhookUrl: 'https://chat.googleapis.com/v1/spaces/AAAA/messages?key=k&token=t',
+          homeChannel: 'spaces/AAAA',
+          homeChannelName: 'Owner',
+          allowedSpaces: ['spaces/AAAA', 'spaces/BBBB'],
+        },
+        teams: {
+          deliveryMode: 'graph',
+          graphAccessToken: 'teams-graph-token',
+          chatId: '19:chat@thread.v2',
+          homeChannel: '19:chat@thread.v2',
+          homeChannelName: 'Owner',
+        },
       }).map((t) => t.target),
     ).toEqual([
       'discord',
@@ -217,6 +300,14 @@ describe('messaging targets', () => {
       'whatsapp:15557654321',
       'matrix',
       'matrix:!ops:matrix.example.org',
+      'feishu',
+      'feishu:oc_ops',
+      'dingtalk',
+      'dingtalk:cid_ops',
+      'dingtalk:user/manager',
+      'googlechat',
+      'googlechat:spaces/BBBB',
+      'teams',
     ]);
   });
 });

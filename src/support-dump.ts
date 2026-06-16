@@ -79,8 +79,11 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
 
   const {
     readGatewayConfig,
+    resolveDingTalkConfig,
     resolveDiscordConfig,
     resolveEmailConfig,
+    resolveFeishuConfig,
+    resolveGoogleChatConfig,
     resolveHomeAssistantConfig,
     resolveLineConfig,
     resolveMattermostConfig,
@@ -112,6 +115,9 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
   const signal = resolveSignalConfig(gatewayConfig, env);
   const whatsapp = resolveWhatsAppConfig(gatewayConfig, env);
   const matrix = resolveMatrixConfig(gatewayConfig, env);
+  const feishu = resolveFeishuConfig(gatewayConfig, env);
+  const dingtalk = resolveDingTalkConfig(gatewayConfig, env);
+  const googleChat = resolveGoogleChatConfig(gatewayConfig, env);
   const teams = resolveTeamsConfig(gatewayConfig, env);
   const webhooks = resolveWebhookConfig(gatewayConfig, env);
   const service = await gatewayServiceStatus();
@@ -180,6 +186,9 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
   lines.push(`  signal: ${signal.account ? `configured via ${signal.source}` : 'not configured'}; enabled=${yesNo(signal.enabled)}; url=${valueOrUnset(signal.httpUrl)}; account=${redactSignalId(signal.account)}; allowed=${signal.allowedUsers.length}; groups=${signal.groupAllowedUsers.length}; home=${redactSignalId(signal.homeChannel)}; requireMention=${yesNo(signal.requireMention)}`);
   lines.push(`  whatsapp: ${whatsapp.phoneNumberId || whatsapp.accessToken ? `configured via ${whatsapp.source}` : 'not configured'}; enabled=${yesNo(whatsapp.enabled)}; phoneNumberId=${yesNo(Boolean(whatsapp.phoneNumberId))}; token=${yesNo(Boolean(whatsapp.accessToken))}; secret=${yesNo(Boolean(whatsapp.appSecret))}; verifyToken=${yesNo(Boolean(whatsapp.verifyToken))}; allowed=${whatsapp.allowedUsers.length}; home=${redactWhatsAppId(whatsapp.homeChannel)}; public=${valueOrUnset(whatsapp.publicUrl)}; api=${whatsapp.apiVersion}`);
   lines.push(`  matrix: ${matrix.homeserver || matrix.accessToken || matrix.userId ? `configured via ${matrix.source}` : 'not configured'}; enabled=${yesNo(matrix.enabled)}; homeserver=${valueOrUnset(matrix.homeserver)}; token=${yesNo(Boolean(matrix.accessToken))}; user=${valueOrUnset(matrix.userId)}; password=${yesNo(Boolean(matrix.password))}; allowedUsers=${matrix.allowedUsers.length}; allowedRooms=${matrix.allowedRooms.length}; home=${valueOrUnset(matrix.homeRoom)}; requireMention=${yesNo(matrix.requireMention)}; autoJoin=${yesNo(matrix.autoJoin)}`);
+  lines.push(`  feishu: ${feishu.appId || feishu.appSecret ? `configured via ${feishu.source}` : 'not configured'}; enabled=${yesNo(feishu.enabled)}; domain=${feishu.domain}; base=${valueOrUnset(feishu.baseUrl)}; appId=${yesNo(Boolean(feishu.appId))}; secret=${yesNo(Boolean(feishu.appSecret))}; verifyToken=${yesNo(Boolean(feishu.verificationToken))}; encryptKey=${yesNo(Boolean(feishu.encryptKey))}; allowedChats=${feishu.allowedChats.length}; home=${valueOrUnset(feishu.homeChannel)}; allowedUsers=${feishu.allowedUsers.length}`);
+  lines.push(`  dingtalk: ${dingtalk.clientId || dingtalk.clientSecret || dingtalk.webhookUrl ? `configured via ${dingtalk.source}` : 'not configured'}; enabled=${yesNo(dingtalk.enabled)}; api=${valueOrUnset(dingtalk.apiBaseUrl)}; clientId=${yesNo(Boolean(dingtalk.clientId))}; secret=${yesNo(Boolean(dingtalk.clientSecret))}; robot=${yesNo(Boolean(dingtalk.robotCode))}; webhook=${yesNo(Boolean(dingtalk.webhookUrl))}; webhookSecret=${yesNo(Boolean(dingtalk.webhookSecret))}; allowedUsers=${dingtalk.allowedUsers.length}; allowedChats=${dingtalk.allowedChats.length}; freeChats=${dingtalk.freeResponseChats.length}; home=${valueOrUnset(dingtalk.homeChannel)}; requireMention=${yesNo(dingtalk.requireMention)}`);
+  lines.push(`  googlechat: ${googleChat.serviceAccountJson || googleChat.incomingWebhookUrl ? `configured via ${googleChat.source}` : 'not configured'}; enabled=${yesNo(googleChat.enabled)}; project=${valueOrUnset(googleChat.projectId)}; subscription=${yesNo(Boolean(googleChat.subscriptionName))}; serviceAccount=${yesNo(Boolean(googleChat.serviceAccountJson))}; webhook=${yesNo(Boolean(googleChat.incomingWebhookUrl))}; allowedUsers=${googleChat.allowedUsers.length}; allowedSpaces=${googleChat.allowedSpaces.length}; freeSpaces=${googleChat.freeResponseSpaces.length}; home=${valueOrUnset(googleChat.homeChannel)}; flow=${googleChat.maxMessages}/${googleChat.maxBytes}`);
   lines.push(`  teams: ${teams.incomingWebhookUrl || teams.graphAccessToken || teams.clientId ? `configured via ${teams.source}` : 'not configured'}; enabled=${yesNo(teams.enabled)}; mode=${teams.deliveryMode}; webhook=${yesNo(Boolean(teams.incomingWebhookUrl))}; graphToken=${yesNo(Boolean(teams.graphAccessToken))}; chat=${valueOrUnset(teams.chatId)}; teamChannel=${teams.teamId && teams.channelId ? 'set' : '(not set)'}; home=${valueOrUnset(teams.homeChannel)}; botApp=${teams.clientId && teams.tenantId ? 'set' : '(not set)'}; allowed=${teams.allowedUsers.length}; port=${teams.port}`);
   lines.push(`  webhooks: ${webhooks.enabled ? `enabled via ${webhooks.source}` : 'not enabled'}; routes=${Object.keys(webhooks.routes).length}; secret=${yesNo(Boolean(webhooks.secret))}; public=${valueOrUnset(webhooks.publicUrl)}`);
   lines.push(`  send targets: ${targets.length}`);

@@ -40,6 +40,17 @@ describe('support dump', () => {
     const rawWhatsAppHome = '17771234567';
     const rawMatrixToken = 'matrix-access-token-secret-1234567890';
     const rawMatrixPassword = 'matrix-password-secret-1234567890';
+    const rawFeishuSecret = 'feishu-app-secret-1234567890';
+    const rawFeishuVerify = 'feishu-verify-token-1234567890';
+    const rawFeishuEncrypt = 'feishu-encrypt-key-1234567890';
+    const rawDingTalkSecret = 'dingtalk-client-secret-1234567890';
+    const rawDingTalkWebhook = 'https://oapi.dingtalk.com/robot/send?access_token=raw-secret';
+    const rawDingTalkWebhookSecret = 'dingtalk-webhook-secret-1234567890';
+    const rawGoogleChatServiceAccount = '/secret/google-chat-sa.json';
+    const rawGoogleChatWebhook = 'https://chat.googleapis.com/v1/spaces/AAAA/messages?key=raw-secret&token=raw-token';
+    const rawTeamsWebhook = 'https://example.webhook.office.com/webhookb2/raw-secret';
+    const rawTeamsGraphToken = 'teams-graph-token-secret-1234567890';
+    const rawTeamsClientSecret = 'teams-client-secret-1234567890';
     const project = join(home, 'project');
     await mkdir(join(home, '.sanook', 'gateway'), { recursive: true });
     await mkdir(project, { recursive: true });
@@ -88,6 +99,46 @@ describe('support dump', () => {
             homeRoom: '!home:matrix.example.org',
             allowedUsers: ['@alice:matrix.org'],
           },
+          feishu: {
+            domain: 'feishu',
+            appId: 'cli_app',
+            appSecret: rawFeishuSecret,
+            verificationToken: rawFeishuVerify,
+            encryptKey: rawFeishuEncrypt,
+            homeChannel: 'oc_home',
+            allowedChats: ['oc_home'],
+            allowedUsers: ['ou_user'],
+          },
+          dingtalk: {
+            clientId: 'ding-client',
+            clientSecret: rawDingTalkSecret,
+            robotCode: 'ding-robot',
+            webhookUrl: rawDingTalkWebhook,
+            webhookSecret: rawDingTalkWebhookSecret,
+            homeChannel: 'cid-home',
+            allowedUsers: ['manager'],
+            allowedChats: ['cid-home'],
+          },
+          googleChat: {
+            projectId: 'project-1',
+            subscriptionName: 'projects/project-1/subscriptions/hermes-chat-events-sub',
+            serviceAccountJson: rawGoogleChatServiceAccount,
+            incomingWebhookUrl: rawGoogleChatWebhook,
+            homeChannel: 'spaces/AAAA',
+            allowedUsers: ['owner@example.com'],
+            allowedSpaces: ['spaces/AAAA'],
+            freeResponseSpaces: ['spaces/FREE'],
+          },
+          teams: {
+            deliveryMode: 'graph',
+            incomingWebhookUrl: rawTeamsWebhook,
+            graphAccessToken: rawTeamsGraphToken,
+            chatId: '19:chat@thread.v2',
+            clientId: 'teams-client-id',
+            clientSecret: rawTeamsClientSecret,
+            tenantId: 'teams-tenant-id',
+            allowedUsers: ['alice@example.com'],
+          },
           webhooks: { enabled: true, secret: rawWebhookSecret, routes: { issues: { secret: rawWebhookSecret, deliver: 'log' } } },
         },
         null,
@@ -127,6 +178,19 @@ describe('support dump', () => {
     expect(out).toContain('matrix: configured via config');
     expect(out).toContain('token=yes');
     expect(out).toContain('password=yes');
+    expect(out).toContain('feishu: configured via config');
+    expect(out).toContain('appId=yes');
+    expect(out).toContain('secret=yes');
+    expect(out).toContain('dingtalk: configured via config');
+    expect(out).toContain('robot=yes');
+    expect(out).toContain('webhook=yes');
+    expect(out).toContain('webhookSecret=yes');
+    expect(out).toContain('googlechat: configured via config');
+    expect(out).toContain('serviceAccount=yes');
+    expect(out).toContain('allowedSpaces=1');
+    expect(out).toContain('teams: configured via config');
+    expect(out).toContain('mode=graph');
+    expect(out).toContain('graphToken=yes');
     expect(out).toContain('webhooks: enabled via config');
     expect(out).not.toContain(rawKey);
     expect(out).not.toContain(rawTelegram);
@@ -144,5 +208,16 @@ describe('support dump', () => {
     expect(out).not.toContain(rawWhatsAppHome);
     expect(out).not.toContain(rawMatrixToken);
     expect(out).not.toContain(rawMatrixPassword);
+    expect(out).not.toContain(rawFeishuSecret);
+    expect(out).not.toContain(rawFeishuVerify);
+    expect(out).not.toContain(rawFeishuEncrypt);
+    expect(out).not.toContain(rawDingTalkSecret);
+    expect(out).not.toContain(rawDingTalkWebhook);
+    expect(out).not.toContain(rawDingTalkWebhookSecret);
+    expect(out).not.toContain(rawGoogleChatServiceAccount);
+    expect(out).not.toContain(rawGoogleChatWebhook);
+    expect(out).not.toContain(rawTeamsWebhook);
+    expect(out).not.toContain(rawTeamsGraphToken);
+    expect(out).not.toContain(rawTeamsClientSecret);
   });
 });
