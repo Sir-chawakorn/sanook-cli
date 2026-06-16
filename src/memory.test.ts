@@ -78,7 +78,7 @@ describe('appendBrainWorklog (auto worklog → vault Sessions)', () => {
 
   it('สร้าง worklog รายวัน + frontmatter + up::', async () => {
     expect(
-      await appendBrainWorklog(vault, { prompt: 'fix the failing test', summary: 'done', model: 'glm:smart', today: '2026-06-15' }),
+      await appendBrainWorklog(vault, { prompt: 'fix the failing test', summary: 'done', model: 'google:flash', today: '2026-06-15' }),
     ).toBe(true);
     const c = await readFile(join(vault, 'Sessions', '2026-06-15-worklog.md'), 'utf8');
     expect(c).toContain('note_type: session-log');

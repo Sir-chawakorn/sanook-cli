@@ -31,10 +31,10 @@ describe('mergeModelOptions — no duplicate options (the "two identical choices
     const lm = mergeModelOptions(PROVIDERS.lmstudio, []);
     expect(lm.length).toBeGreaterThan(0);
     expect(lm.map((o) => o.value)).toContain('local-model');
-    // ollama: default qwen3 (unique id) must remain selectable alongside llama3.3
+    // ollama: default llama3.3 (unique id) must remain selectable alongside mistral
     const ol = mergeModelOptions(PROVIDERS.ollama, []);
-    expect(ol.map((o) => o.value)).toContain('qwen3');
     expect(ol.map((o) => o.value)).toContain('llama3.3');
+    expect(ol.map((o) => o.value)).toContain('mistral');
   });
 
   it('remote ids dedupe against curated and against themselves', () => {

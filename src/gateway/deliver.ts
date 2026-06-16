@@ -3,10 +3,8 @@ import type { GatewayConfig } from './config.js';
 import {
   readGatewayConfig,
   resolveBlueBubblesConfig,
-  resolveDingTalkConfig,
   resolveDiscordConfig,
   resolveEmailConfig,
-  resolveFeishuConfig,
   resolveGoogleChatConfig,
   resolveHomeAssistantConfig,
   resolveLineConfig,
@@ -17,35 +15,25 @@ import {
   resolveSlackConfig,
   resolveSmsConfig,
   resolveTelegramConfig,
-  resolveQQBotConfig,
   resolveTeamsConfig,
-  resolveWeComConfig,
-  resolveWeixinConfig,
   resolveWhatsAppConfig,
-  resolveYuanbaoConfig,
 } from './config.js';
 import { parseBlueBubblesTarget, sendBlueBubblesMessage } from './bluebubbles.js';
 import { sendDiscordMessage } from './discord.js';
-import { parseDingTalkTarget, sendDingTalkMessage } from './dingtalk.js';
 import { sendEmailMessage } from './email.js';
-import { sendFeishuMessage } from './feishu.js';
 import { parseGoogleChatTarget, sendGoogleChatMessage } from './googlechat.js';
 import { sendHomeAssistantNotification } from './homeassistant.js';
 import { sendLineMessage } from './line.js';
 import { sendMattermostMessage } from './mattermost.js';
 import { sendMatrixMessage } from './matrix.js';
 import { sendNtfyMessage } from './ntfy.js';
-import { parseQQBotTarget, sendQQBotMessage } from './qqbot.js';
 import { normalizeSignalId, sendSignalMessage } from './signal.js';
 import { sendSlackMessage } from './slack.js';
 import { normalizeSmsPhone, sendSmsMessage } from './sms.js';
 import { formatTarget, parseSendTarget } from './targets.js';
 import { sendTelegramMessage } from './telegram.js';
 import { sendTeamsMessage } from './teams.js';
-import { parseWeComTarget, sendWeComMessage } from './wecom.js';
-import { parseWeixinTarget, sendWeixinMessage } from './weixin.js';
 import { normalizeWhatsAppId, redactWhatsAppId, sendWhatsAppMessage } from './whatsapp.js';
-import { parseYuanbaoTarget } from './yuanbao.js';
 
 export interface DeliverOptions {
   config?: GatewayConfig;
@@ -79,30 +67,6 @@ function normalizeBlueBubblesAllowTarget(config: ReturnType<typeof resolveBlueBu
   } catch {
     return value;
   }
-}
-
-function normalizeQQBotAllowTarget(raw: string | undefined): string | undefined {
-  const value = raw?.trim();
-  if (!value) return undefined;
-  return value.replace(/^(?:user|c2c|dm|group|guild|channel)[:/]/i, '').trim() || undefined;
-}
-
-function normalizeQQBotHomeTarget(raw: string | undefined, type: 'c2c' | 'group' | 'guild'): string | undefined {
-  const value = raw?.trim();
-  if (!value) return undefined;
-  const match = /^(user|c2c|dm|group|guild|channel)[:/](.+)$/i.exec(value);
-  const rawType = match?.[1]?.toLowerCase();
-  const homeType = rawType === 'group' ? 'group' : rawType === 'guild' || rawType === 'channel' ? 'guild' : 'c2c';
-  if (homeType !== type) return undefined;
-  const normalized = (match?.[2] ?? value).trim();
-  if (!normalized || /\s/.test(normalized)) return undefined;
-  return normalized;
-}
-
-function normalizeWeixinAllowTarget(raw: string | undefined): string | undefined {
-  const value = raw?.trim();
-  if (!value) return undefined;
-  return value.replace(/^(?:user|dm|direct|group|room)[:/]/i, '').trim() || undefined;
 }
 
 export async function deliverToTarget(rawTarget: string, message: string, options: DeliverOptions = {}): Promise<DeliverResult> {
@@ -347,59 +311,6 @@ export async function deliverToTarget(rawTarget: string, message: string, option
     };
   }
 
-  if (target.platform === 'feishu') {
-    const feishu = resolveFeishuConfig(config, env);
-    if (!feishu.appId || !feishu.appSecret) throw new Error(`ยังไม่ได้ตั้ง Feishu/Lark — รัน: ${BRAND.cliName} gateway setup feishu`);
-    const chatId = target.address ?? feishu.homeChannel;
-    if (!chatId) throw new Error('ต้องระบุ Feishu/Lark chat id หรือ home channel ใน gateway config');
-    const allowed = new Set([feishu.homeChannel, ...feishu.allowedChats].filter((v): v is string => Boolean(v?.trim())));
-    if (!feishu.allowAllChats && !allowed.size) {
-      throw new Error('ต้องตั้ง Feishu/Lark home channel หรือ allowed chats เพื่อ fail-closed');
-    }
-    if (!feishu.allowAllChats && allowed.size && !allowed.has(chatId)) {
-      throw new Error(`Feishu/Lark chat ${chatId} ไม่อยู่ใน allowlist (${[...allowed].join(', ') || 'none'})`);
-    }
-    const result = await sendFeishuMessage(feishu, chatId, text);
-    return {
-      platform: 'feishu',
-      target: formatTarget({ platform: 'feishu', address: result.chatId }),
-      to: result.chatId,
-      messageIds: result.messageIds,
-      messageCount: result.messageCount,
-    };
-  }
-
-  if (target.platform === 'dingtalk') {
-    const dingtalk = resolveDingTalkConfig(config, env);
-    const parsedTarget = parseDingTalkTarget(dingtalk, target.address);
-    const hasWebhook = parsedTarget.type === 'webhook' && (dingtalk.webhookUrl || /^https:\/\//i.test(target.address ?? ''));
-    const hasOpenApi = dingtalk.clientId && dingtalk.clientSecret && dingtalk.robotCode;
-    if (!hasWebhook && !hasOpenApi) throw new Error(`ยังไม่ได้ตั้ง DingTalk — รัน: ${BRAND.cliName} gateway setup dingtalk`);
-    if (parsedTarget.type === 'user') {
-      const allowedUsers = new Set(dingtalk.allowedUsers);
-      if (!dingtalk.allowAllUsers && !allowedUsers.size) throw new Error('ต้องตั้ง DingTalk allowed users เพื่อ fail-closed');
-      if (!dingtalk.allowAllUsers && !allowedUsers.has(parsedTarget.value)) {
-        throw new Error(`DingTalk user ${parsedTarget.value} ไม่อยู่ใน allowlist (${[...allowedUsers].join(', ') || 'none'})`);
-      }
-    } else {
-      const allowedChats = new Set(
-        [dingtalk.homeChannel, dingtalk.webhookUrl, ...dingtalk.allowedChats].filter((v): v is string => Boolean(v?.trim())),
-      );
-      if (!dingtalk.allowAllChats && !allowedChats.size) throw new Error('ต้องตั้ง DingTalk home channel/webhook หรือ allowed chats เพื่อ fail-closed');
-      if (!dingtalk.allowAllChats && !allowedChats.has(parsedTarget.value)) {
-        throw new Error(`DingTalk target ${parsedTarget.type === 'webhook' ? 'webhook' : parsedTarget.value} ไม่อยู่ใน allowlist`);
-      }
-    }
-    const result = await sendDingTalkMessage(dingtalk, text, target.address);
-    return {
-      platform: 'dingtalk',
-      target: formatTarget({ platform: 'dingtalk', address: result.target === 'webhook' ? undefined : result.target }),
-      to: result.target,
-      messageIds: result.messageIds,
-      messageCount: result.messageCount,
-    };
-  }
-
   if (target.platform === 'googlechat') {
     const googleChat = resolveGoogleChatConfig(config, env);
     const parsedTarget = parseGoogleChatTarget(googleChat, target.address);
@@ -468,123 +379,6 @@ export async function deliverToTarget(rawTarget: string, message: string, option
     };
   }
 
-  if (target.platform === 'wecom') {
-    const wecom = resolveWeComConfig(config, env);
-    if (!wecom.botId || !wecom.secret) throw new Error(`ยังไม่ได้ตั้ง WeCom — รัน: ${BRAND.cliName} gateway setup wecom`);
-    const parsedTarget = parseWeComTarget(wecom, target.address);
-    if (parsedTarget.type === 'group') {
-      const allowedGroups = new Set([wecom.homeChannel, ...wecom.allowedGroups].filter((v): v is string => Boolean(v?.trim())));
-      if (wecom.groupPolicy === 'disabled') throw new Error('WeCom group policy ปิดอยู่');
-      if (wecom.groupPolicy === 'allowlist' && !allowedGroups.has(parsedTarget.value)) {
-        throw new Error(`WeCom group ${parsedTarget.value} ไม่อยู่ใน allowlist (${[...allowedGroups].join(', ') || 'none'})`);
-      }
-    } else {
-      const allowedUsers = new Set([wecom.homeChannel, ...wecom.allowedUsers].filter((v): v is string => Boolean(v?.trim())));
-      if (wecom.dmPolicy === 'disabled') throw new Error('WeCom DM policy ปิดอยู่');
-      if (wecom.dmPolicy === 'allowlist' && !allowedUsers.has(parsedTarget.value)) {
-        throw new Error(`WeCom target ${parsedTarget.value} ไม่อยู่ใน allowlist (${[...allowedUsers].join(', ') || 'none'})`);
-      }
-    }
-    const result = await sendWeComMessage(wecom, text, target.address);
-    return {
-      platform: 'wecom',
-      target: formatTarget({ platform: 'wecom', address: result.target }),
-      to: result.target,
-      messageIds: result.messageIds,
-      messageCount: result.messageCount,
-    };
-  }
-
-  if (target.platform === 'weixin') {
-    const weixin = resolveWeixinConfig(config, env);
-    if (!weixin.accountId || !weixin.token) throw new Error(`ยังไม่ได้ตั้ง Weixin — รัน: ${BRAND.cliName} gateway setup weixin`);
-    const parsedTarget = parseWeixinTarget(weixin, target.address);
-    if (parsedTarget.type === 'group') {
-      const allowedGroups = new Set(
-        [normalizeWeixinAllowTarget(weixin.homeChannel), ...weixin.groupAllowedUsers.map(normalizeWeixinAllowTarget)].filter(
-          (v): v is string => Boolean(v),
-        ),
-      );
-      if (weixin.groupPolicy === 'disabled' && !allowedGroups.has(parsedTarget.id)) throw new Error('Weixin group policy ปิดอยู่');
-      if (weixin.groupPolicy === 'allowlist' && !allowedGroups.has(parsedTarget.id)) {
-        throw new Error(`Weixin group ${parsedTarget.id} ไม่อยู่ใน allowlist (${[...allowedGroups].join(', ') || 'none'})`);
-      }
-    } else {
-      const allowedUsers = new Set(
-        [normalizeWeixinAllowTarget(weixin.homeChannel), ...weixin.allowedUsers.map(normalizeWeixinAllowTarget)].filter(
-          (v): v is string => Boolean(v),
-        ),
-      );
-      if (weixin.dmPolicy === 'disabled' && !allowedUsers.has(parsedTarget.id)) throw new Error('Weixin DM policy ปิดอยู่');
-      if (!weixin.allowAllUsers && weixin.dmPolicy === 'allowlist' && !allowedUsers.has(parsedTarget.id)) {
-        throw new Error(`Weixin target ${parsedTarget.id} ไม่อยู่ใน allowlist (${[...allowedUsers].join(', ') || 'none'})`);
-      }
-    }
-    const result = await sendWeixinMessage(weixin, target.address, text);
-    return {
-      platform: 'weixin',
-      target: formatTarget({ platform: 'weixin', address: result.target }),
-      to: result.to,
-      messageIds: result.messageIds,
-      messageCount: result.messageCount,
-    };
-  }
-
-  if (target.platform === 'yuanbao') {
-    const yuanbao = resolveYuanbaoConfig(config, env);
-    if (!yuanbao.appId || !yuanbao.appSecret) throw new Error(`ยังไม่ได้ตั้ง Yuanbao — รัน: ${BRAND.cliName} gateway setup yuanbao`);
-    parseYuanbaoTarget(yuanbao, target.address);
-    throw new Error('Yuanbao direct send ยังไม่เปิดใช้: setup/config พร้อมแล้ว แต่ต้องเพิ่ม WebSocket + protobuf dispatch parity ก่อน');
-  }
-
-  if (target.platform === 'qqbot') {
-    const qqbot = resolveQQBotConfig(config, env);
-    if (!qqbot.appId || !qqbot.clientSecret) throw new Error(`ยังไม่ได้ตั้ง QQBot — รัน: ${BRAND.cliName} gateway setup qqbot`);
-    const parsedTarget = parseQQBotTarget(qqbot, target.address);
-    if (parsedTarget.type === 'group') {
-      const allowedGroups = new Set(
-        [
-          normalizeQQBotHomeTarget(qqbot.homeChannel, 'group'),
-          ...qqbot.groupAllowedUsers.map(normalizeQQBotAllowTarget),
-        ].filter((v): v is string => Boolean(v)),
-      );
-      if (qqbot.groupPolicy === 'disabled') throw new Error('QQBot group policy ปิดอยู่');
-      if (qqbot.groupPolicy === 'allowlist' && !allowedGroups.has(parsedTarget.value)) {
-        throw new Error(`QQBot group ${parsedTarget.value} ไม่อยู่ใน allowlist (${[...allowedGroups].join(', ') || 'none'})`);
-      }
-    } else if (parsedTarget.type === 'guild') {
-      const allowedChannels = new Set(
-        [
-          normalizeQQBotHomeTarget(qqbot.homeChannel, 'guild'),
-          ...qqbot.allowedChannels.map(normalizeQQBotAllowTarget),
-        ].filter((v): v is string => Boolean(v)),
-      );
-      if (!allowedChannels.size) throw new Error('ต้องตั้ง QQBot home channel หรือ allowed channels เพื่อ fail-closed');
-      if (!allowedChannels.has(parsedTarget.value)) {
-        throw new Error(`QQBot channel ${parsedTarget.value} ไม่อยู่ใน allowlist (${[...allowedChannels].join(', ') || 'none'})`);
-      }
-    } else {
-      const allowedUsers = new Set(
-        [
-          normalizeQQBotHomeTarget(qqbot.homeChannel, 'c2c'),
-          ...qqbot.allowedUsers.map(normalizeQQBotAllowTarget),
-        ].filter((v): v is string => Boolean(v)),
-      );
-      if (qqbot.dmPolicy === 'disabled') throw new Error('QQBot DM policy ปิดอยู่');
-      if (!qqbot.allowAllUsers && qqbot.dmPolicy === 'allowlist' && !allowedUsers.has(parsedTarget.value)) {
-        throw new Error(`QQBot target ${parsedTarget.value} ไม่อยู่ใน allowlist (${[...allowedUsers].join(', ') || 'none'})`);
-      }
-    }
-    const result = await sendQQBotMessage(qqbot, text, target.address);
-    return {
-      platform: 'qqbot',
-      target: formatTarget({ platform: 'qqbot', address: result.target }),
-      to: result.target,
-      messageIds: result.messageIds,
-      messageCount: result.messageCount,
-    };
-  }
-
   if (target.platform === 'teams') {
     const teams = resolveTeamsConfig(config, env);
     const graphReady = teams.graphAccessToken && (target.address || teams.chatId || teams.homeChannel || (teams.teamId && teams.channelId));
@@ -603,6 +397,6 @@ export async function deliverToTarget(rawTarget: string, message: string, option
   }
 
   throw new Error(
-    `ยังไม่รองรับ platform "${target.platform}" — ตอนนี้รองรับ telegram / discord / slack / mattermost / homeassistant / email / line / sms / ntfy / signal / whatsapp / matrix / feishu / dingtalk / googlechat / bluebubbles / wecom / weixin / yuanbao / qqbot / teams`,
+    `ยังไม่รองรับ platform "${target.platform}" — ตอนนี้รองรับ telegram / discord / slack / mattermost / homeassistant / email / line / sms / ntfy / signal / whatsapp / matrix / googlechat / bluebubbles / teams`,
   );
 }

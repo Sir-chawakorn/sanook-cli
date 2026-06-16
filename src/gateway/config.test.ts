@@ -61,7 +61,7 @@ describe('gateway config', () => {
     });
   });
 
-  it('persists and redacts Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, Matrix, Feishu, DingTalk, Google Chat, Teams, and Webhooks gateway config', async () => {
+  it('persists and redacts Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, Matrix, Google Chat, Teams, and Webhooks gateway config', async () => {
     await C.patchGatewayConfig({
       discord: {
         enabled: true,
@@ -174,35 +174,6 @@ describe('gateway config', () => {
         allowedUsers: [' user@example.com '],
         port: 3979,
       },
-      feishu: {
-        enabled: true,
-        domain: 'lark',
-        baseUrl: ' https://open.larksuite.com/ ',
-        appId: ' cli_app ',
-        appSecret: 'feishu-app-secret',
-        verificationToken: 'feishu-verify-token',
-        encryptKey: 'feishu-encrypt-key',
-        homeChannel: ' oc_home ',
-        homeChannelName: 'Owner Feishu',
-        allowedChats: [' oc_home ', ' oc_ops '],
-        allowedUsers: [' ou_user '],
-      },
-      dingtalk: {
-        enabled: true,
-        clientId: ' ding-app-key ',
-        clientSecret: 'dingtalk-client-secret',
-        robotCode: ' ding-robot ',
-        apiBaseUrl: ' https://api.dingtalk.com/ ',
-        webhookUrl: ' https://oapi.dingtalk.com/robot/send?access_token=secret-token ',
-        webhookSecret: 'dingtalk-webhook-secret',
-        homeChannel: ' cid-home ',
-        homeChannelName: 'Owner DingTalk',
-        allowedUsers: [' manager '],
-        allowedChats: [' cid-home ', ' cid-ops '],
-        freeResponseChats: [' cid-free '],
-        requireMention: false,
-        groupSessionsPerUser: false,
-      },
       googleChat: {
         enabled: true,
         projectId: ' project-1 ',
@@ -261,22 +232,6 @@ describe('gateway config', () => {
     expect(cfg.teams?.incomingWebhookUrl).toBe('https://example.webhook.office.com/webhookb2/id');
     expect(cfg.teams?.chatId).toBe('19:chat@thread.v2');
     expect(cfg.teams?.allowedUsers).toEqual(['user@example.com']);
-    expect(cfg.feishu?.domain).toBe('lark');
-    expect(cfg.feishu?.baseUrl).toBe('https://open.larksuite.com/');
-    expect(cfg.feishu?.appId).toBe('cli_app');
-    expect(cfg.feishu?.homeChannel).toBe('oc_home');
-    expect(cfg.feishu?.allowedChats).toEqual(['oc_home', 'oc_ops']);
-    expect(cfg.feishu?.allowedUsers).toEqual(['ou_user']);
-    expect(cfg.dingtalk?.clientId).toBe('ding-app-key');
-    expect(cfg.dingtalk?.robotCode).toBe('ding-robot');
-    expect(cfg.dingtalk?.apiBaseUrl).toBe('https://api.dingtalk.com/');
-    expect(cfg.dingtalk?.webhookUrl).toBe('https://oapi.dingtalk.com/robot/send?access_token=secret-token');
-    expect(cfg.dingtalk?.homeChannel).toBe('cid-home');
-    expect(cfg.dingtalk?.allowedUsers).toEqual(['manager']);
-    expect(cfg.dingtalk?.allowedChats).toEqual(['cid-home', 'cid-ops']);
-    expect(cfg.dingtalk?.freeResponseChats).toEqual(['cid-free']);
-    expect(cfg.dingtalk?.requireMention).toBe(false);
-    expect(cfg.dingtalk?.groupSessionsPerUser).toBe(false);
     expect(cfg.googleChat?.projectId).toBe('project-1');
     expect(cfg.googleChat?.subscriptionName).toBe('projects/project-1/subscriptions/hermes-chat-events-sub');
     expect(cfg.googleChat?.serviceAccountJson).toBe('/home/you/.sanook/google-chat-sa.json');
@@ -308,19 +263,13 @@ describe('gateway config', () => {
     expect(C.redactGatewayConfig(cfg).teams?.incomingWebhookUrl).toBe('<secret:TEAMS_INCOMING_WEBHOOK_URL>');
     expect(C.redactGatewayConfig(cfg).teams?.graphAccessToken).toBe('<secret:TEAMS_GRAPH_ACCESS_TOKEN>');
     expect(C.redactGatewayConfig(cfg).teams?.clientSecret).toBe('<secret:TEAMS_CLIENT_SECRET>');
-    expect(C.redactGatewayConfig(cfg).feishu?.appSecret).toBe('<secret:FEISHU_APP_SECRET>');
-    expect(C.redactGatewayConfig(cfg).feishu?.verificationToken).toBe('<secret:FEISHU_VERIFICATION_TOKEN>');
-    expect(C.redactGatewayConfig(cfg).feishu?.encryptKey).toBe('<secret:FEISHU_ENCRYPT_KEY>');
-    expect(C.redactGatewayConfig(cfg).dingtalk?.clientSecret).toBe('<secret:DINGTALK_CLIENT_SECRET>');
-    expect(C.redactGatewayConfig(cfg).dingtalk?.webhookUrl).toBe('<secret:DINGTALK_WEBHOOK_URL>');
-    expect(C.redactGatewayConfig(cfg).dingtalk?.webhookSecret).toBe('<secret:DINGTALK_WEBHOOK_SECRET>');
     expect(C.redactGatewayConfig(cfg).googleChat?.serviceAccountJson).toBe('<secret:GOOGLE_CHAT_SERVICE_ACCOUNT_JSON>');
     expect(C.redactGatewayConfig(cfg).googleChat?.incomingWebhookUrl).toBe('<secret:GOOGLE_CHAT_INCOMING_WEBHOOK_URL>');
     expect(C.redactGatewayConfig(cfg).webhooks?.secret).toBe('<secret:WEBHOOK_SECRET>');
     expect(C.redactGatewayConfig(cfg).webhooks?.routes?.issues.secret).toBe('<secret:WEBHOOK_ROUTE_SECRET>');
   });
 
-  it('env Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, Feishu, DingTalk, Google Chat, Teams, and Webhooks settings override persisted messaging config', () => {
+  it('env Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, Google Chat, Teams, and Webhooks settings override persisted messaging config', () => {
     const cfg = {
       discord: {
         botToken: 'config-discord',
@@ -408,31 +357,6 @@ describe('gateway config', () => {
         graphAccessToken: 'config-graph-token',
         chatId: 'old-chat',
         allowedUsers: ['old-user'],
-      },
-      feishu: {
-        domain: 'feishu' as const,
-        baseUrl: 'https://old.feishu.example.com',
-        appId: 'old-app',
-        appSecret: 'old-secret',
-        verificationToken: 'old-verify',
-        encryptKey: 'old-encrypt',
-        homeChannel: 'old-home',
-        allowedChats: ['old-home'],
-        allowedUsers: ['old-user'],
-      },
-      dingtalk: {
-        clientId: 'old-ding-client',
-        clientSecret: 'old-ding-secret',
-        robotCode: 'old-ding-robot',
-        apiBaseUrl: 'https://old-ding.example.com',
-        webhookUrl: 'https://old-ding.example.com/webhook',
-        webhookSecret: 'old-ding-webhook-secret',
-        homeChannel: 'old-ding-home',
-        allowedUsers: ['old-ding-user'],
-        allowedChats: ['old-ding-home'],
-        freeResponseChats: ['old-ding-free'],
-        requireMention: false,
-        groupSessionsPerUser: false,
       },
       googleChat: {
         projectId: 'old-project',
@@ -710,74 +634,6 @@ describe('gateway config', () => {
     });
 
     expect(
-      C.resolveFeishuConfig(cfg, {
-        FEISHU_DOMAIN: 'lark',
-        FEISHU_BASE_URL: 'https://open.larksuite.com/',
-        FEISHU_APP_ID: 'cli_env',
-        FEISHU_APP_SECRET: 'env-feishu-secret',
-        FEISHU_VERIFICATION_TOKEN: 'env-feishu-verify',
-        FEISHU_ENCRYPT_KEY: 'env-feishu-encrypt',
-        FEISHU_HOME_CHANNEL: 'oc_env',
-        FEISHU_HOME_CHANNEL_NAME: 'Owner Feishu',
-        FEISHU_ALLOWED_CHATS: 'oc_env,oc_ops',
-        FEISHU_ALLOW_ALL_CHATS: 'true',
-        FEISHU_ALLOWED_USERS: 'ou_env,ou_other',
-        FEISHU_ALLOW_ALL_USERS: 'true',
-      } as NodeJS.ProcessEnv),
-    ).toMatchObject({
-      domain: 'lark',
-      baseUrl: 'https://open.larksuite.com',
-      appId: 'cli_env',
-      appSecret: 'env-feishu-secret',
-      verificationToken: 'env-feishu-verify',
-      encryptKey: 'env-feishu-encrypt',
-      homeChannel: 'oc_env',
-      homeChannelName: 'Owner Feishu',
-      allowedChats: ['oc_env', 'oc_ops'],
-      allowAllChats: true,
-      allowedUsers: ['ou_env', 'ou_other'],
-      allowAllUsers: true,
-      source: 'env',
-    });
-
-    expect(
-      C.resolveDingTalkConfig(cfg, {
-        DINGTALK_CLIENT_ID: 'env-ding-client',
-        DINGTALK_CLIENT_SECRET: 'env-ding-secret',
-        DINGTALK_ROBOT_CODE: 'env-ding-robot',
-        DINGTALK_API_BASE_URL: 'https://api.dingtalk.com/',
-        DINGTALK_WEBHOOK_URL: 'https://oapi.dingtalk.com/robot/send?access_token=env',
-        DINGTALK_WEBHOOK_SECRET: 'env-ding-webhook-secret',
-        DINGTALK_HOME_CHANNEL: 'env-ding-home',
-        DINGTALK_HOME_CHANNEL_NAME: 'Owner DingTalk',
-        DINGTALK_ALLOWED_USERS: 'manager,owner',
-        DINGTALK_ALLOWED_CHATS: 'env-ding-home,env-ding-ops',
-        DINGTALK_FREE_RESPONSE_CHATS: 'env-ding-free',
-        DINGTALK_ALLOW_ALL_USERS: 'true',
-        DINGTALK_ALLOW_ALL_CHATS: 'true',
-        DINGTALK_REQUIRE_MENTION: 'true',
-        DINGTALK_GROUP_SESSIONS_PER_USER: 'true',
-      } as NodeJS.ProcessEnv),
-    ).toMatchObject({
-      clientId: 'env-ding-client',
-      clientSecret: 'env-ding-secret',
-      robotCode: 'env-ding-robot',
-      apiBaseUrl: 'https://api.dingtalk.com',
-      webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=env',
-      webhookSecret: 'env-ding-webhook-secret',
-      homeChannel: 'env-ding-home',
-      homeChannelName: 'Owner DingTalk',
-      allowedUsers: ['manager', 'owner'],
-      allowedChats: ['env-ding-home', 'env-ding-ops'],
-      freeResponseChats: ['env-ding-free'],
-      allowAllUsers: true,
-      allowAllChats: true,
-      requireMention: true,
-      groupSessionsPerUser: true,
-      source: 'env',
-    });
-
-    expect(
       C.resolveGoogleChatConfig(cfg, {
         GOOGLE_CHAT_PROJECT_ID: 'project-env',
         GOOGLE_CHAT_SUBSCRIPTION_NAME: 'projects/project-env/subscriptions/hermes-chat-events-sub',
@@ -1046,348 +902,6 @@ describe('gateway config', () => {
     });
   });
 
-  it('persists, resolves, and redacts WeCom gateway config', async () => {
-    await C.patchGatewayConfig({
-      wecom: {
-        enabled: true,
-        botId: ' bot-1 ',
-        secret: 'wecom-secret',
-        websocketUrl: ' wss://openws.work.weixin.qq.com/ ',
-        homeChannel: ' user-1 ',
-        homeChannelName: 'Owner WeCom',
-        allowedUsers: [' user-1 ', '', ' user-2 '],
-        allowedGroups: [' group-1 '],
-        dmPolicy: 'allowlist',
-        groupPolicy: 'allowlist',
-      },
-    });
-
-    const cfg = await C.readGatewayConfig();
-    expect(cfg.wecom).toMatchObject({
-      botId: 'bot-1',
-      secret: 'wecom-secret',
-      websocketUrl: 'wss://openws.work.weixin.qq.com/',
-      homeChannel: 'user-1',
-      homeChannelName: 'Owner WeCom',
-      allowedUsers: ['user-1', 'user-2'],
-      allowedGroups: ['group-1'],
-      dmPolicy: 'allowlist',
-      groupPolicy: 'allowlist',
-    });
-
-    expect(C.resolveWeComConfig(cfg, {} as NodeJS.ProcessEnv)).toMatchObject({
-      botId: 'bot-1',
-      secret: 'wecom-secret',
-      websocketUrl: 'wss://openws.work.weixin.qq.com/',
-      homeChannel: 'user-1',
-      homeChannelName: 'Owner WeCom',
-      allowedUsers: ['user-1', 'user-2'],
-      allowedGroups: ['group-1'],
-      dmPolicy: 'allowlist',
-      groupPolicy: 'allowlist',
-      source: 'config',
-    });
-
-    expect(
-      C.resolveWeComConfig(cfg, {
-        WECOM_BOT_ID: 'env-bot',
-        WECOM_SECRET: 'env-secret',
-        WECOM_WEBSOCKET_URL: 'ws://127.0.0.1:8765/ws',
-        WECOM_HOME_CHANNEL: 'env-user',
-        WECOM_HOME_CHANNEL_NAME: 'Env WeCom',
-        WECOM_ALLOWED_USERS: 'env-user,env-user-2',
-        WECOM_GROUP_ALLOW_FROM: 'env-group',
-        WECOM_DM_POLICY: 'open',
-        WECOM_GROUP_POLICY: 'disabled',
-      } as NodeJS.ProcessEnv),
-    ).toMatchObject({
-      botId: 'env-bot',
-      secret: 'env-secret',
-      websocketUrl: 'ws://127.0.0.1:8765/ws',
-      homeChannel: 'env-user',
-      homeChannelName: 'Env WeCom',
-      allowedUsers: ['env-user', 'env-user-2'],
-      allowedGroups: ['env-group'],
-      dmPolicy: 'open',
-      groupPolicy: 'disabled',
-      source: 'env',
-    });
-
-    expect(C.redactGatewayConfig(cfg).wecom).toMatchObject({
-      secret: '<secret:WECOM_SECRET>',
-    });
-  });
-
-  it('persists, resolves, and redacts Weixin gateway config', async () => {
-    await C.patchGatewayConfig({
-      weixin: {
-        enabled: true,
-        accountId: ' wx-account-1 ',
-        token: 'weixin-token',
-        baseUrl: ' https://ilinkai.weixin.qq.com/ ',
-        cdnBaseUrl: ' https://novac2c.cdn.weixin.qq.com/c2c/ ',
-        homeChannel: ' user/user-1 ',
-        homeChannelName: 'Owner Weixin',
-        allowedUsers: [' user-1 ', '', ' user-2 '],
-        groupAllowedUsers: [' group-1@chatroom '],
-        allowAllUsers: false,
-        dmPolicy: 'allowlist',
-        groupPolicy: 'allowlist',
-        splitMultilineMessages: true,
-      },
-    });
-
-    const cfg = await C.readGatewayConfig();
-    expect(cfg.weixin).toMatchObject({
-      accountId: 'wx-account-1',
-      token: 'weixin-token',
-      baseUrl: 'https://ilinkai.weixin.qq.com/',
-      cdnBaseUrl: 'https://novac2c.cdn.weixin.qq.com/c2c/',
-      homeChannel: 'user/user-1',
-      homeChannelName: 'Owner Weixin',
-      allowedUsers: ['user-1', 'user-2'],
-      groupAllowedUsers: ['group-1@chatroom'],
-      dmPolicy: 'allowlist',
-      groupPolicy: 'allowlist',
-      splitMultilineMessages: true,
-    });
-
-    expect(C.resolveWeixinConfig(cfg, {} as NodeJS.ProcessEnv)).toMatchObject({
-      accountId: 'wx-account-1',
-      token: 'weixin-token',
-      baseUrl: 'https://ilinkai.weixin.qq.com',
-      cdnBaseUrl: 'https://novac2c.cdn.weixin.qq.com/c2c',
-      homeChannel: 'user/user-1',
-      homeChannelName: 'Owner Weixin',
-      allowedUsers: ['user-1', 'user-2'],
-      groupAllowedUsers: ['group-1@chatroom'],
-      dmPolicy: 'allowlist',
-      groupPolicy: 'allowlist',
-      splitMultilineMessages: true,
-      source: 'config',
-    });
-
-    expect(
-      C.resolveWeixinConfig(cfg, {
-        WEIXIN_ACCOUNT_ID: 'env-account',
-        WEIXIN_TOKEN: 'env-token',
-        WEIXIN_BASE_URL: 'https://env.weixin.example.com/',
-        WEIXIN_CDN_BASE_URL: 'https://env-cdn.weixin.example.com/c2c/',
-        WEIXIN_HOME_CHANNEL: 'group/env-group@chatroom',
-        WEIXIN_HOME_CHANNEL_NAME: 'Env Weixin',
-        WEIXIN_ALLOWED_USERS: 'env-user,env-user-2',
-        WEIXIN_GROUP_ALLOWED_USERS: 'env-group@chatroom',
-        WEIXIN_ALLOW_ALL_USERS: 'true',
-        WEIXIN_DM_POLICY: 'open',
-        WEIXIN_GROUP_POLICY: 'disabled',
-        WEIXIN_SPLIT_MULTILINE_MESSAGES: 'true',
-      } as NodeJS.ProcessEnv),
-    ).toMatchObject({
-      accountId: 'env-account',
-      token: 'env-token',
-      baseUrl: 'https://env.weixin.example.com',
-      cdnBaseUrl: 'https://env-cdn.weixin.example.com/c2c',
-      homeChannel: 'group/env-group@chatroom',
-      homeChannelName: 'Env Weixin',
-      allowedUsers: ['env-user', 'env-user-2'],
-      groupAllowedUsers: ['env-group@chatroom'],
-      allowAllUsers: true,
-      dmPolicy: 'open',
-      groupPolicy: 'disabled',
-      splitMultilineMessages: true,
-      source: 'env',
-    });
-
-    expect(C.redactGatewayConfig(cfg).weixin).toMatchObject({
-      token: '<secret:WEIXIN_TOKEN>',
-    });
-  });
-
-  it('persists, resolves, and redacts Yuanbao gateway config', async () => {
-    await C.patchGatewayConfig({
-      yuanbao: {
-        enabled: true,
-        appId: ' yb-app-1 ',
-        appSecret: 'yuanbao-secret',
-        botId: ' yb-bot-1 ',
-        wsUrl: ' wss://bot-wss.yuanbao.tencent.com/wss/connection/ ',
-        apiDomain: ' https://bot.yuanbao.tencent.com/ ',
-        routeEnv: ' staging ',
-        homeChannel: ' direct:user-1 ',
-        homeChannelName: 'Owner Yuanbao',
-        allowedUsers: [' user-1 ', '', ' user-2 '],
-        groupAllowedUsers: [' group-1 '],
-        allowAllUsers: false,
-        dmPolicy: 'allowlist',
-        groupPolicy: 'allowlist',
-      },
-    });
-
-    const cfg = await C.readGatewayConfig();
-    expect(cfg.yuanbao).toMatchObject({
-      appId: 'yb-app-1',
-      appSecret: 'yuanbao-secret',
-      botId: 'yb-bot-1',
-      wsUrl: 'wss://bot-wss.yuanbao.tencent.com/wss/connection/',
-      apiDomain: 'https://bot.yuanbao.tencent.com/',
-      routeEnv: 'staging',
-      homeChannel: 'direct:user-1',
-      homeChannelName: 'Owner Yuanbao',
-      allowedUsers: ['user-1', 'user-2'],
-      groupAllowedUsers: ['group-1'],
-      dmPolicy: 'allowlist',
-      groupPolicy: 'allowlist',
-    });
-
-    expect(C.resolveYuanbaoConfig(cfg, {} as NodeJS.ProcessEnv)).toMatchObject({
-      appId: 'yb-app-1',
-      appSecret: 'yuanbao-secret',
-      botId: 'yb-bot-1',
-      wsUrl: 'wss://bot-wss.yuanbao.tencent.com/wss/connection/',
-      apiDomain: 'https://bot.yuanbao.tencent.com',
-      routeEnv: 'staging',
-      homeChannel: 'direct:user-1',
-      homeChannelName: 'Owner Yuanbao',
-      allowedUsers: ['user-1', 'user-2'],
-      groupAllowedUsers: ['group-1'],
-      dmPolicy: 'allowlist',
-      groupPolicy: 'allowlist',
-      source: 'config',
-    });
-
-    expect(
-      C.resolveYuanbaoConfig(cfg, {
-        YUANBAO_APP_ID: 'env-yb-app',
-        YUANBAO_APP_SECRET: 'env-yb-secret',
-        YUANBAO_BOT_ID: 'env-yb-bot',
-        YUANBAO_WS_URL: 'wss://env-yuanbao.example.com/wss',
-        YUANBAO_API_DOMAIN: 'https://env-yuanbao.example.com/',
-        YUANBAO_ROUTE_ENV: 'sandbox',
-        YUANBAO_HOME_CHANNEL: 'group:env-group',
-        YUANBAO_HOME_CHANNEL_NAME: 'Env Yuanbao',
-        YUANBAO_DM_ALLOW_FROM: 'env-user,env-user-2',
-        YUANBAO_GROUP_ALLOW_FROM: 'env-group',
-        YUANBAO_ALLOW_ALL_USERS: 'true',
-        YUANBAO_DM_POLICY: 'open',
-        YUANBAO_GROUP_POLICY: 'disabled',
-      } as NodeJS.ProcessEnv),
-    ).toMatchObject({
-      appId: 'env-yb-app',
-      appSecret: 'env-yb-secret',
-      botId: 'env-yb-bot',
-      wsUrl: 'wss://env-yuanbao.example.com/wss',
-      apiDomain: 'https://env-yuanbao.example.com',
-      routeEnv: 'sandbox',
-      homeChannel: 'group:env-group',
-      homeChannelName: 'Env Yuanbao',
-      allowedUsers: ['env-user', 'env-user-2'],
-      groupAllowedUsers: ['env-group'],
-      allowAllUsers: true,
-      dmPolicy: 'open',
-      groupPolicy: 'disabled',
-      source: 'env',
-    });
-
-    expect(C.redactGatewayConfig(cfg).yuanbao).toMatchObject({
-      appSecret: '<secret:YUANBAO_APP_SECRET>',
-    });
-  });
-
-  it('persists, resolves, and redacts QQBot gateway config', async () => {
-    await C.patchGatewayConfig({
-      qqbot: {
-        enabled: true,
-        appId: ' app-1 ',
-        clientSecret: 'qq-secret',
-        apiBaseUrl: ' https://api.sgroup.qq.com/ ',
-        tokenUrl: ' https://bots.qq.com/app/getAppAccessToken ',
-        portalHost: ' q.qq.com ',
-        homeChannel: ' user/openid-1 ',
-        homeChannelName: 'Owner QQ',
-        allowedUsers: [' openid-1 ', '', ' openid-2 '],
-        groupAllowedUsers: [' group-1 '],
-        allowedChannels: [' channel-1 '],
-        allowAllUsers: false,
-        dmPolicy: 'allowlist',
-        groupPolicy: 'allowlist',
-        markdownSupport: true,
-      },
-    });
-
-    const cfg = await C.readGatewayConfig();
-    expect(cfg.qqbot).toMatchObject({
-      appId: 'app-1',
-      clientSecret: 'qq-secret',
-      apiBaseUrl: 'https://api.sgroup.qq.com/',
-      tokenUrl: 'https://bots.qq.com/app/getAppAccessToken',
-      portalHost: 'q.qq.com',
-      homeChannel: 'user/openid-1',
-      homeChannelName: 'Owner QQ',
-      allowedUsers: ['openid-1', 'openid-2'],
-      groupAllowedUsers: ['group-1'],
-      allowedChannels: ['channel-1'],
-      dmPolicy: 'allowlist',
-      groupPolicy: 'allowlist',
-      markdownSupport: true,
-    });
-
-    expect(C.resolveQQBotConfig(cfg, {} as NodeJS.ProcessEnv)).toMatchObject({
-      appId: 'app-1',
-      clientSecret: 'qq-secret',
-      apiBaseUrl: 'https://api.sgroup.qq.com/',
-      tokenUrl: 'https://bots.qq.com/app/getAppAccessToken',
-      portalHost: 'q.qq.com',
-      homeChannel: 'user/openid-1',
-      homeChannelName: 'Owner QQ',
-      allowedUsers: ['openid-1', 'openid-2'],
-      groupAllowedUsers: ['group-1'],
-      allowedChannels: ['channel-1'],
-      dmPolicy: 'allowlist',
-      groupPolicy: 'allowlist',
-      markdownSupport: true,
-      source: 'config',
-    });
-
-    expect(
-      C.resolveQQBotConfig(cfg, {
-        QQ_APP_ID: 'env-app',
-        QQ_CLIENT_SECRET: 'env-secret',
-        QQBOT_API_BASE_URL: 'https://env-api.example.com',
-        QQBOT_TOKEN_URL: 'https://env-token.example.com/token',
-        QQ_PORTAL_HOST: 'sandbox.q.qq.com',
-        QQBOT_HOME_CHANNEL: 'group/env-group',
-        QQBOT_HOME_CHANNEL_NAME: 'Env QQ',
-        QQ_ALLOWED_USERS: 'env-user,env-user-2',
-        QQ_GROUP_ALLOWED_USERS: 'env-group',
-        QQBOT_ALLOWED_CHANNELS: 'env-channel',
-        QQ_ALLOW_ALL_USERS: 'true',
-        QQ_DM_POLICY: 'open',
-        QQ_GROUP_POLICY: 'disabled',
-        QQBOT_MARKDOWN_SUPPORT: 'true',
-      } as NodeJS.ProcessEnv),
-    ).toMatchObject({
-      appId: 'env-app',
-      clientSecret: 'env-secret',
-      apiBaseUrl: 'https://env-api.example.com',
-      tokenUrl: 'https://env-token.example.com/token',
-      portalHost: 'sandbox.q.qq.com',
-      homeChannel: 'group/env-group',
-      homeChannelName: 'Env QQ',
-      allowedUsers: ['env-user', 'env-user-2'],
-      groupAllowedUsers: ['env-group'],
-      allowedChannels: ['env-channel'],
-      allowAllUsers: true,
-      dmPolicy: 'open',
-      groupPolicy: 'disabled',
-      markdownSupport: true,
-      source: 'env',
-    });
-
-    expect(C.redactGatewayConfig(cfg).qqbot).toMatchObject({
-      clientSecret: '<secret:QQ_CLIENT_SECRET>',
-    });
-  });
-
   it('persists, resolves, and redacts Matrix gateway config', async () => {
     await C.patchGatewayConfig({
       matrix: {
@@ -1480,60 +994,6 @@ describe('gateway config', () => {
     expect(C.redactGatewayConfig(cfg).matrix).toMatchObject({
       accessToken: '<secret:MATRIX_ACCESS_TOKEN>',
       password: '<secret:MATRIX_PASSWORD>',
-    });
-  });
-
-  it('persists, resolves, and redacts Feishu/Lark gateway config', async () => {
-    await C.patchGatewayConfig({
-      feishu: {
-        enabled: true,
-        domain: 'lark',
-        baseUrl: ' https://open.larksuite.com/ ',
-        appId: ' cli_lark ',
-        appSecret: 'lark-secret',
-        verificationToken: 'lark-verify',
-        encryptKey: 'lark-encrypt',
-        homeChannel: ' oc_home ',
-        homeChannelName: 'Owner Lark',
-        allowedChats: [' oc_ops '],
-        allowAllChats: false,
-        allowedUsers: [' ou_user '],
-        allowAllUsers: false,
-      },
-    });
-
-    const cfg = await C.readGatewayConfig();
-    expect(cfg.feishu).toMatchObject({
-      domain: 'lark',
-      baseUrl: 'https://open.larksuite.com/',
-      appId: 'cli_lark',
-      appSecret: 'lark-secret',
-      verificationToken: 'lark-verify',
-      encryptKey: 'lark-encrypt',
-      homeChannel: 'oc_home',
-      homeChannelName: 'Owner Lark',
-      allowedChats: ['oc_ops'],
-      allowedUsers: ['ou_user'],
-    });
-
-    expect(C.resolveFeishuConfig(cfg, {} as NodeJS.ProcessEnv)).toMatchObject({
-      domain: 'lark',
-      baseUrl: 'https://open.larksuite.com',
-      appId: 'cli_lark',
-      appSecret: 'lark-secret',
-      verificationToken: 'lark-verify',
-      encryptKey: 'lark-encrypt',
-      homeChannel: 'oc_home',
-      homeChannelName: 'Owner Lark',
-      allowedChats: ['oc_ops'],
-      allowedUsers: ['ou_user'],
-      source: 'config',
-    });
-
-    expect(C.redactGatewayConfig(cfg).feishu).toMatchObject({
-      appSecret: '<secret:FEISHU_APP_SECRET>',
-      verificationToken: '<secret:FEISHU_VERIFICATION_TOKEN>',
-      encryptKey: '<secret:FEISHU_ENCRYPT_KEY>',
     });
   });
 

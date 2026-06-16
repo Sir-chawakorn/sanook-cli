@@ -27,17 +27,17 @@ describe('assertDirectApiKey (BYOK / OAuth-reject compliance)', () => {
     expect(() => assertDirectApiKey(anthropic, 'not-a-real-key')).toThrow(/format/i);
   });
   it('opaque provider (keyFormat null) ผ่าน', () => {
-    expect(() => assertDirectApiKey({ label: 'GLM', keyFormat: null }, '2b40.xyz')).not.toThrow();
+    expect(() => assertDirectApiKey({ label: 'OpaqueProvider', keyFormat: null }, '2b40.xyz')).not.toThrow();
   });
 });
 
 describe('redactKey (กัน key รั่วใน log/error/telegram)', () => {
-  it('redact key ทุกค่าย รวม opaque (GLM-style)', () => {
+  it('redact key ทุกค่าย รวม opaque', () => {
     expect(redactKey('err sk-ant-api03-secretsecret123 x')).not.toContain('secretsecret123');
     expect(redactKey('AIzaSyABCDEFGH1234567890')).not.toContain('AIzaSyABCDEFGH1234567890');
     expect(redactKey('xai-abcdefghij1234567890')).not.toContain('abcdefghij1234567890');
     expect(redactKey('gsk_abcdefghij1234567890')).not.toContain('abcdefghij1234567890');
-    // opaque GLM/zhipu key (ไม่มี prefix) ต้องโดน catch-all redact ด้วย
+    // opaque key (ไม่มี prefix) ต้องโดน catch-all redact ด้วย
     expect(redactKey('2b4057ac80224b6b829330f7c90d2135')).not.toContain('2b4057ac80224b6b829330f7c90d2135');
   });
   it('ไม่ทำลาย prose ปกติ', () => {

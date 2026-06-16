@@ -13,7 +13,7 @@ Reach for this skill when a program — not a human — consumes the model's out
 - "The model returns ```json fences / prose / trailing commas and my parse breaks ~3% of the time"
 - "Function arguments come back malformed or with hallucinated keys"
 - "Fill this form schema" / "map this text to my DB row"
-- "Open-weights model (Llama/Mistral/Qwen) won't reliably produce valid JSON"
+- "Open-weights model won't reliably produce valid JSON"
 - "Long extraction gets cut off mid-object" or "streaming JSON is unparseable until complete"
 
 NOT this skill:

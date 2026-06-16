@@ -71,22 +71,6 @@ describe('messaging targets', () => {
       platform: 'matrix',
       address: '!roomid:matrix.org:8448',
     });
-    expect(parseSendTarget('feishu:oc_abc123')).toMatchObject({
-      platform: 'feishu',
-      address: 'oc_abc123',
-    });
-    expect(parseSendTarget('lark:oc_lark123')).toMatchObject({
-      platform: 'feishu',
-      address: 'oc_lark123',
-    });
-    expect(parseSendTarget('dingtalk:cid_home')).toMatchObject({
-      platform: 'dingtalk',
-      address: 'cid_home',
-    });
-    expect(parseSendTarget('ding:user/manager')).toMatchObject({
-      platform: 'dingtalk',
-      address: 'user/manager',
-    });
     expect(parseSendTarget('google-chat:spaces/AAAA/threads/thread-1')).toMatchObject({
       platform: 'googlechat',
       address: 'spaces/AAAA/threads/thread-1',
@@ -99,6 +83,10 @@ describe('messaging targets', () => {
       platform: 'googlechat',
       address: 'https://chat.googleapis.com/v1/spaces/AAAA/messages?key=k&token=t',
     });
+    expect(parseSendTarget('google_chat:spaces/BBBB')).toMatchObject({
+      platform: 'googlechat',
+      address: 'spaces/BBBB',
+    });
     expect(parseSendTarget('imessage:iMessage;-;user@example.com')).toMatchObject({
       platform: 'bluebubbles',
       address: 'iMessage;-;user@example.com',
@@ -107,37 +95,9 @@ describe('messaging targets', () => {
       platform: 'bluebubbles',
       address: 'user@example.com',
     });
-    expect(parseSendTarget('work-wechat:user/user-1')).toMatchObject({
-      platform: 'wecom',
-      address: 'user/user-1',
-    });
-    expect(parseSendTarget('enterprise-wechat:group/group-1')).toMatchObject({
-      platform: 'wecom',
-      address: 'group/group-1',
-    });
-    expect(parseSendTarget('wechat:user/user-1')).toMatchObject({
-      platform: 'weixin',
-      address: 'user/user-1',
-    });
-    expect(parseSendTarget('wx:group/group-1@chatroom')).toMatchObject({
-      platform: 'weixin',
-      address: 'group/group-1@chatroom',
-    });
-    expect(parseSendTarget('yb:direct/user-1')).toMatchObject({
-      platform: 'yuanbao',
-      address: 'direct/user-1',
-    });
-    expect(parseSendTarget('yuanbao:group/group-1')).toMatchObject({
-      platform: 'yuanbao',
-      address: 'group/group-1',
-    });
-    expect(parseSendTarget('qq:user/openid-1')).toMatchObject({
-      platform: 'qqbot',
-      address: 'user/openid-1',
-    });
-    expect(parseSendTarget('qq-bot:group/group-1')).toMatchObject({
-      platform: 'qqbot',
-      address: 'group/group-1',
+    expect(parseSendTarget('blue_bubbles:+15551234567')).toMatchObject({
+      platform: 'bluebubbles',
+      address: '+15551234567',
     });
     expect(parseSendTarget('teams:19:chatid@thread.v2')).toMatchObject({
       platform: 'teams',
@@ -162,13 +122,8 @@ describe('messaging targets', () => {
     expect(() => parseSendTarget('whatsapp:+15551234567:thread')).toThrow('ไม่รองรับ thread');
     expect(() => parseSendTarget('whatsapp:not-a-number')).toThrow('wa_id');
     expect(() => parseSendTarget('matrix:not-a-room')).toThrow('Matrix target');
-    expect(() => parseSendTarget('feishu:oc_abc:thread')).toThrow('ไม่รองรับ thread');
     expect(() => parseSendTarget('googlechat:not-a-space')).toThrow('Google Chat target');
     expect(() => parseSendTarget('bluebubbles:user name@example.com')).toThrow('BlueBubbles target');
-    expect(() => parseSendTarget('wecom:user name')).toThrow('WeCom target');
-    expect(() => parseSendTarget('weixin:user name')).toThrow('Weixin target');
-    expect(() => parseSendTarget('yuanbao:direct/user name')).toThrow('Yuanbao target');
-    expect(() => parseSendTarget('qqbot:user name')).toThrow('QQBot target');
   });
 
   it('formats targets for user-facing output', () => {
@@ -194,25 +149,18 @@ describe('messaging targets', () => {
     expect(targets[0]).toMatchObject({ target: 'telegram', configured: false });
   });
 
-  it('marks webhook-mode DingTalk and Google Chat homes ready', () => {
+  it('marks webhook-mode Google Chat homes ready', () => {
     expect(
       listConfiguredTargets({
-        dingtalk: {
-          webhookUrl: 'https://oapi.dingtalk.com/robot/send?access_token=abc',
-          homeChannel: 'webhook',
-        },
         googleChat: {
           incomingWebhookUrl: 'https://chat.googleapis.com/v1/spaces/AAAA/messages?key=k&token=t',
           homeChannel: 'webhook',
         },
       }).map((t) => ({ target: t.target, configured: t.configured })),
-    ).toEqual([
-      { target: 'dingtalk', configured: true },
-      { target: 'googlechat', configured: true },
-    ]);
+    ).toEqual([{ target: 'googlechat', configured: true }]);
   });
 
-  it('lists configured Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, Matrix, Feishu, DingTalk, Google Chat, BlueBubbles, and Teams targets', () => {
+  it('lists configured Discord, Slack, Mattermost, Home Assistant, Email, LINE, SMS, ntfy, Signal, WhatsApp, Matrix, Google Chat, BlueBubbles, and Teams targets', () => {
     expect(
       listConfiguredTargets({
         discord: {
@@ -286,23 +234,6 @@ describe('messaging targets', () => {
           homeRoomName: 'Owner',
           allowedRooms: ['!home:matrix.example.org', '!ops:matrix.example.org'],
         },
-        feishu: {
-          domain: 'feishu',
-          appId: 'cli_app',
-          appSecret: 'feishu-secret',
-          homeChannel: 'oc_home',
-          homeChannelName: 'Owner',
-          allowedChats: ['oc_home', 'oc_ops'],
-        },
-        dingtalk: {
-          clientId: 'ding-client',
-          clientSecret: 'ding-secret',
-          robotCode: 'ding-robot',
-          homeChannel: 'cid_home',
-          homeChannelName: 'Owner',
-          allowedChats: ['cid_home', 'cid_ops'],
-          allowedUsers: ['manager'],
-        },
         googleChat: {
           serviceAccountJson: '/home/you/.sanook/google-chat-sa.json',
           incomingWebhookUrl: 'https://chat.googleapis.com/v1/spaces/AAAA/messages?key=k&token=t',
@@ -316,39 +247,6 @@ describe('messaging targets', () => {
           homeChannel: 'user@example.com',
           homeChannelName: 'Owner',
           allowedUsers: ['user@example.com', '+15551234567'],
-        },
-        wecom: {
-          botId: 'bot-1',
-          secret: 'wecom-secret',
-          homeChannel: 'user-1',
-          homeChannelName: 'Owner',
-          allowedUsers: ['user-1', 'user-2'],
-          allowedGroups: ['group-1'],
-        },
-        weixin: {
-          accountId: 'wx-account-1',
-          token: 'weixin-token',
-          homeChannel: 'user/user-1',
-          homeChannelName: 'Owner',
-          allowedUsers: ['user-1', 'user-2'],
-          groupAllowedUsers: ['group-1@chatroom'],
-        },
-        yuanbao: {
-          appId: 'yb-app-1',
-          appSecret: 'yuanbao-secret',
-          homeChannel: 'direct:user-1',
-          homeChannelName: 'Owner',
-          allowedUsers: ['user-1', 'user-2'],
-          groupAllowedUsers: ['group-1'],
-        },
-        qqbot: {
-          appId: 'app-1',
-          clientSecret: 'qq-secret',
-          homeChannel: 'user/openid-1',
-          homeChannelName: 'Owner',
-          allowedUsers: ['openid-1', 'openid-2'],
-          groupAllowedUsers: ['group-1'],
-          allowedChannels: ['channel-1'],
         },
         teams: {
           deliveryMode: 'graph',
@@ -385,28 +283,10 @@ describe('messaging targets', () => {
       'whatsapp:15557654321',
       'matrix',
       'matrix:!ops:matrix.example.org',
-      'feishu',
-      'feishu:oc_ops',
-      'dingtalk',
-      'dingtalk:cid_ops',
-      'dingtalk:user/manager',
       'googlechat',
       'googlechat:spaces/BBBB',
       'bluebubbles',
       'bluebubbles:+15551234567',
-      'wecom',
-      'wecom:user/user-2',
-      'wecom:group/group-1',
-      'weixin',
-      'weixin:user/user-2',
-      'weixin:group/group-1@chatroom',
-      'yuanbao',
-      'yuanbao:direct:user-2',
-      'yuanbao:group:group-1',
-      'qqbot',
-      'qqbot:user/openid-2',
-      'qqbot:group/group-1',
-      'qqbot:guild/channel-1',
       'teams',
     ]);
   });

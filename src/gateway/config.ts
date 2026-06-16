@@ -151,41 +151,6 @@ export interface MatrixGatewayConfig {
   pollTimeoutMs?: number;
 }
 
-export interface FeishuGatewayConfig {
-  enabled?: boolean;
-  domain?: 'feishu' | 'lark';
-  baseUrl?: string;
-  appId?: string;
-  appSecret?: string;
-  verificationToken?: string;
-  encryptKey?: string;
-  homeChannel?: string;
-  homeChannelName?: string;
-  allowedChats?: string[];
-  allowAllChats?: boolean;
-  allowedUsers?: string[];
-  allowAllUsers?: boolean;
-}
-
-export interface DingTalkGatewayConfig {
-  enabled?: boolean;
-  clientId?: string;
-  clientSecret?: string;
-  robotCode?: string;
-  apiBaseUrl?: string;
-  webhookUrl?: string;
-  webhookSecret?: string;
-  homeChannel?: string;
-  homeChannelName?: string;
-  allowedUsers?: string[];
-  allowedChats?: string[];
-  freeResponseChats?: string[];
-  allowAllUsers?: boolean;
-  allowAllChats?: boolean;
-  requireMention?: boolean;
-  groupSessionsPerUser?: boolean;
-}
-
 export interface GoogleChatGatewayConfig {
   enabled?: boolean;
   projectId?: string;
@@ -218,81 +183,6 @@ export interface BlueBubblesGatewayConfig {
   requireMention?: boolean;
   mentionPatterns?: string[];
   sendReadReceipts?: boolean;
-}
-
-export type WeComDmPolicy = 'open' | 'allowlist' | 'disabled' | 'pairing';
-export type WeComGroupPolicy = 'open' | 'allowlist' | 'disabled';
-
-export interface WeComGatewayConfig {
-  enabled?: boolean;
-  botId?: string;
-  secret?: string;
-  websocketUrl?: string;
-  homeChannel?: string;
-  homeChannelName?: string;
-  allowedUsers?: string[];
-  allowedGroups?: string[];
-  dmPolicy?: WeComDmPolicy;
-  groupPolicy?: WeComGroupPolicy;
-}
-
-export type WeixinDmPolicy = 'open' | 'allowlist' | 'disabled' | 'pairing';
-export type WeixinGroupPolicy = 'open' | 'allowlist' | 'disabled';
-
-export interface WeixinGatewayConfig {
-  enabled?: boolean;
-  accountId?: string;
-  token?: string;
-  baseUrl?: string;
-  cdnBaseUrl?: string;
-  homeChannel?: string;
-  homeChannelName?: string;
-  allowedUsers?: string[];
-  groupAllowedUsers?: string[];
-  allowAllUsers?: boolean;
-  dmPolicy?: WeixinDmPolicy;
-  groupPolicy?: WeixinGroupPolicy;
-  splitMultilineMessages?: boolean;
-}
-
-export type YuanbaoPolicy = 'open' | 'allowlist' | 'disabled';
-
-export interface YuanbaoGatewayConfig {
-  enabled?: boolean;
-  appId?: string;
-  appSecret?: string;
-  botId?: string;
-  wsUrl?: string;
-  apiDomain?: string;
-  routeEnv?: string;
-  homeChannel?: string;
-  homeChannelName?: string;
-  allowedUsers?: string[];
-  groupAllowedUsers?: string[];
-  allowAllUsers?: boolean;
-  dmPolicy?: YuanbaoPolicy;
-  groupPolicy?: YuanbaoPolicy;
-}
-
-export type QQBotDmPolicy = 'open' | 'allowlist' | 'disabled' | 'pairing';
-export type QQBotGroupPolicy = 'open' | 'allowlist' | 'disabled';
-
-export interface QQBotGatewayConfig {
-  enabled?: boolean;
-  appId?: string;
-  clientSecret?: string;
-  apiBaseUrl?: string;
-  tokenUrl?: string;
-  portalHost?: string;
-  homeChannel?: string;
-  homeChannelName?: string;
-  allowedUsers?: string[];
-  groupAllowedUsers?: string[];
-  allowedChannels?: string[];
-  allowAllUsers?: boolean;
-  dmPolicy?: QQBotDmPolicy;
-  groupPolicy?: QQBotGroupPolicy;
-  markdownSupport?: boolean;
 }
 
 export interface TeamsGatewayConfig {
@@ -344,14 +234,8 @@ export interface GatewayConfig {
   signal?: SignalGatewayConfig;
   whatsapp?: WhatsAppGatewayConfig;
   matrix?: MatrixGatewayConfig;
-  feishu?: FeishuGatewayConfig;
-  dingtalk?: DingTalkGatewayConfig;
   googleChat?: GoogleChatGatewayConfig;
   bluebubbles?: BlueBubblesGatewayConfig;
-  wecom?: WeComGatewayConfig;
-  weixin?: WeixinGatewayConfig;
-  yuanbao?: YuanbaoGatewayConfig;
-  qqbot?: QQBotGatewayConfig;
   teams?: TeamsGatewayConfig;
   webhooks?: WebhookGatewayConfig;
 }
@@ -379,14 +263,8 @@ export async function readGatewayConfig(): Promise<GatewayConfig> {
     const signal = raw.signal;
     const whatsapp = raw.whatsapp;
     const matrix = raw.matrix;
-    const feishu = raw.feishu;
-    const dingtalk = raw.dingtalk;
     const googleChat = raw.googleChat;
     const bluebubbles = raw.bluebubbles;
-    const wecom = raw.wecom;
-    const weixin = raw.weixin;
-    const yuanbao = raw.yuanbao;
-    const qqbot = raw.qqbot;
     const teams = raw.teams;
     const webhooks = raw.webhooks;
     return {
@@ -590,53 +468,6 @@ export async function readGatewayConfig(): Promise<GatewayConfig> {
             groupSessionsPerUser: matrix.groupSessionsPerUser !== false,
             autoJoin: matrix.autoJoin !== false,
             pollTimeoutMs: Number.isInteger(matrix.pollTimeoutMs) ? matrix.pollTimeoutMs : undefined,
-          }
-        : undefined,
-      feishu: feishu
-        ? {
-            enabled: feishu.enabled !== false,
-            domain: feishu.domain === 'lark' ? 'lark' : 'feishu',
-            baseUrl: typeof feishu.baseUrl === 'string' ? feishu.baseUrl.trim() : undefined,
-            appId: typeof feishu.appId === 'string' ? feishu.appId.trim() : undefined,
-            appSecret: typeof feishu.appSecret === 'string' ? feishu.appSecret : undefined,
-            verificationToken: typeof feishu.verificationToken === 'string' ? feishu.verificationToken : undefined,
-            encryptKey: typeof feishu.encryptKey === 'string' ? feishu.encryptKey : undefined,
-            homeChannel: typeof feishu.homeChannel === 'string' ? feishu.homeChannel.trim() : undefined,
-            homeChannelName: typeof feishu.homeChannelName === 'string' ? feishu.homeChannelName : undefined,
-            allowedChats: Array.isArray(feishu.allowedChats)
-              ? feishu.allowedChats.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
-              : undefined,
-            allowAllChats: feishu.allowAllChats === true,
-            allowedUsers: Array.isArray(feishu.allowedUsers)
-              ? feishu.allowedUsers.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
-              : undefined,
-            allowAllUsers: feishu.allowAllUsers === true,
-          }
-        : undefined,
-      dingtalk: dingtalk
-        ? {
-            enabled: dingtalk.enabled !== false,
-            clientId: typeof dingtalk.clientId === 'string' ? dingtalk.clientId.trim() : undefined,
-            clientSecret: typeof dingtalk.clientSecret === 'string' ? dingtalk.clientSecret : undefined,
-            robotCode: typeof dingtalk.robotCode === 'string' ? dingtalk.robotCode.trim() : undefined,
-            apiBaseUrl: typeof dingtalk.apiBaseUrl === 'string' ? dingtalk.apiBaseUrl.trim() : undefined,
-            webhookUrl: typeof dingtalk.webhookUrl === 'string' ? dingtalk.webhookUrl.trim() : undefined,
-            webhookSecret: typeof dingtalk.webhookSecret === 'string' ? dingtalk.webhookSecret : undefined,
-            homeChannel: typeof dingtalk.homeChannel === 'string' ? dingtalk.homeChannel.trim() : undefined,
-            homeChannelName: typeof dingtalk.homeChannelName === 'string' ? dingtalk.homeChannelName : undefined,
-            allowedUsers: Array.isArray(dingtalk.allowedUsers)
-              ? dingtalk.allowedUsers.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
-              : undefined,
-            allowedChats: Array.isArray(dingtalk.allowedChats)
-              ? dingtalk.allowedChats.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
-              : undefined,
-            freeResponseChats: Array.isArray(dingtalk.freeResponseChats)
-              ? dingtalk.freeResponseChats.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim())
-              : undefined,
-            allowAllUsers: dingtalk.allowAllUsers === true,
-            allowAllChats: dingtalk.allowAllChats === true,
-            requireMention: dingtalk.requireMention !== false,
-            groupSessionsPerUser: dingtalk.groupSessionsPerUser !== false,
           }
         : undefined,
       googleChat: googleChat
@@ -1248,6 +1079,7 @@ export function resolveMatrixConfig(config: GatewayConfig, env: NodeJS.ProcessEn
   };
 }
 
+
 export interface ResolvedGoogleChatConfig {
   projectId?: string;
   subscriptionName?: string;
@@ -1350,6 +1182,7 @@ export function resolveBlueBubblesConfig(config: GatewayConfig, env: NodeJS.Proc
     source: envServerUrl || envPassword ? 'env' : cfg?.serverUrl || cfg?.password ? 'config' : 'none',
   };
 }
+
 
 export interface ResolvedTeamsConfig {
   deliveryMode: 'incoming_webhook' | 'graph';

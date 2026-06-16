@@ -60,7 +60,7 @@ export async function listRemoteModels(
  */
 export function mergeModelOptions(cfg: ProviderConfig, remote: string[] = []): ModelOption[] {
   // group alias ทั้งหมดตาม id (รวม 'default' ด้วย — กัน id ที่มีแต่ alias 'default' เช่น lmstudio:local-model,
-  // ollama:qwen3 หายไปจนเลือกไม่ได้/Select ว่าง). ตอนทำ label ค่อยซ่อนคำ "default" ถ้ามีชื่ออื่นอยู่แล้ว
+  // ollama:llama3.3 หายไปจนเลือกไม่ได้/Select ว่าง). ตอนทำ label ค่อยซ่อนคำ "default" ถ้ามีชื่ออื่นอยู่แล้ว
   const aliasesById = new Map<string, string[]>();
   const order: string[] = []; // คง first-seen order ของ id
   for (const [alias, id] of Object.entries(cfg.models)) {

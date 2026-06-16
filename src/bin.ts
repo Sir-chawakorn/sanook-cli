@@ -113,7 +113,7 @@ const HELP = `${BRAND.productName} — a terminal AI coding agent (BYOK)
 usage:
   ${BRAND.cliName} "<task>"            run one task (headless)
   ${BRAND.cliName} -z "<task>"         one-shot final output (script-friendly)
-  ${BRAND.cliName} chat -q "<query>"   Hermes-style direct query
+  ${BRAND.cliName} chat -q "<query>"   direct one-shot query
   ${BRAND.cliName}                     interactive REPL
   ${BRAND.cliName} setup [section]      setup wizard (model | gateway | tools | agent | brain)
   ${BRAND.cliName} model                choose provider + model
@@ -136,22 +136,16 @@ gateway (อยู่ยาว 24/7 — HTTP loopback + cron):
   ${BRAND.cliName} gateway setup signal            ตั้งค่า Signal ผ่าน signal-cli HTTP daemon
   ${BRAND.cliName} gateway setup whatsapp          ตั้งค่า WhatsApp Cloud API webhook + send
   ${BRAND.cliName} gateway setup matrix            ตั้งค่า Matrix homeserver sync + send
-  ${BRAND.cliName} gateway setup feishu            ตั้งค่า Feishu/Lark bot send
-  ${BRAND.cliName} gateway setup dingtalk          ตั้งค่า DingTalk bot send
   ${BRAND.cliName} gateway setup googlechat        ตั้งค่า Google Chat bot send
   ${BRAND.cliName} gateway setup bluebubbles       ตั้งค่า BlueBubbles/iMessage send
-  ${BRAND.cliName} gateway setup wecom             ตั้งค่า WeCom AI Bot send
-  ${BRAND.cliName} gateway setup weixin            ตั้งค่า Weixin/iLink personal WeChat send
-  ${BRAND.cliName} gateway setup yuanbao           ตั้งค่า Yuanbao bot credentials + sign-token helper
-  ${BRAND.cliName} gateway setup qqbot             ตั้งค่า QQ Bot official API send
   ${BRAND.cliName} gateway setup teams             ตั้งค่า Microsoft Teams delivery
   ${BRAND.cliName} gateway setup webhooks          เปิด generic webhook routes + HMAC
   ${BRAND.cliName} gateway run [--port 8787]       เปิด gateway (เหมือน serve)
   ${BRAND.cliName} gateway start [--port 8787]     เปิด gateway เป็น background process
   ${BRAND.cliName} gateway stop|restart|install    จัดการ gateway service
   ${BRAND.cliName} gateway status                  ดู config/status gateway
-  ${BRAND.cliName} send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|bluebubbles|wecom|weixin|yuanbao|qqbot|teams[:target] "msg" ส่งข้อความออก platform โดยไม่เรียก LLM
-  ${BRAND.cliName} webhook subscribe <route> [--prompt "..."] [--to telegram|slack|mattermost|homeassistant|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|bluebubbles|wecom|weixin|yuanbao|qqbot|teams]
+  ${BRAND.cliName} send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|googlechat|bluebubbles|teams[:target] "msg" ส่งข้อความออก platform โดยไม่เรียก LLM
+  ${BRAND.cliName} webhook subscribe <route> [--prompt "..."] [--to telegram|slack|mattermost|homeassistant|sms|ntfy|signal|whatsapp|matrix|googlechat|bluebubbles|teams]
                                            รับ event จาก GitHub/GitLab/Jira/Stripe แล้ว trigger agent/delivery
   ${BRAND.cliName} send --list [platform]          ดู messaging targets ที่ตั้งค่าไว้
   ${BRAND.cliName} serve [--port 8787]            เปิด gateway (OpenAI-compat /v1/chat/completions + scheduler)
@@ -185,7 +179,7 @@ config & mcp:
   ${BRAND.cliName} trust [status|add|remove]      อนุญาต/ยกเลิก project .sanook mcp/hooks/skills/commands
 
 flags:
-  -m, --model <spec>   sonnet/opus/haiku/fable · gpt/codex · gemini · grok · deepseek · mistral · groq · ollama/lmstudio
+  -m, --model <spec>   sonnet/opus/haiku/fable · gpt/codex · gemini · grok · mistral · groq · ollama/lmstudio
                        or "provider:model-id" (e.g. openai:gpt-5.3-codex, groq:fast, google:gemini-2.5-flash)
   -b, --budget <usd>   stop when estimated cost exceeds this
   -c, --continue       resume the latest session ของ project นี้
@@ -273,10 +267,8 @@ async function runGatewayStatus(): Promise<void> {
     readGatewayConfig,
     redactGatewayConfig,
     resolveBlueBubblesConfig,
-    resolveDingTalkConfig,
     resolveDiscordConfig,
     resolveEmailConfig,
-    resolveFeishuConfig,
     resolveGoogleChatConfig,
     resolveHomeAssistantConfig,
     resolveLineConfig,
@@ -287,13 +279,9 @@ async function runGatewayStatus(): Promise<void> {
     resolveSlackConfig,
     resolveSmsConfig,
     resolveTelegramConfig,
-    resolveQQBotConfig,
     resolveTeamsConfig,
-    resolveWeComConfig,
-    resolveWeixinConfig,
     resolveWhatsAppConfig,
     resolveWebhookConfig,
-    resolveYuanbaoConfig,
     gatewayConfigPath,
   } = await import('./gateway/config.js');
   const cfg = await readGatewayConfig();
@@ -309,14 +297,8 @@ async function runGatewayStatus(): Promise<void> {
   const signal = resolveSignalConfig(cfg);
   const whatsapp = resolveWhatsAppConfig(cfg);
   const matrix = resolveMatrixConfig(cfg);
-  const feishu = resolveFeishuConfig(cfg);
-  const dingtalk = resolveDingTalkConfig(cfg);
   const googleChat = resolveGoogleChatConfig(cfg);
   const bluebubbles = resolveBlueBubblesConfig(cfg);
-  const wecom = resolveWeComConfig(cfg);
-  const weixin = resolveWeixinConfig(cfg);
-  const yuanbao = resolveYuanbaoConfig(cfg);
-  const qqbot = resolveQQBotConfig(cfg);
   const teams = resolveTeamsConfig(cfg);
   const webhooks = resolveWebhookConfig(cfg);
   const { redactSignalId } = await import('./gateway/signal.js');
@@ -440,34 +422,6 @@ async function runGatewayStatus(): Promise<void> {
     console.log(`    require mention: ${matrix.requireMention ? 'yes' : 'no'}`);
     console.log(`    auto join:       ${matrix.autoJoin ? 'yes' : 'no'}`);
   }
-  console.log(`  feishu:   ${feishu.appId || feishu.appSecret ? `configured via ${feishu.source}` : 'not configured'}`);
-  if (feishu.appId || feishu.appSecret) {
-    console.log(`    domain:          ${feishu.domain}`);
-    console.log(`    base url:        ${feishu.baseUrl}`);
-    console.log(`    app id:          ${feishu.appId ? 'set' : '(not set)'}`);
-    console.log(`    app secret:      ${feishu.appSecret ? 'set' : '(not set)'}`);
-    console.log(`    verify token:    ${feishu.verificationToken ? 'set' : '(not set — needed for webhook)'}`);
-    console.log(`    encrypt key:     ${feishu.encryptKey ? 'set' : '(not set)'}`);
-    console.log(`    home channel:    ${feishu.homeChannel ?? '(not set)'}`);
-    console.log(`    allowed chats:   ${feishu.allowedChats.length ? feishu.allowedChats.join(', ') : feishu.allowAllChats ? '(all chats)' : '(none)'}`);
-    console.log(`    allowed users:   ${feishu.allowedUsers.length ? feishu.allowedUsers.join(', ') : feishu.allowAllUsers ? '(all users)' : '(none)'}`);
-  }
-  console.log(
-    `  dingtalk: ${dingtalk.clientId || dingtalk.clientSecret || dingtalk.webhookUrl ? `configured via ${dingtalk.source}` : 'not configured'}`,
-  );
-  if (dingtalk.clientId || dingtalk.clientSecret || dingtalk.webhookUrl) {
-    console.log(`    api base url:    ${dingtalk.apiBaseUrl}`);
-    console.log(`    client id:       ${dingtalk.clientId ? 'set' : '(not set)'}`);
-    console.log(`    client secret:   ${dingtalk.clientSecret ? 'set' : '(not set)'}`);
-    console.log(`    robot code:      ${dingtalk.robotCode ?? '(not set)'}`);
-    console.log(`    webhook url:     ${dingtalk.webhookUrl ? 'set' : '(not set)'}`);
-    console.log(`    webhook secret:  ${dingtalk.webhookSecret ? 'set' : '(not set)'}`);
-    console.log(`    home channel:    ${dingtalk.homeChannel ?? '(not set)'}`);
-    console.log(`    allowed chats:   ${dingtalk.allowedChats.length ? dingtalk.allowedChats.join(', ') : dingtalk.allowAllChats ? '(all chats)' : '(none)'}`);
-    console.log(`    allowed users:   ${dingtalk.allowedUsers.length ? dingtalk.allowedUsers.join(', ') : dingtalk.allowAllUsers ? '(all users)' : '(none)'}`);
-    console.log(`    free chats:      ${dingtalk.freeResponseChats.length ? dingtalk.freeResponseChats.join(', ') : '(none)'}`);
-    console.log(`    require mention: ${dingtalk.requireMention ? 'yes' : 'no'}`);
-  }
   console.log(
     `  googlechat: ${googleChat.serviceAccountJson || googleChat.incomingWebhookUrl ? `configured via ${googleChat.source}` : 'not configured'}`,
   );
@@ -491,53 +445,6 @@ async function runGatewayStatus(): Promise<void> {
     console.log(`    home channel:    ${bluebubbles.homeChannel ?? '(not set)'}`);
     console.log(`    allowed targets: ${bluebubbles.allowedUsers.length ? bluebubbles.allowedUsers.join(', ') : bluebubbles.allowAllUsers ? '(all targets)' : '(none)'}`);
     console.log(`    require mention: ${bluebubbles.requireMention ? 'yes' : 'no'}`);
-  }
-  console.log(`  wecom:    ${wecom.botId || wecom.secret ? `configured via ${wecom.source}` : 'not configured'}`);
-  if (wecom.botId || wecom.secret) {
-    console.log(`    bot id:          ${wecom.botId ? 'set' : '(not set)'}`);
-    console.log(`    secret:          ${wecom.secret ? 'set' : '(not set)'}`);
-    console.log(`    websocket:       ${wecom.websocketUrl}`);
-    console.log(`    home channel:    ${wecom.homeChannel ?? '(not set)'}`);
-    console.log(`    allowed users:   ${wecom.allowedUsers.length ? wecom.allowedUsers.join(', ') : '(none)'}`);
-    console.log(`    allowed groups:  ${wecom.allowedGroups.length ? wecom.allowedGroups.join(', ') : '(none)'}`);
-    console.log(`    policies:        dm=${wecom.dmPolicy}, group=${wecom.groupPolicy}`);
-  }
-  console.log(`  weixin:   ${weixin.accountId || weixin.token ? `configured via ${weixin.source}` : 'not configured'}`);
-  if (weixin.accountId || weixin.token) {
-    console.log(`    account id:      ${weixin.accountId ?? '(not set)'}`);
-    console.log(`    token:           ${weixin.token ? 'set' : '(not set)'}`);
-    console.log(`    base url:        ${weixin.baseUrl}`);
-    console.log(`    cdn base url:    ${weixin.cdnBaseUrl}`);
-    console.log(`    home channel:    ${weixin.homeChannel ?? '(not set)'}`);
-    console.log(`    allowed users:   ${weixin.allowedUsers.length ? weixin.allowedUsers.join(', ') : weixin.allowAllUsers ? '(all users)' : '(none)'}`);
-    console.log(`    allowed groups:  ${weixin.groupAllowedUsers.length ? weixin.groupAllowedUsers.join(', ') : '(none)'}`);
-    console.log(`    policies:        dm=${weixin.dmPolicy}, group=${weixin.groupPolicy}`);
-  }
-  console.log(`  yuanbao:  ${yuanbao.appId || yuanbao.appSecret ? `configured via ${yuanbao.source}` : 'not configured'}`);
-  if (yuanbao.appId || yuanbao.appSecret) {
-    console.log(`    app id:          ${yuanbao.appId ? 'set' : '(not set)'}`);
-    console.log(`    app secret:      ${yuanbao.appSecret ? 'set' : '(not set)'}`);
-    console.log(`    bot id:          ${yuanbao.botId ?? '(not set)'}`);
-    console.log(`    websocket:       ${yuanbao.wsUrl}`);
-    console.log(`    api domain:      ${yuanbao.apiDomain}`);
-    console.log(`    route env:       ${yuanbao.routeEnv ?? '(not set)'}`);
-    console.log(`    home channel:    ${yuanbao.homeChannel ?? '(not set)'}`);
-    console.log(`    allowed users:   ${yuanbao.allowedUsers.length ? yuanbao.allowedUsers.join(', ') : yuanbao.allowAllUsers ? '(all users)' : '(none)'}`);
-    console.log(`    allowed groups:  ${yuanbao.groupAllowedUsers.length ? yuanbao.groupAllowedUsers.join(', ') : '(none)'}`);
-    console.log(`    policies:        dm=${yuanbao.dmPolicy}, group=${yuanbao.groupPolicy}`);
-    console.log('    delivery:        setup/sign-token ready; direct send pending WebSocket/protobuf parity');
-  }
-  console.log(`  qqbot:    ${qqbot.appId || qqbot.clientSecret ? `configured via ${qqbot.source}` : 'not configured'}`);
-  if (qqbot.appId || qqbot.clientSecret) {
-    console.log(`    app id:          ${qqbot.appId ? 'set' : '(not set)'}`);
-    console.log(`    client secret:   ${qqbot.clientSecret ? 'set' : '(not set)'}`);
-    console.log(`    api base url:    ${qqbot.apiBaseUrl}`);
-    console.log(`    token url:       ${qqbot.tokenUrl}`);
-    console.log(`    home channel:    ${qqbot.homeChannel ?? '(not set)'}`);
-    console.log(`    allowed users:   ${qqbot.allowedUsers.length ? qqbot.allowedUsers.join(', ') : qqbot.allowAllUsers ? '(all users)' : '(none)'}`);
-    console.log(`    allowed groups:  ${qqbot.groupAllowedUsers.length ? qqbot.groupAllowedUsers.join(', ') : '(none)'}`);
-    console.log(`    allowed guilds:  ${qqbot.allowedChannels.length ? qqbot.allowedChannels.join(', ') : '(none)'}`);
-    console.log(`    markdown:        ${qqbot.markdownSupport ? 'yes' : 'no'}`);
   }
   console.log(`  teams:    ${teams.incomingWebhookUrl || teams.graphAccessToken || teams.clientId ? `configured via ${teams.source}` : 'not configured'}`);
   if (teams.incomingWebhookUrl || teams.graphAccessToken || teams.clientId) {
@@ -566,16 +473,14 @@ async function runGatewaySetup(args: string[]): Promise<void> {
   const rest = platformArgProvided ? args.slice(1) : args;
   if (!platform) {
     if (!process.stdin.isTTY) {
-      console.error(`ใช้: ${BRAND.cliName} gateway setup <telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|bluebubbles|wecom|weixin|yuanbao|qqbot|teams|webhooks> [options]`);
+      console.error(`ใช้: ${BRAND.cliName} gateway setup <telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|googlechat|bluebubbles|teams|webhooks> [options]`);
       process.exit(1);
     }
     const {
       readGatewayConfig,
       resolveBlueBubblesConfig,
-      resolveDingTalkConfig,
       resolveDiscordConfig,
       resolveEmailConfig,
-      resolveFeishuConfig,
       resolveGoogleChatConfig,
       resolveHomeAssistantConfig,
       resolveLineConfig,
@@ -586,13 +491,9 @@ async function runGatewaySetup(args: string[]): Promise<void> {
       resolveSlackConfig,
       resolveSmsConfig,
       resolveTelegramConfig,
-      resolveQQBotConfig,
       resolveTeamsConfig,
-      resolveWeComConfig,
-      resolveWeixinConfig,
       resolveWhatsAppConfig,
       resolveWebhookConfig,
-      resolveYuanbaoConfig,
     } = await import('./gateway/config.js');
     const cfg = await readGatewayConfig();
     const options = [
@@ -608,33 +509,21 @@ async function runGatewaySetup(args: string[]): Promise<void> {
       { id: 'signal', label: `Signal ${resolveSignalConfig(cfg).account ? '(configured)' : ''}` },
       { id: 'whatsapp', label: `WhatsApp Cloud ${resolveWhatsAppConfig(cfg).phoneNumberId ? '(configured)' : ''}` },
       { id: 'matrix', label: `Matrix ${resolveMatrixConfig(cfg).homeserver ? '(configured)' : ''}` },
-      { id: 'feishu', label: `Feishu/Lark ${resolveFeishuConfig(cfg).appId ? '(configured)' : ''}` },
-      { id: 'dingtalk', label: `DingTalk ${resolveDingTalkConfig(cfg).clientId || resolveDingTalkConfig(cfg).webhookUrl ? '(configured)' : ''}` },
       { id: 'googlechat', label: `Google Chat ${resolveGoogleChatConfig(cfg).serviceAccountJson || resolveGoogleChatConfig(cfg).incomingWebhookUrl ? '(configured)' : ''}` },
       { id: 'bluebubbles', label: `BlueBubbles/iMessage ${resolveBlueBubblesConfig(cfg).serverUrl ? '(configured)' : ''}` },
-      { id: 'wecom', label: `WeCom ${resolveWeComConfig(cfg).botId ? '(configured)' : ''}` },
-      { id: 'weixin', label: `Weixin/WeChat ${resolveWeixinConfig(cfg).accountId ? '(configured)' : ''}` },
-      { id: 'yuanbao', label: `Yuanbao ${resolveYuanbaoConfig(cfg).appId ? '(configured)' : ''}` },
-      { id: 'qqbot', label: `QQ Bot ${resolveQQBotConfig(cfg).appId ? '(configured)' : ''}` },
       { id: 'teams', label: `Microsoft Teams ${resolveTeamsConfig(cfg).incomingWebhookUrl || resolveTeamsConfig(cfg).graphAccessToken ? '(configured)' : ''}` },
       { id: 'webhooks', label: `Webhooks ${resolveWebhookConfig(cfg).enabled ? '(configured)' : ''}` },
     ];
     console.log(`${BRAND.productName} gateway setup`);
     for (const [i, option] of options.entries()) console.log(`  ${i + 1}. ${option.label}`);
-    const answer = await askText('เลือก platform [1-22]: ');
+    const answer = await askText('เลือก platform [1-16]: ');
     const index = Number(answer || '1') - 1;
     platform = options[index]?.id;
   }
   if (platform === 'whatsapp-cloud') platform = 'whatsapp';
   if (platform === 'msteams' || platform === 'ms-teams' || platform === 'microsoft-teams') platform = 'teams';
-  if (platform === 'lark' || platform === 'feishu-lark') platform = 'feishu';
-  if (platform === 'ding' || platform === 'ding-talk') platform = 'dingtalk';
   if (platform === 'google-chat' || platform === 'google_chat' || platform === 'gchat') platform = 'googlechat';
   if (platform === 'blue-bubbles' || platform === 'blue_bubbles' || platform === 'imessage') platform = 'bluebubbles';
-  if (platform === 'work-wechat' || platform === 'enterprise-wechat' || platform === 'wxwork') platform = 'wecom';
-  if (platform === 'wechat' || platform === 'wx') platform = 'weixin';
-  if (platform === 'yb') platform = 'yuanbao';
-  if (platform === 'qq' || platform === 'qq-bot' || platform === 'qq_bot') platform = 'qqbot';
   if (
     !platform ||
     ![
@@ -651,20 +540,14 @@ async function runGatewaySetup(args: string[]): Promise<void> {
       'signal',
       'whatsapp',
       'matrix',
-      'feishu',
-      'dingtalk',
       'googlechat',
       'bluebubbles',
-      'wecom',
-      'weixin',
-      'yuanbao',
-      'qqbot',
       'teams',
       'webhooks',
     ].includes(platform)
   ) {
     console.error(
-      `ตอนนี้ setup อัตโนมัติรองรับ telegram / discord / slack / mattermost / homeassistant / email / line / sms / ntfy / signal / whatsapp / matrix / feishu / dingtalk / googlechat / bluebubbles / wecom / weixin / yuanbao / qqbot / teams / webhooks — ได้ "${platform ?? ''}"`,
+      `ตอนนี้ setup อัตโนมัติรองรับ telegram / discord / slack / mattermost / homeassistant / email / line / sms / ntfy / signal / whatsapp / matrix / googlechat / bluebubbles / teams / webhooks — ได้ "${platform ?? ''}"`,
     );
     process.exit(1);
   }
@@ -680,14 +563,8 @@ async function runGatewaySetup(args: string[]): Promise<void> {
   if (platform === 'signal') return runSignalGatewaySetup(rest);
   if (platform === 'whatsapp') return runWhatsAppGatewaySetup(rest);
   if (platform === 'matrix') return runMatrixGatewaySetup(rest);
-  if (platform === 'feishu') return runFeishuGatewaySetup(rest);
-  if (platform === 'dingtalk') return runDingTalkGatewaySetup(rest);
   if (platform === 'googlechat') return runGoogleChatGatewaySetup(rest);
   if (platform === 'bluebubbles') return runBlueBubblesGatewaySetup(rest);
-  if (platform === 'wecom') return runWeComGatewaySetup(rest);
-  if (platform === 'weixin') return runWeixinGatewaySetup(rest);
-  if (platform === 'yuanbao') return runYuanbaoGatewaySetup(rest);
-  if (platform === 'qqbot') return runQQBotGatewaySetup(rest);
   if (platform === 'teams') return runTeamsGatewaySetup(rest);
   if (platform === 'webhooks') return runWebhookGatewaySetup(rest);
 
@@ -1391,163 +1268,6 @@ async function runMatrixGatewaySetup(args: string[]): Promise<void> {
   console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to matrix "hello"${cleanHomeRoom ? '' : ` หรือ ${BRAND.cliName} send --to matrix:!room:server "hello"`}`);
 }
 
-async function runFeishuGatewaySetup(args: string[]): Promise<void> {
-  const domainRaw = argValue(args, '--domain');
-  const baseUrl = argValue(args, '--base-url', '--url');
-  let appId = argValue(args, '--app-id');
-  let appSecret = argValue(args, '--app-secret');
-  let homeChannel = argValue(args, '--home-channel', '--chat-id', '--to');
-  const homeChannelName = argValue(args, '--home-channel-name');
-  const verificationToken = argValue(args, '--verification-token', '--verify-token');
-  const encryptKey = argValue(args, '--encrypt-key');
-  const allowedChatsRaw = argValue(args, '--allowed-chats');
-  const allowedUsersRaw = argValue(args, '--allowed-users');
-  const allowAllChats = args.includes('--allow-all-chats');
-  const allowAllUsers = args.includes('--allow-all-users');
-
-  if (!appId || !appSecret || !homeChannel) {
-    if (!process.stdin.isTTY) {
-      console.error(
-        `ใช้: ${BRAND.cliName} gateway setup feishu --app-id <cli_xxx> --app-secret <secret> --home-channel <oc_xxx> [--domain feishu|lark]`,
-      );
-      process.exit(1);
-    }
-    console.log(`${BRAND.productName} Feishu/Lark setup`);
-    console.log('ต้องมี internal app credentials และ chat_id ของกลุ่ม/DM ที่ bot ส่งข้อความได้');
-    appId ||= await askText('Feishu/Lark app id (cli_...): ');
-    appSecret ||= await askText('Feishu/Lark app secret: ');
-    homeChannel ||= await askText('Home chat id (oc_...): ');
-  }
-
-  const { normalizeFeishuBaseUrl, normalizeFeishuDomain } = await import('./gateway/feishu.js');
-  const domain = normalizeFeishuDomain(domainRaw);
-  if (!domain) {
-    console.error('--domain ต้องเป็น feishu หรือ lark');
-    process.exit(1);
-  }
-  const cleanBaseUrl = normalizeFeishuBaseUrl(baseUrl, domain);
-  if (!cleanBaseUrl) {
-    console.error('Feishu/Lark base URL ต้องเป็น https:// URL');
-    process.exit(1);
-  }
-  const cleanAppId = appId?.trim();
-  const cleanAppSecret = appSecret?.trim();
-  const cleanHomeChannel = homeChannel?.trim();
-  if (!cleanAppId || !cleanAppSecret || !cleanHomeChannel) {
-    console.error('Feishu/Lark setup ต้องมี app id, app secret และ home channel');
-    process.exit(1);
-  }
-
-  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
-  await patchGatewayConfig({
-    feishu: {
-      enabled: true,
-      domain,
-      baseUrl: cleanBaseUrl,
-      appId: cleanAppId,
-      appSecret: cleanAppSecret,
-      verificationToken: verificationToken?.trim() || undefined,
-      encryptKey: encryptKey?.trim() || undefined,
-      homeChannel: cleanHomeChannel,
-      homeChannelName: homeChannelName?.trim() || undefined,
-      allowedChats: parseStringCsv(allowedChatsRaw),
-      allowAllChats,
-      allowedUsers: parseStringCsv(allowedUsersRaw),
-      allowAllUsers,
-    },
-  });
-  console.log(`บันทึก Feishu/Lark gateway config แล้ว: ${gatewayConfigPath()}`);
-  console.log(`Feishu/Lark domain: ${domain} (${cleanBaseUrl})`);
-  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to feishu "hello" หรือ ${BRAND.cliName} send --to feishu:${cleanHomeChannel} "hello"`);
-}
-
-async function runDingTalkGatewaySetup(args: string[]): Promise<void> {
-  const apiBaseUrl = argValue(args, '--api-base-url', '--base-url');
-  let clientId = argValue(args, '--client-id', '--app-key');
-  let clientSecret = argValue(args, '--client-secret', '--app-secret');
-  let robotCode = argValue(args, '--robot-code');
-  let webhookUrl = argValue(args, '--webhook-url', '--incoming-webhook-url', '--url');
-  const webhookSecret = argValue(args, '--webhook-secret', '--secret');
-  let homeChannel = argValue(args, '--home-channel', '--conversation-id', '--chat-id', '--to');
-  const homeChannelName = argValue(args, '--home-channel-name');
-  const allowedUsersRaw = argValue(args, '--allowed-users');
-  const allowedChatsRaw = argValue(args, '--allowed-chats');
-  const freeResponseChatsRaw = argValue(args, '--free-response-chats');
-  const allowAllUsers = args.includes('--allow-all-users');
-  const allowAllChats = args.includes('--allow-all-chats');
-  const requireMention = !args.includes('--no-require-mention');
-  const groupSessionsPerUser = !args.includes('--shared-group-session');
-
-  if ((!webhookUrl && (!clientId || !clientSecret || !robotCode)) || (!webhookUrl && !homeChannel && !allowedUsersRaw && !allowedChatsRaw)) {
-    if (!process.stdin.isTTY) {
-      console.error(
-        `ใช้: ${BRAND.cliName} gateway setup dingtalk --client-id <appKey> --client-secret <appSecret> --robot-code <robotCode> --home-channel <openConversationId> หรือ --webhook-url <https://oapi.dingtalk.com/robot/send?...>`,
-      );
-      process.exit(1);
-    }
-    console.log(`${BRAND.productName} DingTalk setup`);
-    console.log('ใช้ Client ID/AppKey + Client Secret/AppSecret + Robot Code สำหรับ OpenAPI หรือใช้ custom robot webhook URL สำหรับส่งง่าย ๆ');
-    clientId ||= await askText('DingTalk client id / app key (blank = webhook mode): ');
-    if (clientId) {
-      clientSecret ||= await askText('DingTalk client secret / app secret: ');
-      robotCode ||= await askText('DingTalk robot code: ');
-      homeChannel ||= await askText('Home openConversationId (cid...; blank = skip): ');
-    } else {
-      webhookUrl ||= await askText('DingTalk custom robot webhook URL: ');
-    }
-  }
-
-  const { normalizeDingTalkApiBaseUrl, normalizeDingTalkWebhookUrl } = await import('./gateway/dingtalk.js');
-  const cleanApiBaseUrl = normalizeDingTalkApiBaseUrl(apiBaseUrl);
-  const cleanWebhookUrl = normalizeDingTalkWebhookUrl(webhookUrl);
-  const cleanClientId = clientId?.trim();
-  const cleanClientSecret = clientSecret?.trim();
-  const cleanRobotCode = robotCode?.trim();
-  const cleanHomeChannel = homeChannel?.trim();
-
-  if (!cleanApiBaseUrl) {
-    console.error('DingTalk API base URL ต้องเป็น https:// URL');
-    process.exit(1);
-  }
-  if (webhookUrl?.trim() && !cleanWebhookUrl) {
-    console.error('DingTalk webhook URL ต้องเป็น https:// URL');
-    process.exit(1);
-  }
-  if (!cleanWebhookUrl && (!cleanClientId || !cleanClientSecret || !cleanRobotCode)) {
-    console.error('DingTalk OpenAPI setup ต้องมี client id, client secret และ robot code หรือระบุ --webhook-url');
-    process.exit(1);
-  }
-  if (!cleanWebhookUrl && !cleanHomeChannel && !allowedUsersRaw?.trim() && !allowedChatsRaw?.trim()) {
-    console.error('DingTalk OpenAPI setup ต้องมี home channel, allowed chats หรือ allowed users อย่างน้อย 1 ค่า');
-    process.exit(1);
-  }
-
-  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
-  await patchGatewayConfig({
-    dingtalk: {
-      enabled: true,
-      clientId: cleanClientId,
-      clientSecret: cleanClientSecret,
-      robotCode: cleanRobotCode,
-      apiBaseUrl: cleanApiBaseUrl,
-      webhookUrl: cleanWebhookUrl,
-      webhookSecret: webhookSecret?.trim() || undefined,
-      homeChannel: cleanHomeChannel || (cleanWebhookUrl ? 'webhook' : undefined),
-      homeChannelName: homeChannelName?.trim() || undefined,
-      allowedUsers: parseStringCsv(allowedUsersRaw),
-      allowedChats: parseStringCsv(allowedChatsRaw),
-      freeResponseChats: parseStringCsv(freeResponseChatsRaw),
-      allowAllUsers,
-      allowAllChats,
-      requireMention,
-      groupSessionsPerUser,
-    },
-  });
-  console.log(`บันทึก DingTalk gateway config แล้ว: ${gatewayConfigPath()}`);
-  console.log(cleanWebhookUrl ? 'DingTalk delivery mode: custom robot webhook' : 'DingTalk delivery mode: OpenAPI robot');
-  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to dingtalk "hello"${cleanHomeChannel ? '' : ` หรือ ${BRAND.cliName} send --to dingtalk:user/<userId> "hello"`}`);
-}
-
 async function runGoogleChatGatewaySetup(args: string[]): Promise<void> {
   const projectId = argValue(args, '--project-id');
   const subscriptionName = argValue(args, '--subscription-name', '--subscription');
@@ -1737,358 +1457,6 @@ async function runBlueBubblesGatewaySetup(args: string[]): Promise<void> {
   console.log(`บันทึก BlueBubbles gateway config แล้ว: ${gatewayConfigPath()}`);
   console.log(`BlueBubbles REST: ${cleanServerUrl}/api/v1/message/text`);
   console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to bluebubbles "hello"${cleanHomeChannel ? '' : ` หรือ ${BRAND.cliName} send --to bluebubbles:<chat-guid|email|phone> "hello"`}`);
-}
-
-async function runWeComGatewaySetup(args: string[]): Promise<void> {
-  let botId = argValue(args, '--bot-id', '--app-id');
-  let secret = argValue(args, '--secret', '--bot-secret', '--app-secret');
-  const websocketUrl = argValue(args, '--websocket-url', '--ws-url', '--url');
-  let homeChannel = argValue(args, '--home-channel', '--chat-id', '--to');
-  const homeChannelName = argValue(args, '--home-channel-name');
-  let allowedUsersRaw = argValue(args, '--allowed-users');
-  let allowedGroupsRaw = argValue(args, '--allowed-groups', '--group-allow-from');
-  const dmPolicyRaw = argValue(args, '--dm-policy');
-  const groupPolicyRaw = argValue(args, '--group-policy');
-
-  if (!botId || !secret || (!homeChannel && !allowedUsersRaw && !allowedGroupsRaw && !dmPolicyRaw && !groupPolicyRaw)) {
-    if (!process.stdin.isTTY) {
-      console.error(
-        `ใช้: ${BRAND.cliName} gateway setup wecom --bot-id <bot-id> --secret <secret> --home-channel <chat-id|user-id|group-id>`,
-      );
-      process.exit(1);
-    }
-    console.log(`${BRAND.productName} WeCom setup`);
-    console.log('ใช้ WeCom AI Bot WebSocket gateway: bot id + secret จาก WeCom Admin Console');
-    botId ||= await askText('WeCom bot id: ');
-    secret ||= await askText('WeCom secret: ');
-    homeChannel ||= await askText('Home chat/user/group id (blank = explicit targets only): ');
-  }
-
-  if (!allowedUsersRaw && homeChannel && !/^group[:/]/i.test(homeChannel)) allowedUsersRaw = homeChannel;
-  if (!allowedGroupsRaw && homeChannel && /^group[:/]/i.test(homeChannel)) allowedGroupsRaw = homeChannel.replace(/^group[:/]/i, '');
-
-  const { normalizeWeComWebSocketUrl } = await import('./gateway/wecom.js');
-  const cleanWebsocketUrl = normalizeWeComWebSocketUrl(websocketUrl);
-  const cleanBotId = botId?.trim();
-  const cleanSecret = secret?.trim();
-  const cleanHomeChannel = homeChannel?.trim();
-  if (!cleanWebsocketUrl) {
-    console.error('WeCom websocket URL ต้องเป็น ws:// หรือ wss:// URL');
-    process.exit(1);
-  }
-  if (!cleanBotId || !cleanSecret) {
-    console.error('WeCom setup ต้องมี bot id และ secret');
-    process.exit(1);
-  }
-  const allowedUsers = parseStringCsv(allowedUsersRaw).map((id) => id.replace(/^user[:/]/i, '').trim()).filter(Boolean);
-  const allowedGroups = parseStringCsv(allowedGroupsRaw).map((id) => id.replace(/^group[:/]/i, '').trim()).filter(Boolean);
-  const dmPolicy = (dmPolicyRaw?.trim().toLowerCase() || (allowedUsers.length ? 'allowlist' : 'open')) as string;
-  const groupPolicy = (groupPolicyRaw?.trim().toLowerCase() || (allowedGroups.length ? 'allowlist' : 'open')) as string;
-  if (!['open', 'allowlist', 'disabled', 'pairing'].includes(dmPolicy)) {
-    console.error('--dm-policy ต้องเป็น open, allowlist, disabled, หรือ pairing');
-    process.exit(1);
-  }
-  if (!['open', 'allowlist', 'disabled'].includes(groupPolicy)) {
-    console.error('--group-policy ต้องเป็น open, allowlist, หรือ disabled');
-    process.exit(1);
-  }
-
-  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
-  await patchGatewayConfig({
-    wecom: {
-      enabled: true,
-      botId: cleanBotId,
-      secret: cleanSecret,
-      websocketUrl: cleanWebsocketUrl,
-      homeChannel: cleanHomeChannel || allowedUsers[0] || (allowedGroups[0] ? `group/${allowedGroups[0]}` : undefined),
-      homeChannelName: homeChannelName?.trim() || undefined,
-      allowedUsers,
-      allowedGroups,
-      dmPolicy: dmPolicy as 'open' | 'allowlist' | 'disabled' | 'pairing',
-      groupPolicy: groupPolicy as 'open' | 'allowlist' | 'disabled',
-    },
-  });
-  console.log(`บันทึก WeCom gateway config แล้ว: ${gatewayConfigPath()}`);
-  console.log(`WeCom websocket: ${cleanWebsocketUrl}`);
-  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to wecom "hello"${cleanHomeChannel ? '' : ` หรือ ${BRAND.cliName} send --to wecom:user/<user-id> "hello"`}`);
-}
-
-async function runWeixinGatewaySetup(args: string[]): Promise<void> {
-  let accountId = argValue(args, '--account-id', '--id');
-  let token = argValue(args, '--token', '--bot-token');
-  const baseUrl = argValue(args, '--base-url');
-  const cdnBaseUrl = argValue(args, '--cdn-base-url');
-  let homeChannel = argValue(args, '--home-channel', '--chat-id', '--to');
-  const homeChannelName = argValue(args, '--home-channel-name');
-  let allowedUsersRaw = argValue(args, '--allowed-users', '--allow-from');
-  let groupAllowedUsersRaw = argValue(args, '--group-allowed-users', '--group-allow-from', '--allowed-groups');
-  const allowAllUsers = args.includes('--allow-all-users');
-  const splitMultilineMessages = args.includes('--split-multiline') || args.includes('--split-multiline-messages');
-  const dmPolicyRaw = argValue(args, '--dm-policy');
-  const groupPolicyRaw = argValue(args, '--group-policy');
-
-  if (!accountId || !token || (!homeChannel && !allowedUsersRaw && !groupAllowedUsersRaw && !allowAllUsers)) {
-    if (!process.stdin.isTTY) {
-      console.error(
-        `ใช้: ${BRAND.cliName} gateway setup weixin --account-id <account-id> --token <ilink-token> --home-channel <chat-id|user/<id>|group/<id>>`,
-      );
-      process.exit(1);
-    }
-    console.log(`${BRAND.productName} Weixin setup`);
-    console.log('ใช้ personal WeChat ผ่าน Tencent iLink Bot API. ถ้ามี QR credential จาก Hermes/iLink แล้ว ใส่ account id + token ที่นี่');
-    accountId ||= await askText('Weixin account id: ');
-    token ||= await askText('Weixin iLink token: ');
-    homeChannel ||= await askText('Home user/group chat id (blank = explicit targets only): ');
-  }
-
-  if (!allowedUsersRaw && homeChannel && !/^(?:group|room)[:/]/i.test(homeChannel) && !homeChannel.endsWith('@chatroom')) {
-    allowedUsersRaw = homeChannel;
-  }
-  if (!groupAllowedUsersRaw && homeChannel && (/^(?:group|room)[:/]/i.test(homeChannel) || homeChannel.endsWith('@chatroom'))) {
-    groupAllowedUsersRaw = homeChannel.replace(/^(?:group|room)[:/]/i, '');
-  }
-
-  const { normalizeWeixinBaseUrl, normalizeWeixinCdnBaseUrl } = await import('./gateway/weixin.js');
-  const cleanBaseUrl = normalizeWeixinBaseUrl(baseUrl);
-  const cleanCdnBaseUrl = normalizeWeixinCdnBaseUrl(cdnBaseUrl);
-  const cleanAccountId = accountId?.trim();
-  const cleanToken = token?.trim();
-  const cleanHomeChannel = homeChannel?.trim();
-  if (!/^https?:\/\//i.test(cleanBaseUrl)) {
-    console.error('Weixin base URL ต้องเป็น http:// หรือ https:// URL');
-    process.exit(1);
-  }
-  if (!/^https?:\/\//i.test(cleanCdnBaseUrl)) {
-    console.error('Weixin CDN base URL ต้องเป็น http:// หรือ https:// URL');
-    process.exit(1);
-  }
-  if (!cleanAccountId || !cleanToken) {
-    console.error('Weixin setup ต้องมี account id และ token');
-    process.exit(1);
-  }
-  const allowedUsers = parseStringCsv(allowedUsersRaw).map((id) => id.replace(/^(?:user|dm|direct)[:/]/i, '').trim()).filter(Boolean);
-  const groupAllowedUsers = parseStringCsv(groupAllowedUsersRaw).map((id) => id.replace(/^(?:group|room)[:/]/i, '').trim()).filter(Boolean);
-  const dmPolicy = (dmPolicyRaw?.trim().toLowerCase() || (allowedUsers.length ? 'allowlist' : 'open')) as string;
-  const groupPolicy = (groupPolicyRaw?.trim().toLowerCase() || (groupAllowedUsers.length ? 'allowlist' : 'disabled')) as string;
-  if (!['open', 'allowlist', 'disabled', 'pairing'].includes(dmPolicy)) {
-    console.error('--dm-policy ต้องเป็น open, allowlist, disabled, หรือ pairing');
-    process.exit(1);
-  }
-  if (!['open', 'allowlist', 'disabled'].includes(groupPolicy)) {
-    console.error('--group-policy ต้องเป็น open, allowlist, หรือ disabled');
-    process.exit(1);
-  }
-
-  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
-  await patchGatewayConfig({
-    weixin: {
-      enabled: true,
-      accountId: cleanAccountId,
-      token: cleanToken,
-      baseUrl: cleanBaseUrl,
-      cdnBaseUrl: cleanCdnBaseUrl,
-      homeChannel: cleanHomeChannel || allowedUsers[0] || (groupAllowedUsers[0] ? `group/${groupAllowedUsers[0]}` : undefined),
-      homeChannelName: homeChannelName?.trim() || undefined,
-      allowedUsers,
-      groupAllowedUsers,
-      allowAllUsers,
-      dmPolicy: dmPolicy as 'open' | 'allowlist' | 'disabled' | 'pairing',
-      groupPolicy: groupPolicy as 'open' | 'allowlist' | 'disabled',
-      splitMultilineMessages,
-    },
-  });
-  console.log(`บันทึก Weixin gateway config แล้ว: ${gatewayConfigPath()}`);
-  console.log(`Weixin iLink API: ${cleanBaseUrl}/ilink/bot/sendmessage`);
-  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to weixin "hello"${cleanHomeChannel ? '' : ` หรือ ${BRAND.cliName} send --to weixin:user/<user-id> "hello"`}`);
-  console.log('หมายเหตุ: รอบนี้รองรับ text/Markdown proactive send; QR login, long-poll inbound และ media CDN encryption เป็น parity ถัดไป');
-}
-
-async function runYuanbaoGatewaySetup(args: string[]): Promise<void> {
-  let appId = argValue(args, '--app-id', '--app-key');
-  let appSecret = argValue(args, '--app-secret', '--secret');
-  const botId = argValue(args, '--bot-id');
-  const wsUrl = argValue(args, '--ws-url', '--websocket-url');
-  const apiDomain = argValue(args, '--api-domain', '--api-base-url');
-  const routeEnv = argValue(args, '--route-env');
-  let homeChannel = argValue(args, '--home-channel', '--chat-id', '--to');
-  const homeChannelName = argValue(args, '--home-channel-name');
-  let allowedUsersRaw = argValue(args, '--allowed-users', '--dm-allow-from');
-  let groupAllowedUsersRaw = argValue(args, '--group-allow-from', '--group-allowed-users', '--allowed-groups');
-  const allowAllUsers = args.includes('--allow-all-users');
-  const dmPolicyRaw = argValue(args, '--dm-policy');
-  const groupPolicyRaw = argValue(args, '--group-policy');
-
-  if (!appId || !appSecret || (!homeChannel && !allowedUsersRaw && !groupAllowedUsersRaw && !allowAllUsers && !dmPolicyRaw && !groupPolicyRaw)) {
-    if (!process.stdin.isTTY) {
-      console.error(
-        `ใช้: ${BRAND.cliName} gateway setup yuanbao --app-id <app-id> --app-secret <secret> --home-channel <direct:account|group:group_code>`,
-      );
-      process.exit(1);
-    }
-    console.log(`${BRAND.productName} Yuanbao setup`);
-    console.log('ใช้ Tencent Yuanbao bot credentials: APP_ID/APP_SECRET + sign-token endpoint. Direct delivery ต้องต่อ WebSocket/protobuf เพิ่มในรอบถัดไป');
-    appId ||= await askText('Yuanbao app id / app key: ');
-    appSecret ||= await askText('Yuanbao app secret: ');
-    homeChannel ||= await askText('Home target (direct:<account> หรือ group:<group_code>; blank = explicit targets only): ');
-  }
-
-  if (!allowedUsersRaw && homeChannel && !/^group[:/]/i.test(homeChannel)) {
-    allowedUsersRaw = homeChannel.replace(/^(?:direct|dm|user|c2c)[:/]/i, '');
-  }
-  if (!groupAllowedUsersRaw && homeChannel && /^group[:/]/i.test(homeChannel)) {
-    groupAllowedUsersRaw = homeChannel.replace(/^group[:/]/i, '');
-  }
-
-  const { normalizeYuanbaoApiDomain, normalizeYuanbaoWsUrl } = await import('./gateway/yuanbao.js');
-  const cleanWsUrl = normalizeYuanbaoWsUrl(wsUrl);
-  const cleanApiDomain = normalizeYuanbaoApiDomain(apiDomain);
-  const cleanAppId = appId?.trim();
-  const cleanAppSecret = appSecret?.trim();
-  const cleanHomeChannel = homeChannel?.trim();
-  if (!cleanWsUrl) {
-    console.error('Yuanbao websocket URL ต้องเป็น ws:// หรือ wss:// URL');
-    process.exit(1);
-  }
-  if (!cleanApiDomain) {
-    console.error('Yuanbao API domain ต้องเป็น http:// หรือ https:// URL');
-    process.exit(1);
-  }
-  if (!cleanAppId || !cleanAppSecret) {
-    console.error('Yuanbao setup ต้องมี app id และ app secret');
-    process.exit(1);
-  }
-
-  const allowedUsers = parseStringCsv(allowedUsersRaw)
-    .map((id) => id.replace(/^(?:direct|dm|user|c2c)[:/]/i, '').trim())
-    .filter(Boolean);
-  const groupAllowedUsers = parseStringCsv(groupAllowedUsersRaw)
-    .map((id) => id.replace(/^group[:/]/i, '').trim())
-    .filter(Boolean);
-  const dmPolicy = (dmPolicyRaw?.trim().toLowerCase() || (allowedUsers.length ? 'allowlist' : 'open')) as string;
-  const groupPolicy = (groupPolicyRaw?.trim().toLowerCase() || (groupAllowedUsers.length ? 'allowlist' : 'open')) as string;
-  if (!['open', 'allowlist', 'disabled'].includes(dmPolicy)) {
-    console.error('--dm-policy ต้องเป็น open, allowlist, หรือ disabled');
-    process.exit(1);
-  }
-  if (!['open', 'allowlist', 'disabled'].includes(groupPolicy)) {
-    console.error('--group-policy ต้องเป็น open, allowlist, หรือ disabled');
-    process.exit(1);
-  }
-
-  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
-  await patchGatewayConfig({
-    yuanbao: {
-      enabled: true,
-      appId: cleanAppId,
-      appSecret: cleanAppSecret,
-      botId: botId?.trim() || undefined,
-      wsUrl: cleanWsUrl,
-      apiDomain: cleanApiDomain,
-      routeEnv: routeEnv?.trim() || undefined,
-      homeChannel: cleanHomeChannel || (allowedUsers[0] ? `direct:${allowedUsers[0]}` : undefined) || (groupAllowedUsers[0] ? `group:${groupAllowedUsers[0]}` : undefined),
-      homeChannelName: homeChannelName?.trim() || undefined,
-      allowedUsers,
-      groupAllowedUsers,
-      allowAllUsers,
-      dmPolicy: dmPolicy as 'open' | 'allowlist' | 'disabled',
-      groupPolicy: groupPolicy as 'open' | 'allowlist' | 'disabled',
-    },
-  });
-  console.log(`บันทึก Yuanbao gateway config แล้ว: ${gatewayConfigPath()}`);
-  console.log(`Yuanbao websocket: ${cleanWsUrl}`);
-  console.log(`Yuanbao sign-token: ${cleanApiDomain}/api/v5/robotLogic/sign-token`);
-  console.log('หมายเหตุ: setup/sign-token helper พร้อมแล้ว; direct send ยังต้องเพิ่ม WebSocket + protobuf dispatch parity ก่อน');
-}
-
-async function runQQBotGatewaySetup(args: string[]): Promise<void> {
-  let appId = argValue(args, '--app-id', '--qq-app-id');
-  let clientSecret = argValue(args, '--client-secret', '--secret', '--app-secret');
-  const apiBaseUrl = argValue(args, '--api-base-url');
-  const tokenUrl = argValue(args, '--token-url');
-  const portalHost = argValue(args, '--portal-host');
-  let homeChannel = argValue(args, '--home-channel', '--openid', '--to');
-  const homeChannelName = argValue(args, '--home-channel-name');
-  let allowedUsersRaw = argValue(args, '--allowed-users');
-  let groupAllowedUsersRaw = argValue(args, '--group-allowed-users', '--allowed-groups');
-  let allowedChannelsRaw = argValue(args, '--allowed-channels', '--allowed-guilds');
-  const allowAllUsers = args.includes('--allow-all-users');
-  const markdownSupport = args.includes('--markdown') || args.includes('--markdown-support');
-  const dmPolicyRaw = argValue(args, '--dm-policy');
-  const groupPolicyRaw = argValue(args, '--group-policy');
-
-  if (!appId || !clientSecret || (!homeChannel && !allowedUsersRaw && !groupAllowedUsersRaw && !allowedChannelsRaw && !allowAllUsers)) {
-    if (!process.stdin.isTTY) {
-      console.error(
-        `ใช้: ${BRAND.cliName} gateway setup qqbot --app-id <app-id> --client-secret <secret> --home-channel <user|group|guild target>`,
-      );
-      process.exit(1);
-    }
-    console.log(`${BRAND.productName} QQ Bot setup`);
-    console.log('ใช้ Official QQ Bot API v2: app id + client secret จาก q.qq.com');
-    appId ||= await askText('QQ Bot app id: ');
-    clientSecret ||= await askText('QQ Bot client secret: ');
-    homeChannel ||= await askText('Home user/group/guild openid (blank = explicit targets only): ');
-  }
-
-  if (!allowedUsersRaw && homeChannel && !/^(?:group|guild|channel)[:/]/i.test(homeChannel)) allowedUsersRaw = homeChannel;
-  if (!groupAllowedUsersRaw && homeChannel && /^group[:/]/i.test(homeChannel)) groupAllowedUsersRaw = homeChannel.replace(/^group[:/]/i, '');
-  if (!allowedChannelsRaw && homeChannel && /^(?:guild|channel)[:/]/i.test(homeChannel)) allowedChannelsRaw = homeChannel.replace(/^(?:guild|channel)[:/]/i, '');
-
-  const { normalizeQQBotApiBaseUrl, normalizeQQBotTokenUrl } = await import('./gateway/qqbot.js');
-  const cleanApiBaseUrl = normalizeQQBotApiBaseUrl(apiBaseUrl);
-  const cleanTokenUrl = normalizeQQBotTokenUrl(tokenUrl);
-  const cleanAppId = appId?.trim();
-  const cleanClientSecret = clientSecret?.trim();
-  const cleanHomeChannel = homeChannel?.trim();
-  if (!cleanApiBaseUrl) {
-    console.error('QQBot API base URL ต้องเป็น http:// หรือ https:// URL');
-    process.exit(1);
-  }
-  if (!cleanTokenUrl) {
-    console.error('QQBot token URL ต้องเป็น http:// หรือ https:// URL');
-    process.exit(1);
-  }
-  if (!cleanAppId || !cleanClientSecret) {
-    console.error('QQBot setup ต้องมี app id และ client secret');
-    process.exit(1);
-  }
-  const allowedUsers = parseStringCsv(allowedUsersRaw).map((id) => id.replace(/^(?:user|c2c|dm)[:/]/i, '').trim()).filter(Boolean);
-  const groupAllowedUsers = parseStringCsv(groupAllowedUsersRaw).map((id) => id.replace(/^group[:/]/i, '').trim()).filter(Boolean);
-  const allowedChannels = parseStringCsv(allowedChannelsRaw).map((id) => id.replace(/^(?:guild|channel)[:/]/i, '').trim()).filter(Boolean);
-  const dmPolicy = (dmPolicyRaw?.trim().toLowerCase() || (allowedUsers.length ? 'allowlist' : 'open')) as string;
-  const groupPolicy = (groupPolicyRaw?.trim().toLowerCase() || (groupAllowedUsers.length ? 'allowlist' : 'open')) as string;
-  if (!['open', 'allowlist', 'disabled', 'pairing'].includes(dmPolicy)) {
-    console.error('--dm-policy ต้องเป็น open, allowlist, disabled, หรือ pairing');
-    process.exit(1);
-  }
-  if (!['open', 'allowlist', 'disabled'].includes(groupPolicy)) {
-    console.error('--group-policy ต้องเป็น open, allowlist, หรือ disabled');
-    process.exit(1);
-  }
-
-  const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
-  await patchGatewayConfig({
-    qqbot: {
-      enabled: true,
-      appId: cleanAppId,
-      clientSecret: cleanClientSecret,
-      apiBaseUrl: cleanApiBaseUrl,
-      tokenUrl: cleanTokenUrl,
-      portalHost: portalHost?.trim() || undefined,
-      homeChannel: cleanHomeChannel || allowedUsers[0] || (groupAllowedUsers[0] ? `group/${groupAllowedUsers[0]}` : undefined) || (allowedChannels[0] ? `guild/${allowedChannels[0]}` : undefined),
-      homeChannelName: homeChannelName?.trim() || undefined,
-      allowedUsers,
-      groupAllowedUsers,
-      allowedChannels,
-      allowAllUsers,
-      dmPolicy: dmPolicy as 'open' | 'allowlist' | 'disabled' | 'pairing',
-      groupPolicy: groupPolicy as 'open' | 'allowlist' | 'disabled',
-      markdownSupport,
-    },
-  });
-  console.log(`บันทึก QQBot gateway config แล้ว: ${gatewayConfigPath()}`);
-  console.log(`QQBot API: ${cleanApiBaseUrl}`);
-  console.log(`ส่งทดสอบได้ด้วย: ${BRAND.cliName} send --to qqbot "hello"${cleanHomeChannel ? '' : ` หรือ ${BRAND.cliName} send --to qqbot:user/<openid> "hello"`}`);
 }
 
 async function runTeamsGatewaySetup(args: string[]): Promise<void> {
@@ -2399,10 +1767,8 @@ async function runStatus(): Promise<void> {
   const {
     readGatewayConfig,
     resolveBlueBubblesConfig,
-    resolveDingTalkConfig,
     resolveDiscordConfig,
     resolveEmailConfig,
-    resolveFeishuConfig,
     resolveGoogleChatConfig,
     resolveHomeAssistantConfig,
     resolveLineConfig,
@@ -2413,13 +1779,9 @@ async function runStatus(): Promise<void> {
     resolveSlackConfig,
     resolveSmsConfig,
     resolveTelegramConfig,
-    resolveQQBotConfig,
     resolveTeamsConfig,
-    resolveWeComConfig,
-    resolveWeixinConfig,
     resolveWhatsAppConfig,
     resolveWebhookConfig,
-    resolveYuanbaoConfig,
   } = await import('./gateway/config.js');
   const gatewayConfig = await readGatewayConfig();
   const telegram = resolveTelegramConfig(gatewayConfig);
@@ -2434,14 +1796,8 @@ async function runStatus(): Promise<void> {
   const signal = resolveSignalConfig(gatewayConfig);
   const whatsapp = resolveWhatsAppConfig(gatewayConfig);
   const matrix = resolveMatrixConfig(gatewayConfig);
-  const feishu = resolveFeishuConfig(gatewayConfig);
-  const dingtalk = resolveDingTalkConfig(gatewayConfig);
   const googleChat = resolveGoogleChatConfig(gatewayConfig);
   const bluebubbles = resolveBlueBubblesConfig(gatewayConfig);
-  const wecom = resolveWeComConfig(gatewayConfig);
-  const weixin = resolveWeixinConfig(gatewayConfig);
-  const yuanbao = resolveYuanbaoConfig(gatewayConfig);
-  const qqbot = resolveQQBotConfig(gatewayConfig);
   const teams = resolveTeamsConfig(gatewayConfig);
   const webhooks = resolveWebhookConfig(gatewayConfig);
   console.log(`${BRAND.productName} status`);
@@ -2465,14 +1821,8 @@ async function runStatus(): Promise<void> {
   console.log(`  signal:    ${signal.account ? `configured (${signal.allowedUsers.length} allowed user${signal.allowedUsers.length === 1 ? '' : 's'}, ${signal.groupAllowedUsers.length} group${signal.groupAllowedUsers.length === 1 ? '' : 's'})` : 'not configured'}`);
   console.log(`  whatsapp:  ${whatsapp.phoneNumberId && whatsapp.accessToken ? `configured (${whatsapp.allowedUsers.length} allowed user${whatsapp.allowedUsers.length === 1 ? '' : 's'})` : 'not configured'}`);
   console.log(`  matrix:    ${matrix.homeserver && (matrix.accessToken || (matrix.userId && matrix.password)) ? `configured (${matrix.allowedUsers.length} allowed user${matrix.allowedUsers.length === 1 ? '' : 's'}, ${matrix.allowedRooms.length} room${matrix.allowedRooms.length === 1 ? '' : 's'})` : 'not configured'}`);
-  console.log(`  feishu:    ${feishu.appId && feishu.appSecret ? `configured (${feishu.allowedChats.length} allowed chat${feishu.allowedChats.length === 1 ? '' : 's'})` : 'not configured'}`);
-  console.log(`  dingtalk:  ${dingtalk.clientId || dingtalk.webhookUrl ? `configured (${dingtalk.webhookUrl ? 'webhook' : 'openapi'})` : 'not configured'}`);
   console.log(`  googlechat:${googleChat.serviceAccountJson || googleChat.incomingWebhookUrl ? ` configured (${googleChat.serviceAccountJson ? 'chat api' : 'webhook'})` : ' not configured'}`);
   console.log(`  bluebubbles:${bluebubbles.serverUrl && bluebubbles.password ? ` configured (${bluebubbles.allowedUsers.length} allowed target${bluebubbles.allowedUsers.length === 1 ? '' : 's'})` : ' not configured'}`);
-  console.log(`  wecom:     ${wecom.botId && wecom.secret ? `configured (${wecom.dmPolicy}/${wecom.groupPolicy})` : 'not configured'}`);
-  console.log(`  weixin:    ${weixin.accountId && weixin.token ? `configured (${weixin.dmPolicy}/${weixin.groupPolicy})` : 'not configured'}`);
-  console.log(`  yuanbao:   ${yuanbao.appId && yuanbao.appSecret ? `configured (${yuanbao.dmPolicy}/${yuanbao.groupPolicy}, send pending)` : 'not configured'}`);
-  console.log(`  qqbot:     ${qqbot.appId && qqbot.clientSecret ? `configured (${qqbot.dmPolicy}/${qqbot.groupPolicy})` : 'not configured'}`);
   console.log(`  teams:     ${teams.incomingWebhookUrl || teams.graphAccessToken ? `configured (${teams.deliveryMode})` : 'not configured'}`);
   console.log(`  webhooks:  ${webhooks.enabled ? `enabled (${Object.keys(webhooks.routes).length} route${Object.keys(webhooks.routes).length === 1 ? '' : 's'})` : 'not enabled'}`);
   console.log(`  config:    ${appHomePath('config.json')}`);
@@ -3092,14 +2442,8 @@ async function runSend(args: string[]): Promise<void> {
   ${BRAND.cliName} send --to signal[:+15558675310|group:<id>] "message"
   ${BRAND.cliName} send --to whatsapp[:15558675310] "message"
   ${BRAND.cliName} send --to matrix[:!roomid:matrix.org] "message"
-  ${BRAND.cliName} send --to feishu[:oc_xxx] "message"
-  ${BRAND.cliName} send --to dingtalk[:cid_xxx|user/<userId>] "message"
   ${BRAND.cliName} send --to googlechat[:spaces/AAA|spaces/AAA/threads/BBB] "message"
   ${BRAND.cliName} send --to bluebubbles[:chat-guid|email|phone] "message"
-  ${BRAND.cliName} send --to wecom[:chat-id|user/<userId>|group/<groupId>] "message"
-  ${BRAND.cliName} send --to weixin[:chat-id|user/<userId>|group/<groupId>] "message"
-  ${BRAND.cliName} send --to yuanbao[:direct/<account>|group/<group_code>] "message" (setup ready; direct send pending)
-  ${BRAND.cliName} send --to qqbot[:user/<openid>|group/<groupOpenId>|guild/<channelId>] "message"
   ${BRAND.cliName} send --to teams[:chat_id|team/<team-id>/channel/<channel-id>] "message"
   ${BRAND.cliName} send --to slack --subject "[CI]" --file build.log
   echo "done" | ${BRAND.cliName} send --to telegram --quiet
@@ -3128,7 +2472,7 @@ async function runSend(args: string[]): Promise<void> {
 
   const to = argValue(args, '--to', '-t');
   if (!to) {
-    console.error(`ใช้: ${BRAND.cliName} send --to <telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|bluebubbles|wecom|weixin|yuanbao|qqbot|teams>[:target] "message"`);
+    console.error(`ใช้: ${BRAND.cliName} send --to <telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|googlechat|bluebubbles|teams>[:target] "message"`);
     process.exit(2);
   }
   const file = argValue(args, '--file', '-f');
@@ -3183,7 +2527,7 @@ async function runWebhook(args: string[]): Promise<void> {
 
   if (args.includes('-h') || args.includes('--help') || action === 'help') {
     console.log(`ใช้:
-	  ${BRAND.cliName} webhook subscribe <route> [--events issues,push] [--prompt "..."] [--to telegram|slack:C01|mattermost:chan|homeassistant|sms|ntfy|signal|whatsapp|matrix|googlechat|bluebubbles|wecom|weixin|yuanbao|qqbot|teams]
+	  ${BRAND.cliName} webhook subscribe <route> [--events issues,push] [--prompt "..."] [--to telegram|slack:C01|mattermost:chan|homeassistant|sms|ntfy|signal|whatsapp|matrix|googlechat|bluebubbles|teams]
   ${BRAND.cliName} webhook subscribe <route> --deliver telegram --deliver-chat-id 123 --deliver-only --prompt "New event: {__raw__}"
   ${BRAND.cliName} webhook list
   ${BRAND.cliName} webhook remove <route>
@@ -3991,7 +3335,7 @@ async function main(): Promise<void> {
   await loadKeysIntoEnv();
   process.on('exit', closeMcp); // ปิด MCP server (kill child) ตอนจบ
 
-  // Hermes-style management surfaces (branded for Sanook) — setup/model/gateway/status/tools/send
+  // management surfaces (Sanook-branded) — setup/model/gateway/status/tools/send
   if (argv[0] === '-z') return runPureOneShot(argv.slice(1));
   if (argv[0] === 'chat') return runChat(argv.slice(1));
   if (argv[0] === 'setup') return runSetup(argv.slice(1));

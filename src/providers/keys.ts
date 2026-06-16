@@ -49,8 +49,7 @@ export function assertDirectApiKey(policy: KeyPolicy, key: string): void {
 /** ปิดบัง API key ในข้อความ log/error — เก็บแค่หัว 4 + ท้าย 2 ตัว */
 export function redactKey(s: string): string {
   return s.replace(
-    // GLM/Zhipu = '{id}.{secret}' (มีจุดคั่น generic [A-Za-z0-9_-] ข้ามจุดไม่ได้ → secret half รั่ว) → จับ pattern จุดคั่นแยก
-    /\b(AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{6,}|AIza[A-Za-z0-9_-]{10,}|xai-[A-Za-z0-9]{10,}|gsk_[A-Za-z0-9]{10,}|[A-Za-z0-9]{16,}\.[A-Za-z0-9_-]{16,}|[A-Za-z0-9_-]{24,})\b/g,
+    /\b(AKIA[0-9A-Z]{16}|sk-[A-Za-z0-9_-]{6,}|AIza[A-Za-z0-9_-]{10,}|xai-[A-Za-z0-9]{10,}|gsk_[A-Za-z0-9]{10,}|[A-Za-z0-9_-]{24,})\b/g,
     (m) => (m.length > 8 ? `${m.slice(0, 4)}…${m.slice(-2)}` : '…'),
   );
 }

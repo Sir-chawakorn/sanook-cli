@@ -51,12 +51,7 @@ export function parseSendTarget(raw: string): SendTarget {
   let address: string | undefined;
   let thread: string | undefined;
   let extra: string[] = [];
-  if (
-    platform === 'matrix' ||
-    platform === 'googlechat' ||
-    platform === 'bluebubbles' ||
-    platform === 'teams'
-  ) {
+  if (platform === 'matrix' || platform === 'googlechat' || platform === 'bluebubbles' || platform === 'teams') {
     address = remainder?.trim();
   } else if (remainder != null) {
     const parts = remainder.split(':');

@@ -4,7 +4,7 @@ import { hasUsableEnvKey, detectEnvProvider } from './registry.js';
 // env ของ provider ทั้งหมด — clear ก่อนเทสกัน key จริงบนเครื่องรันมารบกวน
 const PROVIDER_ENV = [
   'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GOOGLE_API_KEY', 'GEMINI_API_KEY',
-  'DEEPSEEK_API_KEY', 'XAI_API_KEY', 'MISTRAL_API_KEY', 'GROQ_API_KEY', 'ZHIPU_API_KEY', 'ZAI_API_KEY', 'GLM_API_KEY', 'MINIMAX_API_KEY',
+  'XAI_API_KEY', 'MISTRAL_API_KEY', 'GROQ_API_KEY',
 ];
 
 describe('hasUsableEnvKey / detectEnvProvider — reject OAuth & malformed tokens (no false "ready")', () => {

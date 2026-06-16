@@ -4,7 +4,7 @@
 
 **AI coding agent ใน terminal ที่ "จำงานข้ามวันได้" — open-source**
 
-ใส่ API key ของคุณเอง (BYOK) · 12 providers · MCP · มี **"สมองที่สอง" (second brain)** ที่ทำให้ AI จำ context ข้าม session ได้ — สิ่งที่ Claude Code / Codex / Gemini CLI ลืมทุกครั้งที่ปิด terminal
+ใส่ API key ของคุณเอง (BYOK) · 9 providers · MCP · มี **"สมองที่สอง" (second brain)** ที่ทำให้ AI จำ context ข้าม session ได้ — สิ่งที่ Claude Code / Codex / Gemini CLI ลืมทุกครั้งที่ปิด terminal
 
 [![npm](https://img.shields.io/npm/v/sanook-cli.svg?color=2563eb)](https://www.npmjs.com/package/sanook-cli)
 [![downloads](https://img.shields.io/npm/dm/sanook-cli.svg?color=2563eb)](https://www.npmjs.com/package/sanook-cli)
@@ -68,7 +68,7 @@ sanook -c "ทำต่อจาก session ล่าสุดของ project 
 sanook --continue-any "ทำต่อจาก session ล่าสุดข้าม project"
 ```
 
-ตัวอย่างตั้งค่า messaging แบบ Hermes-style:
+ตัวอย่างตั้งค่า messaging:
 
 ```bash
 sanook gateway setup line --channel-access-token "$LINE_CHANNEL_ACCESS_TOKEN" \
@@ -89,24 +89,11 @@ sanook gateway setup whatsapp --phone-number-id "$WHATSAPP_CLOUD_PHONE_NUMBER_ID
 sanook gateway setup matrix --homeserver https://matrix.example.org \
   --access-token "$MATRIX_ACCESS_TOKEN" --allowed-users @alice:matrix.org \
   --home-room '!abc123:matrix.example.org'
-sanook gateway setup feishu --domain feishu --app-id "$FEISHU_APP_ID" \
-  --app-secret "$FEISHU_APP_SECRET" --home-channel oc_xxx
-sanook gateway setup dingtalk --client-id "$DINGTALK_CLIENT_ID" \
-  --client-secret "$DINGTALK_CLIENT_SECRET" --robot-code "$DINGTALK_ROBOT_CODE" \
-  --home-channel cid_xxx --allowed-users user_id_1
 sanook gateway setup googlechat --service-account-json "$GOOGLE_CHAT_SERVICE_ACCOUNT_JSON" \
   --home-channel spaces/AAAA --allowed-spaces spaces/AAAA
 sanook gateway setup googlechat --incoming-webhook-url "$GOOGLE_CHAT_INCOMING_WEBHOOK_URL"
 sanook gateway setup bluebubbles --server-url http://localhost:1234 --password "$BLUEBUBBLES_PASSWORD" \
   --home-channel user@example.com --allowed-users user@example.com,+15551234567
-sanook gateway setup wecom --bot-id "$WECOM_BOT_ID" --secret "$WECOM_SECRET" \
-  --home-channel user_id_1 --allowed-users user_id_1,user_id_2
-sanook gateway setup weixin --account-id "$WEIXIN_ACCOUNT_ID" --token "$WEIXIN_TOKEN" \
-  --home-channel user/user_id_1 --allowed-users user_id_1,user_id_2
-sanook gateway setup yuanbao --app-id "$YUANBAO_APP_ID" --app-secret "$YUANBAO_APP_SECRET" \
-  --home-channel direct:user_account_1 --allowed-users user_account_1,user_account_2
-sanook gateway setup qqbot --app-id "$QQ_APP_ID" --client-secret "$QQ_CLIENT_SECRET" \
-  --home-channel user/openid_1 --allowed-users openid_1,openid_2
 sanook gateway setup teams --incoming-webhook-url "$TEAMS_INCOMING_WEBHOOK_URL"
 sanook gateway setup webhooks --secret "$WEBHOOK_SECRET" --public-url https://your-tunnel.example.com
 sanook webhook subscribe github-issues --events issues \
@@ -118,29 +105,16 @@ sanook send --to homeassistant "deploy finished"
 sanook send --to signal "deploy finished"
 sanook send --to whatsapp "deploy finished"
 sanook send --to matrix "deploy finished"
-sanook send --to feishu "deploy finished"
-sanook send --to dingtalk "deploy finished"
 sanook send --to googlechat "deploy finished"
 sanook send --to bluebubbles "deploy finished"
-sanook send --to wecom "deploy finished"
-sanook send --to wecom:user/user_id_1 "deploy finished"
-sanook send --to weixin "deploy finished"
-sanook send --to weixin:group/group_id_1@chatroom "deploy finished"
-sanook send --to qqbot "deploy finished"
-sanook send --to qqbot:group/group_openid_1 "deploy finished"
 sanook send --to teams "deploy finished"
 sanook cron add "09:00" "สรุปงานเช้านี้" --to ntfy
 sanook cron add "09:00" "สรุปงานเช้านี้" --to mattermost
 sanook cron add "09:00" "สรุปงานเช้านี้" --to homeassistant
 sanook cron add "09:00" "สรุปงานเช้านี้" --to whatsapp
 sanook cron add "09:00" "สรุปงานเช้านี้" --to matrix
-sanook cron add "09:00" "สรุปงานเช้านี้" --to feishu
-sanook cron add "09:00" "สรุปงานเช้านี้" --to dingtalk
 sanook cron add "09:00" "สรุปงานเช้านี้" --to googlechat
 sanook cron add "09:00" "สรุปงานเช้านี้" --to bluebubbles
-sanook cron add "09:00" "สรุปงานเช้านี้" --to wecom
-sanook cron add "09:00" "สรุปงานเช้านี้" --to weixin
-sanook cron add "09:00" "สรุปงานเช้านี้" --to qqbot
 sanook cron add "09:00" "สรุปงานเช้านี้" --to teams
 ```
 
@@ -148,32 +122,20 @@ sanook cron add "09:00" "สรุปงานเช้านี้" --to teams
 
 Home Assistant ใช้ Long-Lived Access Token, รับเฉพาะ `state_changed` ที่ตรง `--watch-domains`, `--watch-entities` หรือ `--watch-all`, และตอบกลับผ่าน persistent notification (`homeassistant[:notification_id]`). Tools อ่านสถานะ/บริการได้ ส่วน `ha_call_service` ต้องผ่าน approval และ block domain เสี่ยงเช่น `shell_command`, `command_line`, `python_script`, `pyscript`, `hassio`, `rest_command`
 
-Feishu/Lark ตอนนี้รองรับ proactive delivery/cron ผ่าน internal app (`feishu` หรือ alias `lark:oc_xxx`). ใช้ `sanook gateway setup feishu --app-id ... --app-secret ... --home-channel oc_xxx` แล้วส่งด้วย `sanook send --to feishu "hello"`
+Google Chat ตอนนี้รองรับ proactive delivery/cron ผ่าน incoming webhook (`googlechat`) หรือ Service Account + Chat REST API (`googlechat:spaces/...`). ค่าของ Pub/Sub (`GOOGLE_CHAT_PROJECT_ID`, `GOOGLE_CHAT_SUBSCRIPTION_NAME`, `GOOGLE_CHAT_ALLOWED_USERS`) บันทึกไว้เพื่อทำ inbound parity ต่อ
 
-DingTalk ตอนนี้รองรับ proactive delivery/cron ผ่าน Robot OpenAPI (`dingtalk:cid_xxx`, `dingtalk:user/<userId>`) หรือ custom robot webhook. ใช้ `sanook gateway setup dingtalk --client-id ... --client-secret ... --robot-code ... --home-channel cid_xxx`
-
-Google Chat ตอนนี้รองรับ proactive delivery/cron ผ่าน incoming webhook (`googlechat`) หรือ Service Account + Chat REST API (`googlechat:spaces/...`). ค่าของ Hermes-style Pub/Sub (`GOOGLE_CHAT_PROJECT_ID`, `GOOGLE_CHAT_SUBSCRIPTION_NAME`, `GOOGLE_CHAT_ALLOWED_USERS`) บันทึกไว้เพื่อทำ inbound parity ต่อ
-
-BlueBubbles/iMessage ตอนนี้รองรับ proactive delivery/cron ผ่าน BlueBubbles REST API (`bluebubbles`, `imessage:user@example.com`, หรือ raw chat GUID). ใช้ `sanook gateway setup bluebubbles --server-url ... --password ... --home-channel ...`; ค่า webhook/mention แบบ Hermes (`BLUEBUBBLES_WEBHOOK_*`, `BLUEBUBBLES_REQUIRE_MENTION`) ถูกบันทึกไว้เพื่อทำ inbound parity ต่อ
-
-WeCom/Enterprise WeChat ตอนนี้รองรับ proactive delivery/cron ผ่าน AI Bot WebSocket gateway (`wecom`, `wecom:user/<userId>`, `wecom:group/<groupId>`). ใช้ `sanook gateway setup wecom --bot-id ... --secret ... --home-channel ...`; Sanook จะ `aibot_subscribe` แล้วส่ง markdown ด้วย `aibot_send_msg`
-
-Weixin/WeChat ส่วนบุคคลตอนนี้รองรับ proactive delivery/cron แบบ text/Markdown ผ่าน Tencent iLink `sendmessage` (`weixin`, `weixin:user/<userId>`, `weixin:group/<groupId>`). ใช้ `sanook gateway setup weixin --account-id ... --token ... --home-channel ...`; QR login wizard, long-poll inbound, context-token persistence และ encrypted media CDN ยังเป็น parity ถัดไป
-
-Yuanbao ตอนนี้รองรับ setup/config/status/target listing และ sign-token helper ตาม Hermes (`yuanbao`, `yuanbao:direct/<account>`, `yuanbao:group/<group_code>`). ใช้ `sanook gateway setup yuanbao --app-id ... --app-secret ... --home-channel direct:<account>`; direct send ยังตั้งใจ mark เป็น not-ready จนกว่าจะเพิ่ม WebSocket + protobuf dispatch parity ครบ
-
-QQ Bot ตอนนี้รองรับ proactive delivery/cron ผ่าน Official QQ Bot API v2 (`qqbot`, `qqbot:user/<openid>`, `qqbot:group/<groupOpenId>`, `qqbot:guild/<channelId>`). ใช้ `sanook gateway setup qqbot --app-id ... --client-secret ... --home-channel ...`; WebSocket inbound, voice STT, และ interactive keyboard parity ยังเป็นงานถัดไป
+BlueBubbles/iMessage ตอนนี้รองรับ proactive delivery/cron ผ่าน BlueBubbles REST API (`bluebubbles`, `imessage:user@example.com`, หรือ raw chat GUID). ใช้ `sanook gateway setup bluebubbles --server-url ... --password ... --home-channel ...`; ค่า webhook/mention (`BLUEBUBBLES_WEBHOOK_*`, `BLUEBUBBLES_REQUIRE_MENTION`) ถูกบันทึกไว้เพื่อทำ inbound parity ต่อ
 
 Microsoft Teams ตอนนี้รองรับ proactive delivery/cron ผ่าน Incoming Webhook (`teams`) หรือ Graph mode (`teams:'19:chatid@thread.v2'`). ใช้ `sanook gateway setup teams --incoming-webhook-url ...` สำหรับเริ่มง่ายที่สุด
 
 ## ทำอะไรได้บ้าง
 
-- **BYOK + 12 providers** — Anthropic, Google, OpenAI, DeepSeek, xAI, Mistral, Groq, MiniMax, GLM, Ollama, LM Studio, Codex
-- **Hermes-style CLI** — `sanook setup`, `sanook model`, `sanook auth`, `sanook chat -q`, `sanook gateway`, `sanook status`, `sanook sessions`, `sanook dump`, `sanook tools`, `sanook send`
+- **BYOK + 9 providers** — Anthropic, Google, OpenAI, xAI, Mistral, Groq, Ollama, LM Studio, Codex
+- **Familiar CLI** — `sanook setup`, `sanook model`, `sanook auth`, `sanook chat -q`, `sanook gateway`, `sanook status`, `sanook sessions`, `sanook dump`, `sanook tools`, `sanook send`
 - **Second brain** — `sanook brain init` สร้าง workspace Obsidian ให้ AI จำงานข้ามวัน
 - **Tools** — อ่าน/เขียน/แก้ไฟล์ · รัน bash · git · grep/glob พร้อม permission gate
-- **Gateway + cron** — `sanook gateway run` (alias: `sanook serve`) รัน 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram/Discord/Slack/Mattermost/Home Assistant/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix/Feishu/Lark/DingTalk/Google Chat/BlueBubbles/WeCom/Weixin/Yuanbao/QQBot/Teams/Webhooks; task ใช้ `--to` เพื่อส่งผลลัพธ์กลับไปยัง messaging target ได้
-- **Messaging setup/send** — `sanook gateway setup telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|bluebubbles|wecom|weixin|yuanbao|qqbot|teams|webhooks` บันทึก token/allowlist หรือ SMTP/IMAP/LINE/Twilio/ntfy/Mattermost/Home Assistant/Signal/WhatsApp/Matrix/Feishu/Lark/DingTalk/Google Chat/BlueBubbles/WeCom/Weixin/Yuanbao/QQBot/Teams/Webhook config; `sanook gateway run` เริ่ม Telegram long-polling, Discord Gateway, Slack Socket Mode, Mattermost REST/WebSocket, Home Assistant state-change WebSocket, Email IMAP polling + SMTP threaded replies, LINE webhook, Twilio SMS webhook, ntfy topic stream, Signal ผ่าน `signal-cli` HTTP/SSE, WhatsApp Cloud webhook + Graph Messages API, Matrix Client-Server sync/send, Feishu/Lark outbound ผ่าน tenant token + `im/v1/messages`, DingTalk outbound ผ่าน OpenAPI robot/custom webhook, Google Chat outbound ผ่าน incoming webhook/Chat REST API, BlueBubbles outbound ผ่าน REST API, WeCom outbound ผ่าน AI Bot WebSocket `aibot_send_msg`, Weixin outbound ผ่าน Tencent iLink `sendmessage`, Yuanbao setup/sign-token helper พร้อมแต่ direct send ยังรอ WebSocket/protobuf parity, QQBot outbound ผ่าน Official QQ Bot API v2, Teams Incoming Webhook/Graph delivery และ generic webhooks เมื่อ config พร้อม; history ถูกเก็บต่อ platform/target และถ้าคำตอบสุดท้ายเป็น `[SILENT]`, `SILENT`, `NO_REPLY`, หรือ `NO REPLY` จะบันทึกไว้แต่ไม่ส่งกลับ; `sanook send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|feishu|dingtalk|googlechat|bluebubbles|wecom|weixin|qqbot|teams "..."`, `sanook webhook subscribe` และ `sanook cron add --to ...` ใช้กฎส่งออกชุดเดียวกัน
+- **Gateway + cron** — `sanook gateway run` (alias: `sanook serve`) รัน 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram/Discord/Slack/Mattermost/Home Assistant/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix/Google Chat/BlueBubbles/Teams/Webhooks; task ใช้ `--to` เพื่อส่งผลลัพธ์กลับไปยัง messaging target ได้
+- **Messaging setup/send** — `sanook gateway setup telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|googlechat|bluebubbles|teams|webhooks` บันทึก token/allowlist หรือ SMTP/IMAP/LINE/Twilio/ntfy/Mattermost/Home Assistant/Signal/WhatsApp/Matrix/Google Chat/BlueBubbles/Teams/Webhook config; `sanook gateway run` เริ่ม Telegram long-polling, Discord Gateway, Slack Socket Mode, Mattermost REST/WebSocket, Home Assistant state-change WebSocket, Email IMAP polling + SMTP threaded replies, LINE webhook, Twilio SMS webhook, ntfy topic stream, Signal ผ่าน `signal-cli` HTTP/SSE, WhatsApp Cloud webhook + Graph Messages API, Matrix Client-Server sync/send, Google Chat outbound ผ่าน incoming webhook/Chat REST API, BlueBubbles outbound ผ่าน REST API, Teams Incoming Webhook/Graph delivery และ generic webhooks เมื่อ config พร้อม; history ถูกเก็บต่อ platform/target และถ้าคำตอบสุดท้ายเป็น `[SILENT]`, `SILENT`, `NO_REPLY`, หรือ `NO REPLY` จะบันทึกไว้แต่ไม่ส่งกลับ; `sanook send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|googlechat|bluebubbles|teams "..."`, `sanook webhook subscribe` และ `sanook cron add --to ...` ใช้กฎส่งออกชุดเดียวกัน
 - **MCP + Skills** — ต่อ MCP server ได้ + มี built-in skills และติดตั้งเพิ่มได้
 - **Update ง่าย** — ใช้ `sanook update` เพื่ออัปเดต CLI เป็นเวอร์ชันล่าสุดจาก npm
 
@@ -182,7 +144,6 @@ Microsoft Teams ตอนนี้รองรับ proactive delivery/cron ผ
 ```bash
 sanook -m sonnet "..."         # Claude
 sanook -m gemini "..."         # Gemini
-sanook -m glm:smart "..."      # GLM (z.ai Coding Plan)
 sanook -m ollama "..."         # local ไม่ต้องมี key
 sanook auth list               # ดู key/provider status แบบ redact secret
 sanook auth status openai      # ดู env/store/console ของ provider

@@ -18,7 +18,7 @@ export interface SetupResult {
 type Step = 'provider' | 'codex-auth' | 'key' | 'model' | 'brain-offer';
 
 // จัดลำดับ provider ในเมนู: cloud ยอดนิยม → cloud อื่น → local → ChatGPT-plan (codex) ท้ายสุด
-const PROVIDER_ORDER = ['anthropic', 'openai', 'google', 'deepseek', 'xai', 'mistral', 'groq', 'glm', 'minimax', 'ollama', 'lmstudio', 'codex'];
+const PROVIDER_ORDER = ['anthropic', 'openai', 'google', 'xai', 'mistral', 'groq', 'ollama', 'lmstudio', 'codex'];
 
 /** label + hint ต่อ provider: เจอ key ใน env / local / ChatGPT-login / ต้องมี key — ให้เลือกง่ายขึ้น */
 export function providerOption(id: string): { label: string; value: string } {

@@ -25,9 +25,7 @@ export const PRICING: Record<string, Pricing> = {
   // Google Gemini (≤200k context tier)
   'google:gemini-2.5-pro': { input: 1.25, output: 10, cacheWrite: 1.25, cacheRead: 0.31 },
   'google:gemini-2.5-flash': { input: 0.3, output: 2.5, cacheWrite: 0.3, cacheRead: 0.075 },
-  // DeepSeek V4
-  'deepseek:deepseek-v4-flash': { input: 0.28, output: 0.42, cacheWrite: 0.28, cacheRead: 0.028 },
-  'deepseek:deepseek-v4-pro': { input: 0.55, output: 2.19, cacheWrite: 0.55, cacheRead: 0.055 },
+
   // xAI Grok
   'xai:grok-4.3': { input: 3, output: 15, cacheWrite: 3, cacheRead: 0.75 },
   // Mistral

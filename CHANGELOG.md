@@ -11,7 +11,7 @@ A multi-agent review swept every subsystem (agent loop, tools, providers, gatewa
 - **Codex delegate could never edit files + ran in the wrong directory.** `sanook -m codex` ran with `--sandbox read-only` unconditionally (a "coding agent" that silently couldn't write) and ignored worktree `cwd`. It now uses `workspace-write` in auto mode (read-only under plan/ask), threads `cwd`, and passes prior conversation so REPL turns aren't contextless.
 - **Worktree rollback could lose a renamed file.** The pre-apply snapshot only captured destination paths, so a failed 3-way apply of a rename didn't restore the deleted source. Snapshots now cover both sides of renames/copies (and parse git-quoted paths).
 
-**Medium** — git tools now run in the sub-agent's worktree (`git_commit --addAll` no longer commits the main repo); LSP child process no longer leaks on init failure/timeout (+ init timeout, + Windows `.cmd` shell, + Windows-critical env); Codex no longer crashes the CLI on an EPIPE; the model-fallback path no longer duplicates streamed output; `redactKey` now masks GLM/Zhipu `{id}.{secret}` keys; MCP server stderr is drained (was hanging when the pipe filled); an untrusted project can no longer disable the budget cap or spoof pricing; the Telegram bot skips its backlog on startup (no replaying old commands); hooks get Windows-critical env.
+**Medium** — git tools now run in the sub-agent's worktree (`git_commit --addAll` no longer commits the main repo); LSP child process no longer leaks on init failure/timeout (+ init timeout, + Windows `.cmd` shell, + Windows-critical env); Codex no longer crashes the CLI on an EPIPE; the model-fallback path no longer duplicates streamed output; MCP server stderr is drained (was hanging when the pipe filled); an untrusted project can no longer disable the budget cap or spoof pricing; the Telegram bot skips its backlog on startup (no replaying old commands); hooks get Windows-critical env.
 
 **Low** — `replace_all` reports the real replacement count; the multi-match hint no longer suggests `replace_all` for flex matches (dead-end); a malformed trusted-project `hooks.json` no longer crashes the run; frontmatter-only notes with no trailing newline no longer leak the frontmatter into the indexed body; the gateway returns 400/413 (not 500) for bad/oversized request bodies.
 
@@ -38,7 +38,7 @@ A multi-agent review of the first-run + setup + REPL flow surfaced (and independ
 
 ### Fix: duplicate / empty model choices in the setup wizard
 
-`mergeModelOptions` only deduped *remote* model ids against the curated list — never the curated list against itself. So aliases pointing at the same id rendered as **two identical-looking choices** (e.g. `haiku — claude-haiku-4-5` and `fast — claude-haiku-4-5`; OpenAI's `smart`/`gpt` both → `gpt-5.5`), which also collided on React keys (`Encountered two children with the same key` → options could duplicate or vanish). It now groups by model id and merges the alias names into one option (`haiku / fast — claude-haiku-4-5`). Separately, the old code dropped the `default` alias entirely, which **emptied the model list for LM Studio** (`{ default: 'local-model' }`) and hid Ollama's `qwen3` — those models are now selectable again. Locked in with tests (every provider yields unique option values; LM Studio/Ollama are non-empty).
+`mergeModelOptions` only deduped *remote* model ids against the curated list — never the curated list against itself. So aliases pointing at the same id rendered as **two identical-looking choices** (e.g. `haiku — claude-haiku-4-5` and `fast — claude-haiku-4-5`; OpenAI's `smart`/`gpt` both → `gpt-5.5`), which also collided on React keys (`Encountered two children with the same key` → options could duplicate or vanish). It now groups by model id and merges the alias names into one option (`haiku / fast — claude-haiku-4-5`). Separately, the old code dropped the `default` alias entirely, which **emptied the model list for LM Studio** (`{ default: 'local-model' }`) and hid Ollama's default model — those models are now selectable again. Locked in with tests (every provider yields unique option values; LM Studio/Ollama are non-empty).
 
 ### CLI audit follow-ups
 
@@ -203,20 +203,19 @@ A Node-native search subsystem (`src/search/`) over the second-brain vault **plu
 
 - Tests: remote-MCP, sandbox, repo map, prompt-caching/system-preservation, rate-limit classification, tool timeout, checkpoint restore, cost merge, custom commands (≈200 total).
 
-## 0.4.0 — second brain, GLM Coding Plan, Telegram, hardening
+## 0.4.0 — second brain, Telegram, hardening
 
 - **Second brain**: `sanook brain init` scaffolds a portable Obsidian "second-brain" workspace — full folder taxonomy (each with `_Index.md`), a central `Vault Structure Map.md`, seed memory files, and a portable AI operating constitution (`CLAUDE/GEMINI/AGENTS.md`). Research-backed rules: context-assembly (anti context-rot), intake quarantine + injection-scan, bi-temporal fact validity, provenance tracking, a verification-gated `Skills/` library, sleep-time consolidation. The agent now **loads the vault** into context, and `brain init` **auto-wires a filesystem MCP** to it. First-run wizard offers to create one (personalized).
-- **GLM Coding Plan**: GLM routes through the Anthropic-compatible endpoint (`/api/anthropic`), so Coding Plan keys work; curated ids `glm-4.6 / glm-5.1 / glm-4.5-air`.
 - **Telegram channel**: drive the agent from your phone (long-polling, fail-closed allowlist, private-only). Remote surface defaults to ask-mode (mutations denied) unless `TELEGRAM_ALLOW_WRITE=1`.
 - **Auto-compaction**: token-aware sliding window keeps long sessions under the limit.
 - **Interactive approval** (`ask` mode) + capability-based gating — any non-read-only tool (incl. MCP) is confirmed before running.
 - **REPL resume** (`sanook -c`), **stdin piping** (`git diff | sanook "review"`), gateway multi-turn history, and `sanook config` / `sanook mcp` management commands.
-- **Provider audit**: corrected stale model ids (OpenAI `gpt-5.3-codex`, DeepSeek `v4-flash/pro`, xAI `grok-4.3`).
+- **Provider audit**: corrected stale model ids (OpenAI `gpt-5.3-codex`, xAI `grok-4.3`).
 - **Hardening**: budget cap now actually fires on the default fast model; write paths confined (no `~/.sanook` / shell-rc / ssh backdoors); MCP child processes get a minimal env (no secret leakage); provider errors surface a clean one-line message; versions read from `package.json`. Added tests for the BYOK/redaction core and budget cap.
 
 ## 0.3.0 — providers, memory, gateway, MCP, git
 
-- **Providers**: data-driven registry, now 12 providers (added MiniMax, GLM, and OpenAI Codex via the official CLI). Per-provider model picker that fetches the live model list.
+- **Providers**: data-driven registry, now 9 providers (including OpenAI Codex via the official CLI). Per-provider model picker that fetches the live model list.
 - **Memory**: auto-memory (`remember` / `recall`), session resume (`--continue`), and in-session REPL conversation history.
 - **Gateway + cron**: `sanook serve` runs a loopback HTTP endpoint (OpenAI-compatible) plus a cron scheduler with natural-language scheduling, backed by a file-locked JSON task ledger.
 - **Skills**: load `SKILL.md` files on demand; the agent can author its own with `create_skill`.

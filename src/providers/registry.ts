@@ -2,7 +2,6 @@ import type { EmbeddingModel, LanguageModel } from 'ai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createDeepSeek } from '@ai-sdk/deepseek';
 import { createXai } from '@ai-sdk/xai';
 import { createMistral } from '@ai-sdk/mistral';
 import { createGroq } from '@ai-sdk/groq';
@@ -93,16 +92,6 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     create: (key, baseURL) => createOpenAI({ apiKey: key, baseURL }),
     note: 'Bearer key. org/project ผ่าน env. ห้าม reuse ChatGPT/Codex OAuth',
   },
-  deepseek: {
-    id: 'deepseek',
-    label: 'DeepSeek',
-    envVar: 'DEEPSEEK_API_KEY',
-    requiresKey: true,
-    keyFormat: null, // opaque sk- → ข้าม format check
-    // V4 ids (doc audit มิ.ย. 2026): deepseek-chat/deepseek-reasoner เลิกใช้ 2026-07-24 → redirect มา V4 (dual thinking-mode)
-    models: { default: 'deepseek-v4-flash', smart: 'deepseek-v4-pro', fast: 'deepseek-v4-flash' },
-    create: (key) => createDeepSeek({ apiKey: key }),
-  },
   xai: {
     id: 'xai',
     label: 'xAI Grok',
@@ -143,7 +132,7 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     requiresKey: false,
     localPlaceholderKey: 'ollama',
     keyFormat: null,
-    models: { default: 'qwen3', llama: 'llama3.3' },
+    models: { default: 'llama3.3', llama: 'llama3.3', mistral: 'mistral' },
     create: (key, baseURL) =>
       createOpenAICompatible({ name: 'ollama', apiKey: key, baseURL: baseURL ?? 'http://localhost:11434/v1' }),
     note: 'OpenAI-compat /v1 endpoint. ไม่ต้อง key',
@@ -160,35 +149,6 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     create: (key, baseURL) =>
       createOpenAICompatible({ name: 'lmstudio', apiKey: key, baseURL: baseURL ?? 'http://localhost:1234/v1' }),
     note: 'ต้อง Start Server ในแอปก่อน; โหลด model เดียว ใส่ id อะไรก็ serve ตัวนั้น',
-  },
-
-  // ── Cloud BYOK (OpenAI-compatible, จีน — data residency, ไม่มี OAuth landmine) ──
-  minimax: {
-    id: 'minimax',
-    label: 'MiniMax',
-    envVar: 'MINIMAX_API_KEY',
-    baseURL: 'https://api.minimax.io/v1',
-    requiresKey: true,
-    keyFormat: null, // opaque
-    models: { default: 'MiniMax-M2.7', smart: 'MiniMax-M3', fast: 'MiniMax-M2.7' },
-    create: (key, baseURL) =>
-      createOpenAICompatible({ name: 'minimax', apiKey: key, baseURL: baseURL ?? 'https://api.minimax.io/v1' }),
-    note: 'OpenAI-compat /v1. data จีน. MINIMAX_BASE_URL override (intl ↔ api.minimaxi.com/v1)',
-  },
-  glm: {
-    id: 'glm',
-    label: 'GLM (z.ai / Zhipu Coding Plan)',
-    envVar: 'ZHIPU_API_KEY',
-    envFallbacks: ['ZAI_API_KEY', 'GLM_API_KEY'],
-    // Coding Plan (subscription) ใช้ Anthropic Messages API — เหมือนที่ต่อกับ Claude Code.
-    // pay-as-you-go /paas/v4 (OpenAI-compat) มีแค่ glm-4.5-flash ฟรี ที่เหลือ 429 ถ้าไม่มี balance
-    baseURL: 'https://api.z.ai/api/anthropic/v1',
-    requiresKey: true,
-    keyFormat: null, // opaque ({id}.{secret})
-    models: { default: 'glm-4.6', smart: 'glm-5.1', air: 'glm-4.5-air', glm: 'glm-4.6' },
-    create: (key, baseURL) =>
-      createAnthropic({ apiKey: key, baseURL: baseURL ?? 'https://api.z.ai/api/anthropic/v1' }),
-    note: 'z.ai Coding Plan ผ่าน Anthropic Messages API. GLM_BASE_URL override → open.bigmodel.cn/api/anthropic/v1 (จีน)',
   },
 
   // ── Delegate: OpenAI Codex ผ่าน ChatGPT plan quota (wrap official codex CLI, ToS-safe) ──
@@ -223,13 +183,10 @@ const GLOBAL_ALIAS: Record<string, { provider: string; alias: string }> = {
   gemini: { provider: 'google', alias: 'gemini' },
   flash: { provider: 'google', alias: 'flash' },
   grok: { provider: 'xai', alias: 'grok' },
-  deepseek: { provider: 'deepseek', alias: 'default' },
   mistral: { provider: 'mistral', alias: 'default' },
   groq: { provider: 'groq', alias: 'default' },
   ollama: { provider: 'ollama', alias: 'default' },
   lmstudio: { provider: 'lmstudio', alias: 'default' },
-  glm: { provider: 'glm', alias: 'default' },
-  minimax: { provider: 'minimax', alias: 'default' },
 };
 
 export interface ParsedSpec {
@@ -270,12 +227,9 @@ const CONSOLE_URLS: Record<string, string> = {
   anthropic: 'https://console.anthropic.com/settings/keys',
   google: 'https://aistudio.google.com/apikey',
   openai: 'https://platform.openai.com/api-keys',
-  deepseek: 'https://platform.deepseek.com/api_keys',
   xai: 'https://console.x.ai',
   mistral: 'https://console.mistral.ai/api-keys',
   groq: 'https://console.groq.com/keys',
-  minimax: 'https://platform.minimax.io',
-  glm: 'https://z.ai/manage-apikey/apikey-list',
 };
 export function consoleUrl(provider: string): string | undefined {
   return CONSOLE_URLS[provider];
@@ -310,7 +264,7 @@ export function hasUsableEnvKey(provider: string): boolean {
 
 /** หา provider ที่ "มี key ใช้ได้จริงใน env" (cloud, ตามลำดับนิยม) — ใช้ทำ first-run smart skip + แนะ headless */
 export function detectEnvProvider(): EnvProvider | null {
-  for (const id of ['anthropic', 'openai', 'google', 'deepseek', 'xai', 'mistral', 'groq', 'glm', 'minimax']) {
+  for (const id of ['anthropic', 'openai', 'google', 'xai', 'mistral', 'groq']) {
     const cfg = PROVIDERS[id];
     if (cfg?.requiresKey && hasUsableEnvKey(id)) {
       return { provider: id, label: cfg.label, envVar: cfg.envVar, model: cfg.models.default };
@@ -364,7 +318,7 @@ export function resolveModel(spec: string): LanguageModel {
     key = resolveKeyFromEnv(cfg.envVar) ?? cfg.localPlaceholderKey ?? 'local';
   }
 
-  // <PROVIDER>_BASE_URL env → override (สลับ region intl/จีน); ไม่งั้น local อ่าน env, cloud ใช้ default
+  // <PROVIDER>_BASE_URL env → override (สลับ region); ไม่งั้น local อ่าน env, cloud ใช้ default
   const baseURL =
     process.env[`${cfg.id.toUpperCase()}_BASE_URL`] ??
     (cfg.requiresKey ? cfg.baseURL : process.env[cfg.envVar] ?? cfg.baseURL);
