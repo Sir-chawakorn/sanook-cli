@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef } from 'react';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ModelMessage } from 'ai';
@@ -341,13 +341,11 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     if (next) void submit(next);
   }
 
-  // banner ผูกกับ live `model` (ไม่ใช่ initialModel) → /model เปลี่ยนแล้ว banner อัปเดตตาม ไม่ค้าง model เก่า
-  const banner = useMemo(() => <Banner model={model} />, [model]);
   const costHint = lastCost.current.includes('cost ') ? lastCost.current.split('cost ')[1] : '';
 
   return (
     <Box flexDirection="column">
-      {banner}
+      {history.length === 0 ? <Banner model={model} /> : null}
       <Static items={history}>{(turn) => <TurnView key={turn.id} turn={turn} />}</Static>
       {streaming ? (
         <Box marginTop={1}>

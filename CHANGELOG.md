@@ -46,7 +46,10 @@ A multi-agent review of the first-run + setup + REPL flow surfaced (and independ
 - **Search flags are validated.** `sanook search q --mode nope` used to silently fall back to FTS, and `--limit -5` could produce odd slice behavior. Search args now reject invalid modes, sources, missing queries, and non-positive limits with a clear usage line.
 - **`SANOOK_DISABLE_PERSISTENCE=1` now includes second-brain worklogs.** Sessions, auto-memory, prompt history, and worklogs all honor the global persistence kill switch; `SANOOK_DISABLE_WORKLOG=1` remains available for worklog-only opt-out.
 - **First-run Codex readiness is real.** `sanook -m codex` no longer skips setup just because Codex does not use an API key; it only skips when the official `codex` CLI is installed and logged in.
+- **Existing broken model config now reopens setup instead of entering a dead REPL.** If `~/.sanook/config.json` points at OpenAI without a usable key (or Codex without a logged-in CLI), interactive `sanook` brings back the setup wizard so the recovery hint is actually actionable.
 - **Provider menu env-key labels now use the same key policy as runtime.** Malformed/OAuth env keys show as unusable instead of a misleading ready checkmark.
+- **`/model gpt` no longer leaves the REPL in a raw alias state.** Slash-command model changes now store canonical `provider:model-id` specs (for example `openai:gpt-5.5`), and missing OpenAI-key messages point ChatGPT-plan users to `/model codex` + `codex login`.
+- **The REPL banner no longer redraws after every command on terminals that keep Ink frames in scrollback.** The welcome banner renders only before history exists; the live model stays visible in the footer.
 - **`config set embeddingModel ...` is now supported.** The README documented this semantic-search setting, but the config allowlist/schema did not accept it.
 - **Help/docs cleanup.** The CLI help no longer points at the deprecated OpenAI Codex model id, and the README test badge was refreshed.
 

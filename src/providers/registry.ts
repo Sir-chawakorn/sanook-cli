@@ -260,6 +260,11 @@ export function specKey(spec: string): string {
   return `${provider}:${model}`;
 }
 
+/** canonical display/state spec: aliases become "provider:model-id" before reaching the REPL state. */
+export function canonicalSpec(spec: string): string {
+  return specKey(spec.trim());
+}
+
 /** หน้า console ที่ใช้สร้าง API key ต่อ provider — โชว์ในข้อความ error/wizard ("ไปเอา key ที่ไหน") */
 const CONSOLE_URLS: Record<string, string> = {
   anthropic: 'https://console.anthropic.com/settings/keys',
@@ -341,11 +346,16 @@ export function resolveModel(spec: string): LanguageModel {
     const found = resolveKeyFromEnv(cfg.envVar, cfg.envFallbacks);
     if (!found) {
       const url = consoleUrl(provider);
+      const codexHint =
+        provider === 'openai'
+          ? `\n  • ถ้าต้องการใช้ ChatGPT plan ไม่ใช้ API key: เลือก \`/model codex\` แล้วรัน \`codex login\``
+          : '';
       throw new Error(
         `ยังไม่มี API key ของ ${cfg.label} (${cfg.envVar})\n` +
           (url ? `  • เอา key ที่: ${url}\n` : '') +
           `  • ตั้ง: export ${cfg.envVar}="..."   ` +
-          `หรือรัน \`${BRAND.cliName}\` (ไม่ใส่ task) เพื่อ setup wizard`,
+          `หรือรัน \`${BRAND.cliName}\` (ไม่ใส่ task) เพื่อ setup wizard` +
+          codexHint,
       );
     }
     assertDirectApiKey(cfg, found); // reject OAuth/subscription token + format ผิด

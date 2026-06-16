@@ -686,6 +686,9 @@ function headlessKeyHint(modelSpec: string): string | null {
     `  • รัน "${BRAND.cliName}" (ไม่ใส่ task) → setup wizard ทีละขั้น (แนะนำ)`,
     `  • หรือ: export ${cfg.envVar}="..."${url ? `   ·  เอา key ที่: ${url}` : ''}`,
   ];
+  if (provider === 'openai') {
+    lines.push(`  • ถ้าต้องการใช้ ChatGPT plan ไม่ใช้ API key: ใช้ ${BRAND.cliName} -m codex แล้วรัน codex login`);
+  }
   const other = detectEnvProvider();
   if (other && other.provider !== provider) {
     lines.push(`  • เจอ key ของ ${other.label} อยู่แล้ว → ใช้เลย: ${BRAND.cliName} -m ${other.provider} "<task>"`);
@@ -797,6 +800,10 @@ async function main(): Promise<void> {
     }
   }
   const config = await loadConfig({ model, budgetUsd });
+  if (!needsSetup) {
+    const { modelNeedsSetup } = await import('./first-run.js');
+    needsSetup = await modelNeedsSetup(config.model);
+  }
   // --continue / -c → โหลด conversation ล่าสุดเข้า REPL (เดิม resume ได้แค่ headless)
   const initialHistory =
     argv.includes('--continue') || argv.includes('-c') || argv.includes('--continue-any')

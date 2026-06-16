@@ -1,5 +1,5 @@
 import { detectCodex, type CodexStatus } from './providers/codex.js';
-import { hasUsableEnvKey, PROVIDERS } from './providers/registry.js';
+import { hasUsableEnvKey, parseSpec, PROVIDERS } from './providers/registry.js';
 
 export type DetectCodexFn = () => Promise<CodexStatus>;
 
@@ -16,4 +16,9 @@ export async function providerCanSkipSetup(provider: string, detect: DetectCodex
     return s.installed && s.loggedIn;
   }
   return hasUsableEnvKey(provider);
+}
+
+export async function modelNeedsSetup(modelSpec: string, detect: DetectCodexFn = detectCodex): Promise<boolean> {
+  const { provider } = parseSpec(modelSpec);
+  return !(await providerCanSkipSetup(provider, detect));
 }

@@ -12,6 +12,10 @@ import {
 const ctx = { model: 'sonnet' };
 
 describe('parseCommand', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('ข้อความปกติ (ไม่ขึ้นต้น /) → handled=false (ส่งเข้า agent)', () => {
     expect(parseCommand('hello world', ctx).handled).toBe(false);
   });
@@ -36,7 +40,32 @@ describe('parseCommand', () => {
   });
   it('/model opus → modelChange', () => {
     const r = parseCommand('/model opus', ctx);
-    expect(r.modelChange).toBe('opus');
+    expect(r.modelChange).toBe('anthropic:claude-opus-4-8');
+    expect(r.message).toContain('anthropic:claude-opus-4-8');
+  });
+  it('/model gpt → resolve เป็น OpenAI canonical spec และเตือนเรื่อง key/ChatGPT plan', () => {
+    vi.stubEnv('OPENAI_API_KEY', '');
+    const r = parseCommand('/model gpt', ctx);
+    expect(r.modelChange).toBe('openai:gpt-5.5');
+    expect(r.message).toContain('เปลี่ยน model → openai:gpt-5.5');
+    expect(r.message).toContain('OPENAI_API_KEY');
+    expect(r.message).toContain('/model codex');
+  });
+  it('/model provider:alias → resolve alias ก่อนเก็บ state', () => {
+    vi.stubEnv('OPENAI_API_KEY', 'sk-test-key');
+    const r = parseCommand('/model openai:gpt', ctx);
+    expect(r.modelChange).toBe('openai:gpt-5.5');
+    expect(r.message).toBe('เปลี่ยน model → openai:gpt-5.5');
+  });
+  it('/model provider ที่ไม่มีใน registry → ไม่เปลี่ยน state', () => {
+    const r = parseCommand('/model nope:model', ctx);
+    expect(r.modelChange).toBeUndefined();
+    expect(r.message).toContain('provider ไม่รองรับ');
+  });
+  it('/model provider: ที่ไม่มี model id → ไม่เปลี่ยน state', () => {
+    const r = parseCommand('/model openai:', ctx);
+    expect(r.modelChange).toBeUndefined();
+    expect(r.message).toContain('model spec ไม่ครบ');
   });
   it('/cost → คืน cost summary จาก ctx', () => {
     expect(parseCommand('/cost', { model: 'sonnet', costSummary: 'tokens: 100' }).message).toBe('tokens: 100');

@@ -1,6 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { PROVIDERS, parseSpec } from './providers/registry.js';
+import { canonicalSpec, consoleUrl, hasUsableEnvKey, PROVIDERS, parseSpec } from './providers/registry.js';
 import { appHomePath, BRAND } from './brand.js';
 import { parseFrontmatter } from './skills.js';
 import { projectConfigPathIfTrusted } from './trust.js';
@@ -83,6 +83,44 @@ function modelMenu(current: string): string {
     .join('\n');
 }
 
+function missingKeyHint(provider: string): string | undefined {
+  const cfg = PROVIDERS[provider];
+  if (!cfg?.requiresKey || hasUsableEnvKey(provider)) return undefined;
+  const url = consoleUrl(provider);
+  const lines = [
+    `⚠ ยังไม่มี API key ของ ${cfg.label} (${cfg.envVar}) — model นี้จะยังรันไม่ได้จนกว่าจะตั้ง key`,
+    url ? `  • เอา key ที่: ${url}` : undefined,
+    `  • ตั้ง: export ${cfg.envVar}="..." หรือรัน ${BRAND.cliName} เพื่อเข้า setup wizard`,
+  ].filter(Boolean);
+  if (provider === 'openai') {
+    lines.push('  • ถ้าต้องการใช้ ChatGPT plan ไม่ใช้ API key: /model codex แล้วรัน codex login');
+  }
+  return lines.join('\n');
+}
+
+function modelChange(spec: string): CommandResult {
+  const canonical = canonicalSpec(spec);
+  const { provider, model } = parseSpec(canonical);
+  if (!PROVIDERS[provider]) {
+    return {
+      handled: true,
+      message: `provider ไม่รองรับ: "${provider}" — รองรับ: ${Object.keys(PROVIDERS).join(' · ')}`,
+    };
+  }
+  if (!model) {
+    return {
+      handled: true,
+      message: `model spec ไม่ครบ: "${spec}" — ใช้ /model <alias> หรือ /model <provider:model>`,
+    };
+  }
+  const hint = missingKeyHint(provider);
+  return {
+    handled: true,
+    modelChange: canonical,
+    message: [`เปลี่ยน model → ${canonical}`, hint].filter(Boolean).join('\n'),
+  };
+}
+
 /** parse input — ถ้าขึ้นต้น / = slash command, ไม่งั้น handled=false (ส่งเข้า agent) */
 export function parseCommand(input: string, ctx: CommandContext): CommandResult {
   const trimmed = input.trim();
@@ -102,7 +140,7 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
       return { handled: true, action: 'quit' };
     case 'model':
       if (!args[0]) return { handled: true, message: modelMenu(ctx.model) };
-      return { handled: true, modelChange: args[0], message: `เปลี่ยน model → ${args[0]}` };
+      return modelChange(args[0]);
     case 'tools':
       return { handled: true, message: `tools ที่ agent ใช้ได้ (+ MCP ที่ตั้งไว้):\n  ${TOOLS_LIST}` };
     case 'skills':

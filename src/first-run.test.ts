@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { providerCanSkipSetup } from './first-run.js';
+import { modelNeedsSetup, providerCanSkipSetup } from './first-run.js';
 import type { CodexStatus } from './providers/codex.js';
 
 const codex = (status: CodexStatus) => async (): Promise<CodexStatus> => status;
@@ -25,5 +25,18 @@ describe('providerCanSkipSetup', () => {
     expect(await providerCanSkipSetup('codex', codex({ installed: false, loggedIn: false }))).toBe(false);
     expect(await providerCanSkipSetup('codex', codex({ installed: true, loggedIn: false }))).toBe(false);
     expect(await providerCanSkipSetup('codex', codex({ installed: true, loggedIn: true }))).toBe(true);
+  });
+
+  it('asks for setup again when an existing OpenAI model config has no usable key', async () => {
+    vi.stubEnv('OPENAI_API_KEY', '');
+    expect(await modelNeedsSetup('openai:gpt-5.5')).toBe(true);
+
+    vi.stubEnv('OPENAI_API_KEY', 'sk-test-key');
+    expect(await modelNeedsSetup('openai:gpt')).toBe(false);
+  });
+
+  it('asks for setup again when an existing Codex config is not logged in', async () => {
+    expect(await modelNeedsSetup('codex:gpt-5-codex', codex({ installed: true, loggedIn: false }))).toBe(true);
+    expect(await modelNeedsSetup('codex:gpt-5-codex', codex({ installed: true, loggedIn: true }))).toBe(false);
   });
 });
