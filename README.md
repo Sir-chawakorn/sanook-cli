@@ -181,7 +181,7 @@ sanook update            update the CLI to the latest npm release
   -h, --help             show help
 ```
 
-**REPL slash commands:** `/model` · `/tools` · `/skills` · `/cost` · `/diff` · `/undo` · `/rewind` · `/clear` · `/compact` · `/help` · `/quit` — plus your own `.sanook/commands/*.md`. Input supports `↑`/`↓` history, `@file` mentions (text or image), and multiline (trailing `\` or Alt+Enter).
+**REPL slash commands:** `/new` · `/reset` · `/status` · `/model` · `/platforms` · `/tools` · `/skills` · `/cost` · `/usage` · `/diff` · `/retry` · `/undo` · `/rewind` · `/clear` · `/compact` · `/compress` · `/help` · `/quit` — plus your own `.sanook/commands/*.md`. Input supports `↑`/`↓` history, `@file` mentions (text or image), and multiline (trailing `\` or Alt+Enter).
 
 ## Updating
 

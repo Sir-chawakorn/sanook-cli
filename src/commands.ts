@@ -8,7 +8,7 @@ import { projectConfigPathIfTrusted } from './trust.js';
 export interface CommandResult {
   /** true = เป็น slash command (ไม่ส่งเข้า agent) */
   handled: boolean;
-  action?: 'clear' | 'compact' | 'quit' | 'help' | 'diff' | 'undo' | 'rewind';
+  action?: 'clear' | 'compact' | 'quit' | 'help' | 'diff' | 'undo' | 'rewind' | 'retry';
   /** ข้อความแสดงกลับ (help / cost / model / unknown) */
   message?: string;
   /** /model <spec> — เปลี่ยน model */
@@ -17,16 +17,21 @@ export interface CommandResult {
 
 const HELP_TEXT = `คำสั่ง:
   /help            แสดงคำสั่งทั้งหมด
+  /new, /reset      เริ่มบทสนทนาใหม่
+  /status          ดูสถานะ session ปัจจุบัน
   /model [spec]    ดู/เปลี่ยน model (เช่น /model opus, /model openai:gpt-5)
+  /platforms       ดู providers + messaging platforms ที่รองรับ
   /tools           ดู tools ที่ agent ใช้ได้
   /skills          ดูจำนวน skills (จัดการ: ${BRAND.cliName} skill list)
   /diff            ดู git diff (สิ่งที่ agent แก้ในรอบนี้)
+  /retry           รัน prompt ล่าสุดอีกครั้ง
   /undo            stash การแก้ไฟล์ล่าสุด (กู้คืนด้วย git stash pop)
   /rewind          ย้อนกลับ 1 turn (คืนไฟล์ git + ตัดบทสนทนา, recoverable)
-  /cost            ดู token + cost รอบล่าสุด
+  /cost, /usage     ดู token + cost รอบล่าสุด
   ↑/↓ ประวัติ · @ไฟล์ แนบ context/รูป · \\ ลงท้าย = บรรทัดใหม่
   /clear           ล้าง conversation (เริ่มใหม่)
-  /compact         บีบ context (truncate · หรือ summarize ถ้าตั้ง compaction)
+  /compact, /compress
+                   บีบ context (truncate · หรือ summarize ถ้าตั้ง compaction)
   /quit            ออก
 
 นอก REPL (พิมพ์ใน shell):
@@ -44,6 +49,25 @@ const TOOLS_LIST = [
   'task task_parallel task_spawn task_collect task_cancel task_status   ← sub-agent (ขนาน/background)',
   'diagnostics   ← type error/lint จาก language server (LSP)',
 ].join('\n  ');
+
+const MESSAGING_PLATFORMS = [
+  'telegram',
+  'discord',
+  'slack',
+  'mattermost',
+  'homeassistant',
+  'email',
+  'line',
+  'sms',
+  'ntfy',
+  'signal',
+  'whatsapp',
+  'matrix',
+  'googlechat',
+  'bluebubbles',
+  'teams',
+  'webhooks',
+];
 
 export interface CommandContext {
   model: string;
@@ -98,6 +122,27 @@ function missingKeyHint(provider: string): string | undefined {
   return lines.join('\n');
 }
 
+function platformMenu(): string {
+  return [
+    `providers: ${Object.keys(PROVIDERS).join(' · ')}`,
+    `messaging: ${MESSAGING_PLATFORMS.join(' · ')}`,
+    `setup: ${BRAND.cliName} setup หรือ ${BRAND.cliName} gateway setup <platform>`,
+  ].join('\n');
+}
+
+function statusMenu(ctx: CommandContext): string {
+  const { provider } = parseSpec(ctx.model);
+  const cfg = PROVIDERS[provider];
+  return [
+    `session: REPL`,
+    `model: ${ctx.model}`,
+    `provider: ${cfg?.label ?? provider}`,
+    `usage: ${ctx.costSummary ?? '(ยังไม่มี usage รอบนี้)'}`,
+    `platforms: พิมพ์ /platforms`,
+    `system status: ${BRAND.cliName} status`,
+  ].join('\n');
+}
+
 function modelChange(spec: string): CommandResult {
   const canonical = canonicalSpec(spec);
   const { provider, model } = parseSpec(canonical);
@@ -133,8 +178,13 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
     case '?':
       return { handled: true, action: 'help', message: HELP_TEXT };
     case 'clear':
+    case 'new':
+    case 'reset':
       return { handled: true, action: 'clear', message: 'ล้าง conversation แล้ว' };
+    case 'status':
+      return { handled: true, message: statusMenu(ctx) };
     case 'compact':
+    case 'compress':
       return { handled: true, action: 'compact', message: 'บีบ context แล้ว' };
     case 'quit':
     case 'exit':
@@ -144,15 +194,20 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
       return modelChange(args[0]);
     case 'tools':
       return { handled: true, message: `tools ที่ agent ใช้ได้ (+ MCP ที่ตั้งไว้):\n  ${TOOLS_LIST}` };
+    case 'platforms':
+      return { handled: true, message: platformMenu() };
     case 'skills':
       return { handled: true, message: `skills โหลดจาก built-in + ${appHomePath('skills')} — จัดการด้วย "${BRAND.cliName} skill list/add/remove"` };
     case 'diff':
       return { handled: true, action: 'diff' };
+    case 'retry':
+      return { handled: true, action: 'retry' };
     case 'undo':
       return { handled: true, action: 'undo' };
     case 'rewind':
       return { handled: true, action: 'rewind' };
     case 'cost':
+    case 'usage':
       return { handled: true, message: ctx.costSummary ?? '(ยังไม่มี usage รอบนี้)' };
     default:
       return { handled: true, message: `ไม่รู้จักคำสั่ง /${cmd} — พิมพ์ /help` };
@@ -163,7 +218,26 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
 // ไฟล์ markdown (frontmatter optional) = prompt template ที่ส่งเข้า agent. $ARGUMENTS = ส่วนหลังชื่อคำสั่ง
 // (เลียน Claude Code .claude/commands) — global ~/.sanook/commands + project .sanook/commands (project ทับ)
 export const BUILTIN_COMMANDS = new Set([
-  'help', '?', 'clear', 'compact', 'quit', 'exit', 'model', 'tools', 'skills', 'diff', 'undo', 'rewind', 'cost',
+  'help',
+  '?',
+  'clear',
+  'new',
+  'reset',
+  'status',
+  'compact',
+  'compress',
+  'quit',
+  'exit',
+  'model',
+  'platforms',
+  'tools',
+  'skills',
+  'diff',
+  'retry',
+  'undo',
+  'rewind',
+  'cost',
+  'usage',
 ]);
 
 export interface CustomCommand {

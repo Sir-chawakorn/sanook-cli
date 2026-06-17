@@ -35,12 +35,29 @@ describe('parseCommand', () => {
   it('/clear → action clear', () => {
     expect(parseCommand('/clear', ctx).action).toBe('clear');
   });
+  it('/new + /reset → clear conversation aliases', () => {
+    expect(parseCommand('/new', ctx).action).toBe('clear');
+    expect(parseCommand('/reset', ctx).action).toBe('clear');
+  });
+  it('/status → แสดง session/model/provider status แบบ Hermes-style', () => {
+    const msg = parseCommand('/status', { model: 'sonnet', costSummary: 'tokens: 100' }).message ?? '';
+    expect(msg).toContain('session: REPL');
+    expect(msg).toContain('model: sonnet');
+    expect(msg).toContain('usage: tokens: 100');
+    expect(msg).toContain('/platforms');
+  });
   it('/diff + /undo → action diff/undo (git-backed)', () => {
     expect(parseCommand('/diff', ctx).action).toBe('diff');
     expect(parseCommand('/undo', ctx).action).toBe('undo');
   });
+  it('/retry → action retry', () => {
+    expect(parseCommand('/retry', ctx).action).toBe('retry');
+  });
   it('/rewind → action rewind', () => {
     expect(parseCommand('/rewind', ctx).action).toBe('rewind');
+  });
+  it('/compress → Hermes-style alias ของ /compact', () => {
+    expect(parseCommand('/compress', ctx).action).toBe('compact');
   });
   it('/model ไม่มี arg → แสดง model ปัจจุบัน', () => {
     expect(parseCommand('/model', ctx).message).toContain('sonnet');
@@ -76,6 +93,27 @@ describe('parseCommand', () => {
   });
   it('/cost → คืน cost summary จาก ctx', () => {
     expect(parseCommand('/cost', { model: 'sonnet', costSummary: 'tokens: 100' }).message).toBe('tokens: 100');
+  });
+  it('/usage → Hermes-style alias ของ /cost', () => {
+    expect(parseCommand('/usage', { model: 'sonnet', costSummary: 'tokens: 100' }).message).toBe('tokens: 100');
+  });
+  it('/platforms → แสดง provider/messaging surface แบบไม่มี China integrations', () => {
+    const msg = parseCommand('/platforms', ctx).message ?? '';
+    expect(msg).toContain('anthropic');
+    expect(msg).toContain('googlechat');
+    expect(msg).toContain('bluebubbles');
+    const blocked = [
+      'deep' + 'seek',
+      'g' + 'lm',
+      'mini' + 'max',
+      'fei' + 'shu',
+      'ding' + 'talk',
+      'we' + 'com',
+      'wei' + 'xin',
+      'yuan' + 'bao',
+      'qq' + 'bot',
+    ];
+    for (const name of blocked) expect(msg.toLowerCase()).not.toContain(name);
   });
   it('/tools → แสดง orchestration tools ครบ', () => {
     const msg = parseCommand('/tools', ctx).message ?? '';

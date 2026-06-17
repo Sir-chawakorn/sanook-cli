@@ -38,6 +38,11 @@ interface Mark {
 interface Checkpoint extends Mark {
   ref: string | null; // git snapshot ref (null = ไม่ใช่ git repo → ย้อนแค่บทสนทนา)
 }
+interface LastRun extends Mark {
+  userText: string;
+  promptText: string;
+  images: string[];
+}
 
 export interface AppProps {
   initialModel: string;
@@ -70,6 +75,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const approvalResolve = useRef<((ok: boolean) => void) | null>(null);
   const replHistory = useRef<string[]>(loadHistory()); // prompt เก่า (persist) สำหรับ ↑/↓
   const checkpoints = useRef<Checkpoint[]>([]);
+  const lastRun = useRef<LastRun | null>(null);
   const editor = useEditor(replHistory.current);
   // real-time steering: หยุด turn ที่กำลังรัน (abort) + คิวข้อความที่พิมพ์ระหว่าง busy
   const abortRef = useRef<AbortController | null>(null);
@@ -162,8 +168,26 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         : ` · ไฟล์: ${r.reason}`;
     }
     msgsRef.current = msgsRef.current.slice(0, cp.msgLen);
+    lastRun.current = null;
     setHistory((h) => h.filter((t) => t.id < cp.turnId));
     addTurn('system', `↩ ย้อนกลับ 1 turn${note}`);
+  }
+
+  async function retryLastTurn(): Promise<void> {
+    const previous = lastRun.current;
+    if (!previous) {
+      addTurn('user', '/retry');
+      addTurn('system', 'ยังไม่มี turn ให้ retry');
+      return;
+    }
+    msgsRef.current = msgsRef.current.slice(0, previous.msgLen);
+    checkpoints.current = checkpoints.current.filter((cp) => cp.turnId < previous.turnId);
+    setHistory((h) => h.filter((t) => t.id < previous.turnId));
+    const mark = { turnId: idRef.current, msgLen: previous.msgLen };
+    const preview = previous.userText.length > 120 ? `${previous.userText.slice(0, 117)}...` : previous.userText;
+    addTurn('user', '/retry');
+    addTurn('system', `retry: ${preview}`);
+    await runAssistantTurn(previous.promptText, previous.images, mark, previous.userText);
   }
 
   /** บีบ context: 'summarize' (ใช้ model ถูกย่อ) ถ้าตั้งไว้ ไม่งั้น 'truncate' (zero-LLM) */
@@ -212,7 +236,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
             addTurn('system', `custom command /${slash.name} ว่าง`);
             return;
           }
-          await runAssistantTurn(expanded, [], mark);
+          await runAssistantTurn(expanded, [], mark, text);
           return;
         }
       }
@@ -225,6 +249,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       if (cmd.action === 'clear') {
         msgsRef.current = [];
         checkpoints.current = [];
+        lastRun.current = null;
         return setHistory([]);
       }
       if (cmd.action === 'compact') {
@@ -232,6 +257,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         return;
       }
       if (cmd.action === 'diff') return void runGit(['diff', '--stat'], 'diff');
+      if (cmd.action === 'retry') return void retryLastTurn();
       if (cmd.action === 'undo') {
         void runGit(['stash', 'push', '-u', '-m', BRAND.undoStashMessage], 'undo').then(() =>
           addTurn('system', 'กู้คืน: git stash pop'),
@@ -248,10 +274,11 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     addTurn('user', text);
     const { text: expanded, images, errors } = await expandMentions(text);
     if (errors.length) addTurn('system', `@mention: ${errors.join(' · ')}`);
-    await runAssistantTurn(expanded, images, mark);
+    await runAssistantTurn(expanded, images, mark, text);
   }
 
-  async function runAssistantTurn(promptText: string, images: string[], mark: Mark): Promise<void> {
+  async function runAssistantTurn(promptText: string, images: string[], mark: Mark, userText = promptText): Promise<void> {
+    lastRun.current = { ...mark, userText, promptText, images };
     // proactive summarize-compaction สำหรับ session ยาวมาก (เฉพาะ mode summarize) — เริ่ม turn ให้ context lean
     // (mode truncate: ปล่อยให้ loop.ts ตัดต่อ-step เอา; ไม่บีบที่นี่ กัน latency)
     if (estimateTokens(msgsRef.current) > PRE_TURN_COMPACT_TOKENS) {
