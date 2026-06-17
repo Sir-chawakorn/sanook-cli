@@ -1,7 +1,6 @@
-import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { acquireSingleton } from './lock.js';
-import { loadOrCreateToken } from './auth.js';
+import { ensureGatewayDir, loadOrCreateToken } from './auth.js';
 import { startServer } from './server.js';
 import { startScheduler } from './scheduler.js';
 import { appHomePath, BRAND, BRAND_ENV, envFlag } from '../brand.js';
@@ -42,7 +41,7 @@ export interface GatewayOpts {
  */
 export async function startGateway(opts: GatewayOpts): Promise<() => void> {
   const log = opts.onLog ?? ((m: string) => console.log(`[gateway] ${m}`));
-  await mkdir(GATEWAY_DIR, { recursive: true });
+  await ensureGatewayDir();
 
   const release = await acquireSingleton(SERVE_LOCK);
   if (!release) {
