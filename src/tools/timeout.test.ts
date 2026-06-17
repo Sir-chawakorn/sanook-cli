@@ -88,11 +88,15 @@ describe('wrapToolsWithTimeout', () => {
     expect(String(res)).toContain('Circular');
   });
 
-  it('ไม่ครอบ run_bash / task (จัดการ timeout เอง)', () => {
+  it('ไม่ครอบ run_bash / sub-agent orchestration tools (จัดการ timeout เอง)', () => {
     const bash = { execute: async () => 'x' };
     const task = { execute: async () => 'y' };
-    const wrapped = wrapToolsWithTimeout(mk({ run_bash: bash, task }));
+    const taskParallel = { execute: async () => 'parallel' };
+    const taskCollect = { execute: async () => 'collect' };
+    const wrapped = wrapToolsWithTimeout(mk({ run_bash: bash, task, task_parallel: taskParallel, task_collect: taskCollect }));
     expect((wrapped as unknown as Record<string, unknown>).run_bash).toBe(bash);
     expect((wrapped as unknown as Record<string, unknown>).task).toBe(task);
+    expect((wrapped as unknown as Record<string, unknown>).task_parallel).toBe(taskParallel);
+    expect((wrapped as unknown as Record<string, unknown>).task_collect).toBe(taskCollect);
   });
 });

@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { runParallel, TaskRegistry, withGlobalSubagentSlot, type SubagentRunner, type SubagentSpec } from './orchestrate.js';
+import { runParallel, TaskRegistry, globalSubagentRunningCount, withGlobalSubagentSlot, type SubagentRunner, type SubagentSpec } from './orchestrate.js';
 
 const spec = (description: string, prompt = description): SubagentSpec => ({ description, prompt });
 
@@ -46,6 +46,29 @@ describe('runParallel', () => {
     expect(out[2]).toMatchObject({ ok: true, text: 'ok:c' });
   });
 
+  it('keeps non-Error thrown values readable', async () => {
+    const runner: SubagentRunner = async (s) => {
+      if (s.description === 'string') throw 'plain failure';
+      throw { code: 'E_SUBAGENT', detail: s.description };
+    };
+    const out = await runParallel([spec('string'), spec('object')], runner);
+    expect(out[0]).toMatchObject({ ok: false, error: 'plain failure' });
+    expect(out[1]).toMatchObject({ ok: false, error: '{"code":"E_SUBAGENT","detail":"object"}' });
+  });
+
+  it('keeps circular thrown values debuggable', async () => {
+    const circular: { self?: unknown } = {};
+    circular.self = circular;
+    const runner: SubagentRunner = async () => {
+      throw circular;
+    };
+
+    const [out] = await runParallel([spec('circular')], runner);
+
+    expect(out).toMatchObject({ ok: false, description: 'circular' });
+    expect(out.error).toContain('Circular');
+  });
+
   it('never exceeds the concurrency cap', async () => {
     let inFlight = 0;
     let peak = 0;
@@ -84,6 +107,17 @@ describe('global subagent concurrency gate', () => {
     );
     expect(peak).toBeLessThanOrEqual(2);
   });
+
+  it('releases a global slot when the guarded work rejects', async () => {
+    await expect(
+      withGlobalSubagentSlot(async () => {
+        expect(globalSubagentRunningCount()).toBe(1);
+        throw new Error('slot failed');
+      }),
+    ).rejects.toThrow('slot failed');
+
+    expect(globalSubagentRunningCount()).toBe(0);
+  });
 });
 
 describe('TaskRegistry — background subagents', () => {
@@ -106,6 +140,16 @@ describe('TaskRegistry — background subagents', () => {
     const id = reg.spawn(spec('flaky'), runner);
     const rec = await reg.collect(id);
     expect(rec).toMatchObject({ state: 'error', error: 'subagent died' });
+  });
+
+  it('records non-Error background failures as readable text', async () => {
+    const reg = new TaskRegistry();
+    const runner: SubagentRunner = async () => {
+      throw 'background failed';
+    };
+    const id = reg.spawn(spec('odd failure'), runner);
+    const rec = await reg.collect(id);
+    expect(rec).toMatchObject({ state: 'error', error: 'background failed' });
   });
 
   it('collect with a timeout returns the running record without blocking forever', async () => {
@@ -132,6 +176,20 @@ describe('TaskRegistry — background subagents', () => {
     expect(aborted).toBe(true);
     expect(reg.get(id)?.state).toBe('canceled');
     expect(reg.cancel(id)).toBe(false); // already settled
+  });
+
+  it('collect returns a canceled task immediately even if the runner ignores abort', async () => {
+    const reg = new TaskRegistry();
+    const runner: SubagentRunner = () => new Promise<string>(() => {});
+    const id = reg.spawn(spec('stubborn'), runner);
+
+    expect(reg.cancel(id)).toBe(true);
+    const rec = await Promise.race([
+      reg.collect(id),
+      new Promise<'timed out'>((resolve) => setTimeout(() => resolve('timed out'), 20)),
+    ]);
+
+    expect(rec).toMatchObject({ id, state: 'canceled', description: 'stubborn' });
   });
 
   it('list reflects all spawned tasks; collect on an unknown id is undefined', async () => {

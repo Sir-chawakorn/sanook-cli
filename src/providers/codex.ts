@@ -123,13 +123,15 @@ export async function runCodex(opts: RunCodexOptions): Promise<{ text: string; t
       p.kill();
     };
     const cleanupAbortHandler = () => opts.signal?.removeEventListener('abort', abortHandler);
-    if (opts.signal?.aborted) abortHandler();
-    else opts.signal?.addEventListener('abort', abortHandler, { once: true });
     // codex อาจตายระหว่างรับ prompt → write ลง stdin ที่ปิดแล้ว = EPIPE; ถ้าไม่ดัก = crash ทั้ง CLI
     // (close handler ด้านล่าง reject error ที่อ่านรู้เรื่องแทน)
     p.stdin.on('error', () => {});
-    p.stdin.write(opts.prompt);
-    p.stdin.end();
+    if (opts.signal?.aborted) abortHandler();
+    else opts.signal?.addEventListener('abort', abortHandler, { once: true });
+    if (!aborted) {
+      p.stdin.write(opts.prompt);
+      p.stdin.end();
+    }
 
     p.stdout.on('data', (chunk: Buffer) => {
       buf += chunk.toString();

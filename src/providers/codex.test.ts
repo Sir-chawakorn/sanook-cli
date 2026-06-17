@@ -97,8 +97,26 @@ describe('runCodex', () => {
     const result = runCodex({ prompt: 'cancelled', signal: controller.signal });
 
     expect(child.kill).toHaveBeenCalledTimes(1);
+    expect(child.stdin.write).not.toHaveBeenCalled();
+    expect(child.stdin.end).not.toHaveBeenCalled();
     child.emit('close', null);
     await expect(result).rejects.toThrow('codex exec ถูกยกเลิก');
+  });
+
+  it('kills the active child when the signal aborts while running', async () => {
+    const child = mockSpawnedCodex();
+    const controller = new AbortController();
+
+    const result = runCodex({ prompt: 'cancel after start', signal: controller.signal });
+
+    expect(child.stdin.write).toHaveBeenCalledWith('cancel after start');
+    expect(child.stdin.end).toHaveBeenCalledTimes(1);
+    controller.abort();
+    expect(child.kill).toHaveBeenCalledTimes(1);
+
+    child.stderr.emit('data', Buffer.from('interrupted'));
+    child.emit('close', null);
+    await expect(result).rejects.toThrow('codex exec ถูกยกเลิก: interrupted');
   });
 
   it('removes the abort listener after the child exits', async () => {

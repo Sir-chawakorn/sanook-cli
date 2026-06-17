@@ -1,3 +1,5 @@
+import { inspect } from 'node:util';
+
 // ============================================================================
 // src/orchestrate.ts — subagent ORCHESTRATION (parallel fan-out + background).
 //
@@ -29,6 +31,19 @@ export interface SubagentOutcome {
   description: string;
   text: string;
   error?: string;
+}
+
+export function formatSubagentError(e: unknown): string {
+  if (e instanceof Error) return e.message || e.name;
+  if (typeof e === 'string') return e;
+  if (e == null) return String(e);
+  try {
+    const json = JSON.stringify(e);
+    if (json) return json;
+  } catch {
+    return inspect(e, { breakLength: Infinity, depth: 2 });
+  }
+  return String(e);
 }
 
 /** the thing that actually runs a subagent. Real impl wraps runAgent; tests pass a fake. */
@@ -91,7 +106,7 @@ async function runOne(spec: SubagentSpec, runner: SubagentRunner, signal?: Abort
     const text = await runner(spec, signal);
     return { ok: true, description: spec.description, text };
   } catch (e) {
-    return { ok: false, description: spec.description, text: '', error: (e as Error).message };
+    return { ok: false, description: spec.description, text: '', error: formatSubagentError(e) };
   }
 }
 
@@ -165,7 +180,7 @@ export class TaskRegistry {
         return cur;
       } catch (e) {
         const cur = this.tasks.get(id)!;
-        if (cur.state !== 'canceled') Object.assign(cur, { state: 'error', error: (e as Error).message, endedMs: this.now() });
+        if (cur.state !== 'canceled') Object.assign(cur, { state: 'error', error: formatSubagentError(e), endedMs: this.now() });
         return cur;
       } finally {
         this.controllers.delete(id);
@@ -193,6 +208,8 @@ export class TaskRegistry {
   async collect(id: string, timeoutMs?: number): Promise<TaskRecord | undefined> {
     const settle = this.settles.get(id);
     if (!settle) return undefined;
+    const current = this.tasks.get(id);
+    if (current && current.state !== 'running') return current;
     if (timeoutMs == null) return settle;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<TaskRecord>((resolve) => {

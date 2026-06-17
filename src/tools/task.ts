@@ -7,6 +7,7 @@ import {
   runParallel,
   runThunks,
   TaskRegistry,
+  formatSubagentError,
   withGlobalSubagentSlot,
   type SubagentRunner,
   type SubagentSpec,
@@ -150,7 +151,7 @@ async function runIsolated(specs: SubagentSpec[], parent: ParentCtx, concurrency
     (spec, cwd) =>
       runner({ ...spec, cwd, readonly: spec.readonly ?? false }, undefined)
         .then((text) => ({ ok: true, description: spec.description, text }))
-        .catch((e: unknown) => ({ ok: false, description: spec.description, text: '', error: (e as Error).message })),
+        .catch((e: unknown) => ({ ok: false, description: spec.description, text: '', error: formatSubagentError(e) })),
     (thunks) => runThunks(thunks, concurrency),
   );
   if (!runs) return 'สร้าง git worktree ไม่สำเร็จ (หรือไม่ใช่ git repo) — ยกเลิก isolate';

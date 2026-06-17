@@ -2,8 +2,8 @@ import { inspect } from 'node:util';
 import type { ToolSet } from 'ai';
 
 // ครอบ tool ด้วย timeout — กัน read/grep/glob/edit บนไฟล์ใหญ่ค้าง แล้วแขวน loop ทั้ง session ไม่จบ
-// tool ที่จัดการ timeout เองอยู่แล้ว → ไม่ครอบ: run_bash (120s ในตัว), task (sub-agent อาจรันนาน)
-const SELF_TIMED = new Set(['run_bash', 'task']);
+// tool ที่จัดการ timeout เองอยู่แล้ว → ไม่ครอบ: run_bash (120s ในตัว), sub-agent orchestration (อาจรัน/รอนานโดยตั้งใจ)
+const SELF_TIMED = new Set(['run_bash', 'task', 'task_parallel', 'task_collect']);
 export const DEFAULT_TOOL_TIMEOUT = 120_000;
 
 function formatToolError(e: unknown): string {
