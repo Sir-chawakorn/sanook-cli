@@ -94,4 +94,56 @@ describe('jsGrep (ripgrep-less fallback)', () => {
     expect(out).toContain('crlf.ts:2:needleHere on two');
     expect(out).not.toContain('\r'); // \r stripped by split(/\r?\n/)
   });
+
+  it('supports ripgrep-style leading (?i) case-insensitive patterns', async () => {
+    const out = await jsGrep('(?i)needlehere', dir, '.');
+    expect(out).toContain('a.ts:2:function needleHere() {}');
+    expect(out).toContain('src/c.ts:1:deep needleHere again');
+  });
+
+  it('supports scoped (?i:...) groups after a leading (?i) flag', async () => {
+    const out = await jsGrep('(?i)function (?i:needlehere)', dir, 'a.ts');
+    expect(out).toContain('a.ts:2:function needleHere() {}');
+  });
+
+  it('supports ripgrep-style scoped (?i:...) case-insensitive patterns', async () => {
+    const out = await jsGrep('(?i:needlehere)', dir, '.');
+    expect(out).toContain('a.ts:2:function needleHere() {}');
+    expect(out).toContain('src/c.ts:1:deep needleHere again');
+  });
+
+  it('supports scoped (?i:...) groups inside larger case-sensitive patterns', async () => {
+    await writeFile(join(dir, 'scoped.ts'), 'prefix needleHere suffix\nPREFIX needleHere suffix\n');
+
+    const out = await jsGrep('prefix (?i:needlehere) suffix', dir, 'scoped.ts');
+    expect(out).toContain('scoped.ts:1:prefix needleHere suffix');
+    expect(out).not.toContain('scoped.ts:2:PREFIX needleHere suffix');
+  });
+
+  it('folds ASCII ranges inside scoped case-insensitive character classes', async () => {
+    await writeFile(join(dir, 'class-range.ts'), 'word A\nword m\nword _\n');
+
+    const out = await jsGrep('word (?i:[a-z])', dir, 'class-range.ts');
+    expect(out).toContain('class-range.ts:1:word A');
+    expect(out).toContain('class-range.ts:2:word m');
+    expect(out).not.toContain('class-range.ts:3:word _');
+  });
+
+  it('supports leading literal right brackets inside scoped character classes', async () => {
+    await writeFile(join(dir, 'class-literal-bracket.ts'), ') Marker\n] marker\nx marker\n');
+
+    const out = await jsGrep('(?i:[])] marker)', dir, 'class-literal-bracket.ts');
+    expect(out).toContain('class-literal-bracket.ts:1:) Marker');
+    expect(out).toContain('class-literal-bracket.ts:2:] marker');
+    expect(out).not.toContain('class-literal-bracket.ts:3:x marker');
+  });
+
+  it('does not rewrite (?i:...) text inside character classes', async () => {
+    await writeFile(join(dir, 'charclass.ts'), '? marker\nx marker\nX marker\n');
+
+    const out = await jsGrep('[(?i:x)] marker', dir, 'charclass.ts');
+    expect(out).toContain('charclass.ts:1:? marker');
+    expect(out).toContain('charclass.ts:2:x marker');
+    expect(out).not.toContain('charclass.ts:3:X marker');
+  });
 });

@@ -13,10 +13,182 @@ const FALLBACK_IGNORE = new Set(['node_modules', '.git', 'dist', 'build', 'cover
 const FALLBACK_MAX_FILE = 2 * 1024 * 1024; // ข้ามไฟล์ใหญ่ (กันช้า/binary)
 const PER_FILE_CAP = 50; // เหมือน rg --max-count 50
 
+function otherAsciiCase(ch: string): string | undefined {
+  const code = ch.charCodeAt(0);
+  if (code >= 65 && code <= 90) return ch.toLowerCase();
+  if (code >= 97 && code <= 122) return ch.toUpperCase();
+  return undefined;
+}
+
+function isAsciiLower(ch: string): boolean {
+  const code = ch.charCodeAt(0);
+  return code >= 97 && code <= 122;
+}
+
+function isAsciiUpper(ch: string): boolean {
+  const code = ch.charCodeAt(0);
+  return code >= 65 && code <= 90;
+}
+
+function findCharClassEnd(source: string, start: number): number {
+  let escaping = false;
+  const literalRightBracket = source[start] === '^' ? start + 1 : start;
+  for (let i = start; i < source.length; i += 1) {
+    const ch = source[i];
+    if (escaping) {
+      escaping = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaping = true;
+      continue;
+    }
+    if (ch === ']' && i !== literalRightBracket) return i;
+  }
+  return -1;
+}
+
+function findScopedGroupEnd(source: string, start: number): number {
+  let depth = 1;
+  let escaping = false;
+  for (let i = start; i < source.length; i += 1) {
+    const ch = source[i];
+    if (escaping) {
+      escaping = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaping = true;
+      continue;
+    }
+    if (ch === '[') {
+      const end = findCharClassEnd(source, i + 1);
+      if (end < 0) return -1;
+      i = end;
+      continue;
+    }
+    if (ch === '(') depth += 1;
+    if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function foldAsciiRegexCharClass(source: string): string {
+  let out = '';
+  const literalRightBracket = source[0] === '^' ? 1 : 0;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === ']' && i === literalRightBracket) {
+      out += '\\]';
+      continue;
+    }
+    if (ch === '\\' && i + 1 < source.length) {
+      out += `${ch}${source[i + 1]}`;
+      i += 1;
+      continue;
+    }
+    if (
+      i + 2 < source.length &&
+      source[i + 1] === '-' &&
+      source[i + 2] !== ']' &&
+      ((isAsciiLower(ch) && isAsciiLower(source[i + 2])) || (isAsciiUpper(ch) && isAsciiUpper(source[i + 2]))) &&
+      ch.charCodeAt(0) <= source[i + 2].charCodeAt(0)
+    ) {
+      out += `${ch}-${source[i + 2]}${otherAsciiCase(ch)}-${otherAsciiCase(source[i + 2])}`;
+      i += 2;
+      continue;
+    }
+    const other = i === 0 && ch === '^' ? undefined : otherAsciiCase(ch);
+    out += other ? `${ch}${other}` : ch;
+  }
+  return out;
+}
+
+function foldAsciiRegexLetters(source: string): string {
+  let out = '';
+  let escaping = false;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    if (escaping) {
+      out += ch;
+      escaping = false;
+      continue;
+    }
+    if (ch === '\\') {
+      out += ch;
+      escaping = true;
+      continue;
+    }
+    if (ch === '[') {
+      const end = findCharClassEnd(source, i + 1);
+      if (end < 0) {
+        out += ch;
+        continue;
+      }
+      out += `[${foldAsciiRegexCharClass(source.slice(i + 1, end))}]`;
+      i = end;
+      continue;
+    }
+    const other = otherAsciiCase(ch);
+    out += other ? `[${ch}${other}]` : ch;
+  }
+  return out;
+}
+
+function expandScopedCaseInsensitiveGroups(pattern: string): string | undefined {
+  let out = '';
+  let changed = false;
+  let escaping = false;
+  for (let i = 0; i < pattern.length; i += 1) {
+    const ch = pattern[i];
+    if (escaping) {
+      out += ch;
+      escaping = false;
+      continue;
+    }
+    if (ch === '\\') {
+      out += ch;
+      escaping = true;
+      continue;
+    }
+    if (ch === '[') {
+      const end = findCharClassEnd(pattern, i + 1);
+      if (end < 0) return undefined;
+      out += pattern.slice(i, end + 1);
+      i = end;
+      continue;
+    }
+    if (!pattern.startsWith('(?i:', i)) {
+      out += ch;
+      continue;
+    }
+    const end = findScopedGroupEnd(pattern, i + 4);
+    if (end < 0) return undefined;
+    out += `(?:${foldAsciiRegexLetters(pattern.slice(i + 4, end))})`;
+    i = end;
+    changed = true;
+  }
+  return changed ? out : undefined;
+}
+
+function compileFallbackRegex(pattern: string): RegExp {
+  const caseInsensitive = pattern.match(/^\(\?i\)([\s\S]*)$/);
+  if (caseInsensitive) {
+    const source = expandScopedCaseInsensitiveGroups(caseInsensitive[1]) ?? caseInsensitive[1];
+    return new RegExp(source, 'i');
+  }
+  const scopedCaseInsensitive = expandScopedCaseInsensitiveGroups(pattern);
+  if (scopedCaseInsensitive) return new RegExp(scopedCaseInsensitive);
+  return new RegExp(pattern); // rg ใช้ Rust regex; JS regex ใกล้เคียงพอสำหรับ pattern ทั่วไป
+}
+
 export async function jsGrep(pattern: string, base: string, target: string): Promise<string> {
   let re: RegExp;
   try {
-    re = new RegExp(pattern); // rg ใช้ Rust regex; JS regex ใกล้เคียงพอสำหรับ pattern ทั่วไป
+    re = compileFallbackRegex(pattern);
   } catch {
     return `ERROR: grep regex ไม่ถูกต้อง: "${pattern}"`;
   }
