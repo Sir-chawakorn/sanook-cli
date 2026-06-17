@@ -23,6 +23,8 @@ describe('parseCommand', () => {
     const r = parseCommand('/help', ctx);
     expect(r.action).toBe('help');
     expect(r.message).toContain('/model');
+    expect(r.message).toContain('$ARGUMENTS');
+    expect(r.message).toContain('{{ args }}');
   });
   it('builtin slash commands are case-insensitive', () => {
     expect(parseCommand('/HELP', ctx).action).toBe('help');
@@ -180,7 +182,18 @@ describe('custom slash commands', () => {
       name: 'review',
       args: 'file a.ts --deep',
     });
+    expect(parseSlashInvocation('/Review file a.ts')).toEqual({
+      name: 'review',
+      args: 'file a.ts',
+    });
+    expect(parseSlashInvocation('/?')).toEqual({ name: '?', args: '' });
     expect(parseSlashInvocation('hello')).toBeNull();
+  });
+
+  it('parseSlashInvocation ignores names that cannot map to command files', () => {
+    expect(parseSlashInvocation('/bad$name arg')).toBeNull();
+    expect(parseSlashInvocation('/review.md arg')).toBeNull();
+    expect(parseSlashInvocation('/name/child arg')).toBeNull();
   });
 
   it('expandCustomCommand แทน placeholder หรือ append args', () => {
@@ -189,6 +202,15 @@ describe('custom slash commands', () => {
     );
     expect(expandCustomCommand({ name: 'x', description: '', body: 'Review repo' }, 'a.ts')).toBe(
       'Review repo\n\na.ts',
+    );
+  });
+
+  it('expandCustomCommand แทน args ที่มี $ แบบ literal', () => {
+    expect(expandCustomCommand({ name: 'x', description: '', body: 'Run:\n$ARGUMENTS' }, 'echo $& $$ $1')).toBe(
+      'Run:\necho $& $$ $1',
+    );
+    expect(expandCustomCommand({ name: 'x', description: '', body: 'Run {{ args }}' }, 'echo $&')).toBe(
+      'Run echo $&',
     );
   });
 
@@ -213,5 +235,50 @@ describe('custom slash commands', () => {
     vi.stubEnv('SANOOK_TRUST_PROJECT', '1');
     const trusted = await loadCustomCommands(dir);
     expect(trusted.get('project-review')?.body).toBe('Review project');
+  });
+
+  it('โหลด command files ที่นามสกุล .MD แบบ case-insensitive', async () => {
+    await mkdir(join(home, '.sanook', 'commands'), { recursive: true });
+    await writeFile(join(home, '.sanook', 'commands', 'Review.MD'), '---\ndescription: mixed\n---\n\nReview mixed');
+
+    const commands = await loadCustomCommands(dir);
+
+    expect(commands.get('review')).toEqual({
+      name: 'review',
+      description: 'mixed',
+      body: 'Review mixed',
+    });
+  });
+
+  it('prefer exact lowercase command file when duplicate names differ only by case', async () => {
+    await mkdir(join(home, '.sanook', 'commands'), { recursive: true });
+    await writeFile(join(home, '.sanook', 'commands', 'Review.MD'), '---\ndescription: mixed\n---\n\nReview mixed');
+    await writeFile(join(home, '.sanook', 'commands', 'review.md'), '---\ndescription: lower\n---\n\nReview lower');
+
+    const commands = await loadCustomCommands(dir);
+
+    expect(commands.get('review')).toEqual({
+      name: 'review',
+      description: 'lower',
+      body: 'Review lower',
+    });
+  });
+
+  it('trusted project commands override global commands with the same name', async () => {
+    await mkdir(join(home, '.sanook', 'commands'), { recursive: true });
+    await writeFile(join(home, '.sanook', 'commands', 'review.md'), '---\ndescription: global\n---\n\nGlobal review');
+
+    await mkdir(join(dir, '.sanook', 'commands'), { recursive: true });
+    await writeFile(join(dir, 'package.json'), '{}');
+    await writeFile(join(dir, '.sanook', 'commands', 'review.md'), '---\ndescription: project\n---\n\nProject review');
+
+    vi.stubEnv('SANOOK_TRUST_PROJECT', '1');
+    const commands = await loadCustomCommands(dir);
+
+    expect(commands.get('review')).toEqual({
+      name: 'review',
+      description: 'project',
+      body: 'Project review',
+    });
   });
 });

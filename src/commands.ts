@@ -52,7 +52,8 @@ const HELP_TEXT = `คำสั่ง:
   ดูทั้งหมด: ${BRAND.cliName} --help
 
 custom commands:
-  ~/.sanook/commands/<name>.md และ .sanook/commands/<name>.md (project ต้อง trust ก่อน)`;
+  ~/.sanook/commands/<name>.md และ .sanook/commands/<name>.md (project ต้อง trust ก่อน)
+  args: ใช้ $ARGUMENTS หรือ {{ args }}; ถ้าไม่มี placeholder จะ append args ต่อท้าย`;
 
 const TOOLS_LIST = [
   'read_file (offset/limit) write_file edit_file (replace_all) list_dir glob grep run_bash',
@@ -97,7 +98,9 @@ export function parseSlashInvocation(input: string): SlashInvocation | null {
   if (!trimmed.startsWith('/')) return null;
   const match = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(trimmed);
   if (!match) return null;
-  return { name: match[1].toLowerCase(), args: match[2] ?? '' };
+  const name = match[1].toLowerCase();
+  if (name !== '?' && !isValidCommandName(name)) return null;
+  return { name, args: match[2] ?? '' };
 }
 
 /** /model (ไม่มี arg) — โชว์ model ปัจจุบัน + ตัวเลือกของ provider นั้น (alias จาก registry) */
@@ -285,6 +288,15 @@ function isValidCommandName(name: string): boolean {
   return /^[a-z0-9][a-z0-9-]{0,40}$/.test(name);
 }
 
+function compareCommandFiles(a: string, b: string): number {
+  const an = a.toLowerCase();
+  const bn = b.toLowerCase();
+  if (an !== bn) return an.localeCompare(bn);
+  if (a === an && b !== bn) return 1;
+  if (a !== an && b === bn) return -1;
+  return a.localeCompare(b);
+}
+
 /** scan custom commands จาก global + project (project override). ข้าม built-in ชื่อซ้ำ */
 export async function loadCustomCommands(cwd: string = process.cwd()): Promise<Map<string, CustomCommand>> {
   const out = new Map<string, CustomCommand>();
@@ -299,9 +311,10 @@ export async function loadCustomCommands(cwd: string = process.cwd()): Promise<M
     } catch {
       continue; // ไม่มีโฟลเดอร์ = ข้าม
     }
-    for (const f of files) {
-      if (!f.endsWith('.md')) continue;
-      const name = f.slice(0, -3).toLowerCase();
+    for (const f of files.sort(compareCommandFiles)) {
+      const normalizedFile = f.toLowerCase();
+      if (!normalizedFile.endsWith('.md')) continue;
+      const name = normalizedFile.slice(0, -3);
       if (!isValidCommandName(name) || BUILTIN_COMMANDS.has(name)) continue;
       try {
         const { meta, body } = parseFrontmatter(await readFile(join(dir, f), 'utf8'));
@@ -318,7 +331,7 @@ export async function loadCustomCommands(cwd: string = process.cwd()): Promise<M
 export function expandCustomCommand(cmd: CustomCommand, args: string): string {
   const a = args.trim();
   if (/\$ARGUMENTS|\{\{\s*args\s*\}\}/.test(cmd.body)) {
-    return cmd.body.replace(/\$ARGUMENTS|\{\{\s*args\s*\}\}/g, a);
+    return cmd.body.replace(/\$ARGUMENTS|\{\{\s*args\s*\}\}/g, () => a);
   }
   return a ? `${cmd.body}\n\n${a}` : cmd.body;
 }
