@@ -1,7 +1,36 @@
 import { describe, expect, it } from 'vitest';
-import { optionalString, parseOptionalDeliverTarget, parseOptionalSchedule } from './server.js';
+import {
+  optionalString,
+  parseBearerToken,
+  parseOptionalDeliverTarget,
+  parseOptionalSchedule,
+  parseWebhookRouteName,
+} from './server.js';
 
 describe('gateway server input normalization', () => {
+  it('accepts bearer auth schemes case-insensitively while preserving the token', () => {
+    expect(parseBearerToken('Bearer abc123')).toBe('abc123');
+    expect(parseBearerToken('Bearer   abc123')).toBe('abc123');
+    expect(parseBearerToken('bearer abc123')).toBe('abc123');
+    expect(parseBearerToken('BEARER AbC123')).toBe('AbC123');
+    expect(parseBearerToken('Basic abc123')).toBeUndefined();
+    expect(parseBearerToken('Bearer')).toBeUndefined();
+    expect(parseBearerToken('Bearer ')).toBeUndefined();
+    expect(parseBearerToken('Bearer   ')).toBeUndefined();
+    expect(parseBearerToken('Bearer abc123 ')).toBeUndefined();
+    expect(parseBearerToken('Bearer abc 123')).toBeUndefined();
+    expect(parseBearerToken(undefined)).toBeUndefined();
+  });
+
+  it('decodes valid webhook route paths and rejects malformed route paths', () => {
+    expect(parseWebhookRouteName('/webhooks/issues')).toBe('issues');
+    expect(parseWebhookRouteName('/webhooks/%2Fdeploy-prod%2F')).toBe('deploy-prod');
+    expect(parseWebhookRouteName('/tasks')).toBeUndefined();
+    expect(parseWebhookRouteName('/webhooks/')).toBeUndefined();
+    expect(parseWebhookRouteName('/webhooks/bad/route')).toBeUndefined();
+    expect(parseWebhookRouteName('/webhooks/%E0%A4%A')).toBeUndefined();
+  });
+
   it('trims optional strings and drops blanks', () => {
     expect(optionalString('  openai:gpt-5.5  ')).toBe('openai:gpt-5.5');
     expect(optionalString('   ')).toBeUndefined();

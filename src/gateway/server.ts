@@ -40,6 +40,23 @@ export function optionalString(value: unknown): string | undefined {
   return trimmed || undefined;
 }
 
+export function parseBearerToken(authorization: string | undefined): string | undefined {
+  if (!authorization) return undefined;
+  const tokenMatch = /^Bearer +(\S+)$/i.exec(authorization);
+  if (!tokenMatch) return undefined;
+  return tokenMatch[1];
+}
+
+export function parseWebhookRouteName(pathname: string): string | undefined {
+  if (!pathname.startsWith('/webhooks/')) return undefined;
+  try {
+    const routeName = decodeURIComponent(pathname.slice('/webhooks/'.length)).replace(/^\/+|\/+$/g, '');
+    return /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(routeName) ? routeName : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function parseOptionalSchedule(
   value: unknown,
   now: number,
@@ -206,7 +223,8 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
   }
 
   if (req.method === 'POST' && url.pathname.startsWith('/webhooks/')) {
-    const routeName = decodeURIComponent(url.pathname.slice('/webhooks/'.length)).replace(/^\/+|\/+$/g, '');
+    const routeName = parseWebhookRouteName(url.pathname);
+    if (!routeName) return send(res, 400, { error: 'invalid_webhook_route' });
     const rawBody = await readRawBody(req);
     const { readGatewayConfig, resolveWebhookConfig } = await import('./config.js');
     const { handleWebhookRequest } = await import('./webhooks.js');
@@ -224,8 +242,7 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
   }
 
   // ทุก endpoint อื่น → bearer token
-  const auth = req.headers.authorization ?? '';
-  const provided = auth.startsWith('Bearer ') ? auth.slice(7) : undefined;
+  const provided = parseBearerToken(req.headers.authorization);
   if (!tokenMatches(opts.token, provided)) {
     return send(res, 401, { error: 'unauthorized' });
   }

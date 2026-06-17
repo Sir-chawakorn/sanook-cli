@@ -81,6 +81,20 @@ describe('loadOrCreateToken', () => {
     }
   });
 
+  it('accepts an existing token with CRLF line endings', async () => {
+    const home = await tempHome();
+    const gatewayPath = join(home, '.sanook', 'gateway');
+    const tokenPath = join(gatewayPath, 'token');
+    const token = 'f'.repeat(64);
+    await mkdir(gatewayPath, { recursive: true });
+    await writeFile(tokenPath, `${token}\r\n`, { mode: 0o600 });
+
+    const { loadOrCreateToken } = await importAuthWithHome(home);
+
+    await expect(loadOrCreateToken()).resolves.toBe(token);
+    await expect(readFile(tokenPath, 'utf8')).resolves.toBe(`${token}\r\n`);
+  });
+
   it('rejects malformed existing tokens instead of using or replacing them', async () => {
     const home = await tempHome();
     const gatewayPath = join(home, '.sanook', 'gateway');
@@ -92,6 +106,34 @@ describe('loadOrCreateToken', () => {
 
     await expect(loadOrCreateToken()).rejects.toThrow(/ต้องเป็น hex 64 ตัวอักษร/);
     await expect(readFile(tokenPath, 'utf8')).resolves.toBe('short-token\n');
+  });
+
+  it('rejects tokens with surrounding whitespace instead of silently trimming them', async () => {
+    const home = await tempHome();
+    const gatewayPath = join(home, '.sanook', 'gateway');
+    const tokenPath = join(gatewayPath, 'token');
+    const token = 'd'.repeat(64);
+    await mkdir(gatewayPath, { recursive: true });
+    await writeFile(tokenPath, ` ${token}\n`, { mode: 0o600 });
+
+    const { loadOrCreateToken } = await importAuthWithHome(home);
+
+    await expect(loadOrCreateToken()).rejects.toThrow(/ต้องเป็น hex 64 ตัวอักษร/);
+    await expect(readFile(tokenPath, 'utf8')).resolves.toBe(` ${token}\n`);
+  });
+
+  it('rejects tokens with trailing spaces instead of silently trimming them', async () => {
+    const home = await tempHome();
+    const gatewayPath = join(home, '.sanook', 'gateway');
+    const tokenPath = join(gatewayPath, 'token');
+    const token = 'e'.repeat(64);
+    await mkdir(gatewayPath, { recursive: true });
+    await writeFile(tokenPath, `${token} \n`, { mode: 0o600 });
+
+    const { loadOrCreateToken } = await importAuthWithHome(home);
+
+    await expect(loadOrCreateToken()).rejects.toThrow(/ต้องเป็น hex 64 ตัวอักษร/);
+    await expect(readFile(tokenPath, 'utf8')).resolves.toBe(`${token} \n`);
   });
 
   it('rejects an empty existing token file instead of replacing it', async () => {

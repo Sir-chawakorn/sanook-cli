@@ -5,7 +5,7 @@ import { appHomePath } from '../brand.js';
 
 const GATEWAY_DIR = appHomePath('gateway');
 const TOKEN_FILE = join(GATEWAY_DIR, 'token');
-const TOKEN_PATTERN = /^[a-f0-9]{64}$/;
+const TOKEN_FILE_PATTERN = /^([a-f0-9]{64})(?:\r?\n)?$/;
 
 export async function ensureGatewayDir(): Promise<void> {
   await mkdir(GATEWAY_DIR, { recursive: true, mode: 0o700 });
@@ -42,10 +42,11 @@ async function readTokenIfPresent(): Promise<string | undefined> {
     return undefined;
   }
 
-  const token = rawToken.trim();
-  if (!TOKEN_PATTERN.test(token)) {
+  const tokenMatch = TOKEN_FILE_PATTERN.exec(rawToken);
+  if (!tokenMatch) {
     throw new Error(`gateway token ที่ ${TOKEN_FILE} ไม่ถูกต้อง: ต้องเป็น hex 64 ตัวอักษร`);
   }
+  const token = tokenMatch[1];
   await chmod(GATEWAY_DIR, 0o700).catch(() => {});
   await chmod(TOKEN_FILE, 0o600).catch(() => {});
   return token;
