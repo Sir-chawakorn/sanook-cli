@@ -152,6 +152,10 @@ describe('local insights', () => {
     expect(parseInsightsDays('--days 0')).toBeNull();
     expect(parseInsightsDays('--days')).toBeNull();
     expect(parseInsightsDays('--days 7 junk')).toBeNull();
+    expect(parseInsightsDays('--days 0x10')).toBeNull();
+    expect(parseInsightsDays('--days 1e2')).toBeNull();
+    expect(parseInsightsDays('--days 1.5')).toBeNull();
+    expect(parseInsightsDays('--days 9007199254740992')).toBeNull();
     expect(parseInsightsDays('7 junk')).toBeNull();
     expect(parseInsightsDays('nope')).toBeNull();
 

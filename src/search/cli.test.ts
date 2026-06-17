@@ -30,6 +30,9 @@ describe('parseSearchArgs', () => {
   it('rejects malformed limits instead of truncating them', () => {
     expect(parseSearchArgs(['deploy', '--limit', '5abc']).ok).toBe(false);
     expect(parseSearchArgs(['deploy', '--limit', '1.5']).ok).toBe(false);
+    expect(parseSearchArgs(['deploy', '--limit', '0x10']).ok).toBe(false);
+    expect(parseSearchArgs(['deploy', '--limit', '1e2']).ok).toBe(false);
+    expect(parseSearchArgs(['deploy', '--limit', '9007199254740992']).ok).toBe(false);
   });
 
   it('rejects invalid sources and empty queries', () => {

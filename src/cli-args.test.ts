@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasContinueAnyRequest, hasContinueRequest, hasResumeRequest, parseArgs } from './cli-args.js';
+import { hasContinueAnyRequest, hasContinueRequest, hasResumeRequest, parseArgs, parseBudgetUsd } from './cli-args.js';
 
 describe('parseArgs', () => {
   it('parses headless prompt flags', () => {
@@ -103,11 +103,54 @@ describe('parseArgs', () => {
       budget: undefined,
       prompt: 'fix',
     });
+    expect(parseArgs(['--budget=1abc', 'fix'])).toMatchObject({
+      budget: undefined,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--budget', '0', 'fix'])).toMatchObject({
+      budget: undefined,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--budget=-0.25', 'fix'])).toMatchObject({
+      budget: undefined,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--budget=0x10', 'fix'])).toMatchObject({
+      budget: undefined,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--budget=0b10', 'fix'])).toMatchObject({
+      budget: undefined,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--budget=1e', 'fix'])).toMatchObject({
+      budget: undefined,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--budget=1e+', 'fix'])).toMatchObject({
+      budget: undefined,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--budget=.', 'fix'])).toMatchObject({
+      budget: undefined,
+      prompt: 'fix',
+    });
   });
 
-  it('keeps negative numeric values distinct from short flags', () => {
+  it('accepts decimal budget forms only', () => {
+    expect(parseArgs(['--budget=.25', 'fix'])).toMatchObject({
+      budget: 0.25,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--budget=1e-3', 'fix'])).toMatchObject({
+      budget: 0.001,
+      prompt: 'fix',
+    });
+  });
+
+  it('keeps negative numeric values distinct from short flags without accepting invalid budgets', () => {
     expect(parseArgs(['--budget', '-0.25', 'fix'])).toMatchObject({
-      budget: -0.25,
+      budget: undefined,
       prompt: 'fix',
     });
     expect(parseArgs(['--model', '-1', 'fix'])).toMatchObject({
@@ -124,5 +167,17 @@ describe('parseArgs', () => {
   it('accepts Hermes-style yolo aliases as auto-approve', () => {
     expect(parseArgs(['--yolo', 'fix']).yes).toBe(true);
     expect(parseArgs(['--dangerously-skip-permissions', 'fix']).yes).toBe(true);
+  });
+});
+
+describe('parseBudgetUsd', () => {
+  it('parses only positive finite decimal budget values', () => {
+    expect(parseBudgetUsd('0.25')).toBe(0.25);
+    expect(parseBudgetUsd(' .25 ')).toBe(0.25);
+    expect(parseBudgetUsd('1e-3')).toBe(0.001);
+
+    for (const value of ['0', '-0.25', '0x10', '0b10', '1abc', 'Infinity', '1e', '.']) {
+      expect(parseBudgetUsd(value)).toBeUndefined();
+    }
   });
 });

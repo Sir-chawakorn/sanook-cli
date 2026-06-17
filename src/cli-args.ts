@@ -9,6 +9,16 @@ export interface Args {
   resume?: string;
 }
 
+const DECIMAL_BUDGET_RE = /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+
+export function parseBudgetUsd(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.trim();
+  if (!DECIMAL_BUDGET_RE.test(normalized)) return undefined;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function optionArgs(argv: string[]): string[] {
   const end = argv.indexOf('--');
   return end === -1 ? argv : argv.slice(0, end);
@@ -43,11 +53,6 @@ export function parseArgs(argv: string[]): Args {
     const parsed = value.slice(prefix.length);
     return parsed === '' ? undefined : parsed;
   };
-  const parseBudget = (value: string | undefined): number | undefined => {
-    if (value === undefined) return undefined;
-    const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  };
   const takeValue = (index: number): string | undefined => {
     const value = argv[index + 1];
     if (value === undefined || isFlagLike(value)) return undefined;
@@ -63,9 +68,9 @@ export function parseArgs(argv: string[]): Args {
     if (a.startsWith('--model=')) model = inlineValue('--model', a);
     else if (a === '--model' || a === '-m') model = takeValue(i);
     else if (a.startsWith('--budget=')) {
-      budget = parseBudget(inlineValue('--budget', a));
+      budget = parseBudgetUsd(inlineValue('--budget', a));
     } else if (a === '--budget' || a === '-b') {
-      budget = parseBudget(takeValue(i));
+      budget = parseBudgetUsd(takeValue(i));
     }
     else if (a === '--json') json = true;
     else if (a === '-q' || a === '--quiet') quiet = true;

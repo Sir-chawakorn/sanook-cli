@@ -3,6 +3,12 @@ export interface ParsedInsightsArgs {
   all: boolean;
 }
 
+function parsePositiveInteger(raw: string | undefined): number | null {
+  if (!raw || !/^[1-9]\d*$/.test(raw)) return null;
+  const days = Number(raw);
+  return Number.isSafeInteger(days) ? days : null;
+}
+
 export function parseInsightsDays(args: string | readonly string[]): number | null {
   const parts = typeof args === 'string' ? args.trim().split(/\s+/).filter(Boolean) : [...args];
   if (!parts.length) return 30;
@@ -17,8 +23,7 @@ export function parseInsightsDays(args: string | readonly string[]): number | nu
     if (parts.length !== 1) return null;
     raw = parts[0];
   }
-  const days = Number(raw);
-  return Number.isInteger(days) && days > 0 ? days : null;
+  return parsePositiveInteger(raw);
 }
 
 export function parseInsightsArgs(args: string | readonly string[]): ParsedInsightsArgs | null {

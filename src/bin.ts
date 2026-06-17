@@ -27,7 +27,7 @@ import { chmod, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { appHomePath, BRAND, BRAND_ENV, envFlag } from './brand.js';
 import type { UpdateCache } from './update.js';
-import { hasContinueAnyRequest, hasContinueRequest, hasResumeRequest, parseArgs } from './cli-args.js';
+import { hasContinueAnyRequest, hasContinueRequest, hasResumeRequest, parseArgs, parseBudgetUsd } from './cli-args.js';
 
 // สี: เคารพ NO_COLOR + auto-plain เมื่อ pipe/redirect (legacy Windows cmd ก็ไม่เห็น garbage ANSI); FORCE_COLOR บังคับได้
 const useColor = !process.env.NO_COLOR && (Boolean(process.env.FORCE_COLOR) || process.stdout.isTTY === true);
@@ -3032,8 +3032,8 @@ async function runConfig(args: string[]): Promise<void> {
     const raw = rest.join(' ');
     let value: unknown = raw;
     if (key === 'budgetUsd') {
-      const n = Number(raw);
-      if (!Number.isFinite(n) || n <= 0) {
+      const n = parseBudgetUsd(raw);
+      if (n === undefined) {
         console.error('budgetUsd ต้องเป็นตัวเลขบวก เช่น 0.25');
         process.exit(1);
       }
