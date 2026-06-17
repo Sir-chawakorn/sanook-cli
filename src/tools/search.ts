@@ -238,10 +238,13 @@ export async function jsGrep(pattern: string, base: string, target: string): Pro
     }
     for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
       if (truncated) return;
+      const full = join(dir, e.name);
+      const guard = await checkReadPath(full);
+      if (!guard.ok) continue;
       if (e.isDirectory()) {
-        if (!FALLBACK_IGNORE.has(e.name) && !e.name.startsWith('.')) await walk(join(dir, e.name));
+        if (!FALLBACK_IGNORE.has(e.name) && !e.name.startsWith('.')) await walk(full);
       } else if (e.isFile()) {
-        await scanFile(join(dir, e.name));
+        await scanFile(full);
       }
     }
   };

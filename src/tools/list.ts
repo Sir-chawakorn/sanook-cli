@@ -1,6 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { readdir } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
+import { join } from 'node:path';
 import { clamp, resolveAgentPath } from './util.js';
 import { checkReadPath } from './permission.js';
 
@@ -15,11 +16,21 @@ export const listDirTool = tool({
     if (!guard.ok) return `BLOCKED: ${guard.reason}`;
     try {
       const entries = await readdir(full, { withFileTypes: true });
-      const out = entries
-        .filter((e) => !e.name.startsWith('.') || e.name === '.env.example' || e.name === '.gitignore')
-        .map((e) => (e.isDirectory() ? `${e.name}/` : e.name))
-        .sort()
-        .join('\n');
+      const visible: string[] = [];
+      for (const e of entries) {
+        if (e.name.startsWith('.') && e.name !== '.env.example' && e.name !== '.gitignore') continue;
+        const entryPath = join(full, e.name);
+        const entryGuard = await checkReadPath(entryPath);
+        if (!entryGuard.ok) continue;
+        let isDirectory = e.isDirectory();
+        if (!isDirectory && e.isSymbolicLink()) {
+          isDirectory = await stat(entryPath)
+            .then((s) => s.isDirectory())
+            .catch(() => false);
+        }
+        visible.push(isDirectory ? `${e.name}/` : e.name);
+      }
+      const out = visible.sort().join('\n');
       return clamp(out) || '(empty)';
     } catch (err) {
       return `ERROR: list "${path}" ไม่ได้ — ${(err as Error).message}`;

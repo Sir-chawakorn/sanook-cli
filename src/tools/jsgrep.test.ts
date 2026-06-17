@@ -75,6 +75,22 @@ describe('jsGrep (ripgrep-less fallback)', () => {
     expect(out).toContain('JS fallback');
   });
 
+  it('does not count protected fallback matches toward truncation', async () => {
+    await writeFile(join(dir, '.env'), 'SECRET=capSafeNeedle\n');
+    await writeFile(join(dir, '.env.local'), 'SECRET=capSafeNeedle\n');
+    for (let i = 0; i < 200; i += 1) {
+      await writeFile(join(dir, `cap-safe-${String(i).padStart(3, '0')}.ts`), 'capSafeNeedle\n');
+    }
+
+    const out = await jsGrep('capSafeNeedle', dir, '.');
+    const matches = out.split('\n').filter((line) => line.includes('capSafeNeedle'));
+
+    expect(matches).toHaveLength(200);
+    expect(out).not.toMatch(/(^|\n)\.env/);
+    expect(out).not.toContain('truncated');
+    expect(out).toContain('JS fallback');
+  });
+
   it('skips ignored dirs (node_modules) and binary files', async () => {
     const out = await jsGrep('needleHere', dir, '.');
     expect(out).not.toContain('node_modules');

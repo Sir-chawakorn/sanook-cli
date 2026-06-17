@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { exactMatch, whitespaceFlexMatch, findMatch, editFileTool } from './edit.js';
@@ -338,6 +338,51 @@ describe('write / read / list tools', () => {
     await writeFile(join(dir, 'a.txt'), '');
     expect(await listDirTool.execute!({ path: dir }, opts)).toContain('a.txt');
   });
+  it('list filters protected child paths', async () => {
+    await writeFile(join(dir, 'safe.txt'), '');
+    await writeFile(join(dir, '.env'), 'SECRET=x');
+    await writeFile(join(dir, '.env.example'), 'SAFE=x');
+    await mkdir(join(dir, 'node_modules', 'pkg'), { recursive: true });
+
+    const out = String(await listDirTool.execute!({ path: dir }, opts));
+
+    expect(out).toContain('safe.txt');
+    expect(out).toContain('.env.example');
+    expect(out).not.toContain('node_modules');
+    expect(out).not.toMatch(/(^|\n)\.env($|\n)/);
+  });
+  it('list filters symlinks that resolve to protected paths', async () => {
+    await writeFile(join(dir, 'safe.txt'), '');
+    await mkdir(join(dir, 'node_modules', 'pkg'), { recursive: true });
+    await writeFile(join(dir, 'node_modules', 'pkg', 'index.js'), 'secret');
+    try {
+      await symlink(join(dir, 'node_modules', 'pkg', 'index.js'), join(dir, 'linked-secret.js'));
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === 'EPERM' || code === 'EACCES' || code === 'ENOTSUP') return;
+      throw err;
+    }
+
+    const out = String(await listDirTool.execute!({ path: dir }, opts));
+
+    expect(out).toContain('safe.txt');
+    expect(out).not.toContain('linked-secret.js');
+  });
+  it('list marks allowed directory symlinks as directories', async () => {
+    await mkdir(join(dir, 'target'), { recursive: true });
+    try {
+      await symlink(join(dir, 'target'), join(dir, 'target-link'));
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === 'EPERM' || code === 'EACCES' || code === 'ENOTSUP') return;
+      throw err;
+    }
+
+    const out = String(await listDirTool.execute!({ path: dir }, opts));
+
+    expect(out).toContain('target/');
+    expect(out).toContain('target-link/');
+  });
   it('glob block traversal/absolute pattern แม้ cwd อยู่ใน workspace', async () => {
     expect(await globTool.execute!({ pattern: '../*', cwd: '.' }, opts)).toMatch(/BLOCKED/);
     expect(await globTool.execute!({ pattern: '/tmp/*', cwd: '.' }, opts)).toMatch(/BLOCKED/);
@@ -355,6 +400,37 @@ describe('write / read / list tools', () => {
     expect(envOut).not.toMatch(/(^|\n)\.env($|\n)/);
     expect(await globTool.execute!({ pattern: '.git/**', cwd: dir }, opts)).toBe('(no matches)');
     expect(await globTool.execute!({ pattern: 'node_modules/**', cwd: dir }, opts)).toBe('(no matches)');
+  });
+  it('glob filters symlinks that resolve to protected paths', async () => {
+    await writeFile(join(dir, 'safe.js'), '');
+    await mkdir(join(dir, 'node_modules', 'pkg'), { recursive: true });
+    await writeFile(join(dir, 'node_modules', 'pkg', 'index.js'), 'secret');
+    try {
+      await symlink(join(dir, 'node_modules', 'pkg', 'index.js'), join(dir, 'linked-secret.js'));
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === 'EPERM' || code === 'EACCES' || code === 'ENOTSUP') return;
+      throw err;
+    }
+
+    const out = String(await globTool.execute!({ pattern: '**/*.js', cwd: dir }, opts));
+
+    expect(out).toContain('safe.js');
+    expect(out).not.toContain('node_modules');
+    expect(out).not.toContain('linked-secret.js');
+  });
+  it('glob does not count protected matches toward truncation', async () => {
+    for (let i = 0; i < 200; i += 1) {
+      await writeFile(join(dir, `allowed-${String(i).padStart(3, '0')}.js`), '');
+    }
+    await mkdir(join(dir, 'node_modules', 'pkg'), { recursive: true });
+    await writeFile(join(dir, 'node_modules', 'pkg', 'index.js'), 'secret');
+
+    const out = String(await globTool.execute!({ pattern: '**/*.js', cwd: dir }, opts));
+
+    expect(out.split('\n')).toHaveLength(200);
+    expect(out).not.toContain('node_modules');
+    expect(out).not.toContain('truncated');
   });
   it('glob only reports truncation when matches exceed the result cap', async () => {
     for (let i = 0; i < 200; i += 1) {
