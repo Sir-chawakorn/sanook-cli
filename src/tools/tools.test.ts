@@ -345,4 +345,20 @@ describe('write / read / list tools', () => {
     expect(await globTool.execute!({ pattern: '.git/**', cwd: dir }, opts)).toBe('(no matches)');
     expect(await globTool.execute!({ pattern: 'node_modules/**', cwd: dir }, opts)).toBe('(no matches)');
   });
+  it('glob only reports truncation when matches exceed the result cap', async () => {
+    for (let i = 0; i < 200; i += 1) {
+      await writeFile(join(dir, `many-${String(i).padStart(3, '0')}.txt`), '');
+    }
+
+    const exactCap = String(await globTool.execute!({ pattern: 'many-*.txt', cwd: dir }, opts)).split('\n');
+    expect(exactCap).toHaveLength(200);
+    expect(exactCap.at(-1)).toBe('many-199.txt');
+    expect(exactCap.some((line) => line.includes('truncated'))).toBe(false);
+
+    await writeFile(join(dir, 'many-200.txt'), '');
+
+    const overCap = String(await globTool.execute!({ pattern: 'many-*.txt', cwd: dir }, opts)).split('\n');
+    expect(overCap).toHaveLength(201);
+    expect(overCap.at(-1)).toBe('... [>200 matches, truncated]');
+  });
 });

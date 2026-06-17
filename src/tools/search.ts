@@ -196,6 +196,7 @@ export async function jsGrep(pattern: string, base: string, target: string): Pro
   const rootGuard = await checkReadPath(root);
   if (!rootGuard.ok) return `BLOCKED: ${rootGuard.reason}`;
   const out: string[] = [];
+  let truncated = false;
   const scanFile = async (full: string): Promise<void> => {
     const guard = await checkReadPath(full);
     if (!guard.ok) return;
@@ -216,15 +217,19 @@ export async function jsGrep(pattern: string, base: string, target: string): Pro
     const rel = relative(base, full) || full;
     const lines = content.split(/\r?\n/);
     let perFile = 0;
-    for (let i = 0; i < lines.length && out.length < MAX_RESULTS; i++) {
+    for (let i = 0; i < lines.length && !truncated; i++) {
       if (re.test(lines[i])) {
+        if (out.length >= MAX_RESULTS) {
+          truncated = true;
+          break;
+        }
         out.push(`${rel}:${i + 1}:${lines[i].slice(0, 300)}`);
         if (++perFile >= PER_FILE_CAP) break;
       }
     }
   };
   const walk = async (dir: string): Promise<void> => {
-    if (out.length >= MAX_RESULTS) return;
+    if (truncated) return;
     let entries;
     try {
       entries = await readdir(dir, { withFileTypes: true });
@@ -232,7 +237,7 @@ export async function jsGrep(pattern: string, base: string, target: string): Pro
       return;
     }
     for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
-      if (out.length >= MAX_RESULTS) return;
+      if (truncated) return;
       if (e.isDirectory()) {
         if (!FALLBACK_IGNORE.has(e.name) && !e.name.startsWith('.')) await walk(join(dir, e.name));
       } else if (e.isFile()) {
@@ -249,11 +254,21 @@ export async function jsGrep(pattern: string, base: string, target: string): Pro
   if (st.isFile()) await scanFile(root);
   else await walk(root);
   if (!out.length) return '(no matches)';
+  if (truncated) out.push(`... [>${MAX_RESULTS} matches, truncated]`);
   return `${clamp(out.join('\n'))}\n[JS fallback — ติดตั้ง ripgrep (rg) เพื่อความเร็ว + เคารพ .gitignore: brew/apt/choco/scoop install ripgrep]`;
 }
 
 const execFileAsync = promisify(execFile);
 const MAX_RESULTS = 200;
+
+export function formatRipgrepOutput(stdout: string): string {
+  const text = stdout.replace(/\r?\n$/, '');
+  if (!text) return '(no matches)';
+  const allLines = text.split(/\r?\n/);
+  const lines = allLines.slice(0, MAX_RESULTS);
+  if (allLines.length > MAX_RESULTS) lines.push(`... [>${MAX_RESULTS} matches, truncated]`);
+  return clamp(lines.join('\n')) || '(no matches)';
+}
 
 function unsafeGlobPattern(pattern: string): boolean {
   return isAbsolute(pattern) || pattern.split(/[\\/]+/).includes('..');
@@ -274,17 +289,20 @@ export const globTool = tool({
     if (!guard.ok) return `BLOCKED: ${guard.reason}`;
     try {
       const out: string[] = [];
+      let truncated = false;
       for await (const f of glob(pattern, { cwd: base })) {
         const match = String(f);
         const itemGuard = await checkReadPath(join(base, match));
         if (!itemGuard.ok) continue;
-        out.push(match);
         if (out.length >= MAX_RESULTS) {
-          out.push(`... [>${MAX_RESULTS} matches, truncated]`);
+          truncated = true;
           break;
         }
+        out.push(match);
       }
-      return out.length ? out.sort().join('\n') : '(no matches)';
+      out.sort();
+      if (truncated) out.push(`... [>${MAX_RESULTS} matches, truncated]`);
+      return out.length ? out.join('\n') : '(no matches)';
     } catch (err) {
       return `ERROR: glob "${pattern}" ล้มเหลว — ${(err as Error).message}`;
     }
@@ -309,8 +327,7 @@ export const grepTool = tool({
         ['--line-number', '--no-heading', '--max-count', '50', '-e', pattern, '--', path],
         { cwd: base, maxBuffer: 10 * 1024 * 1024 },
       );
-      const lines = stdout.trim().split('\n').slice(0, MAX_RESULTS);
-      return clamp(lines.join('\n')) || '(no matches)';
+      return formatRipgrepOutput(stdout);
     } catch (err) {
       // ripgrep exit code 1 = ไม่เจอ match (ไม่ใช่ error จริง)
       const e = err as { code?: number | string };

@@ -49,6 +49,32 @@ describe('jsGrep (ripgrep-less fallback)', () => {
     ]);
   });
 
+  it('reports global truncation when fallback matches exceed the result cap', async () => {
+    for (let i = 0; i < 201; i += 1) {
+      await writeFile(join(dir, `many-${String(i).padStart(3, '0')}.ts`), 'manyNeedle\n');
+    }
+
+    const out = await jsGrep('manyNeedle', dir, '.');
+    const matches = out.split('\n').filter((line) => line.includes('manyNeedle'));
+
+    expect(matches).toHaveLength(200);
+    expect(out).toContain('... [>200 matches, truncated]');
+    expect(out).toContain('JS fallback');
+  });
+
+  it('does not report global truncation when fallback matches exactly the result cap', async () => {
+    for (let i = 0; i < 200; i += 1) {
+      await writeFile(join(dir, `cap-${String(i).padStart(3, '0')}.ts`), 'capNeedle\n');
+    }
+
+    const out = await jsGrep('capNeedle', dir, '.');
+    const matches = out.split('\n').filter((line) => line.includes('capNeedle'));
+
+    expect(matches).toHaveLength(200);
+    expect(out).not.toContain('truncated');
+    expect(out).toContain('JS fallback');
+  });
+
   it('skips ignored dirs (node_modules) and binary files', async () => {
     const out = await jsGrep('needleHere', dir, '.');
     expect(out).not.toContain('node_modules');
