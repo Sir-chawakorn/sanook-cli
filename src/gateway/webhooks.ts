@@ -122,15 +122,35 @@ function deliveryId(routeName: string, headers: IncomingHttpHeaders): string | u
   return id ? `${routeName}:${id}` : undefined;
 }
 
-function checkDuplicate(routeName: string, headers: IncomingHttpHeaders, now = Date.now()): boolean {
-  const id = deliveryId(routeName, headers);
-  if (!id) return false;
+function pruneSeenDeliveries(now: number): void {
   for (const [key, seenAt] of seenDeliveries) {
     if (now - seenAt > 60 * 60 * 1000) seenDeliveries.delete(key);
   }
-  if (seenDeliveries.has(id)) return true;
+}
+
+function hasSeenDelivery(routeName: string, headers: IncomingHttpHeaders, now = Date.now()): boolean {
+  const id = deliveryId(routeName, headers);
+  if (!id) return false;
+  pruneSeenDeliveries(now);
+  return seenDeliveries.has(id);
+}
+
+function beginDelivery(routeName: string, headers: IncomingHttpHeaders, now = Date.now()): string | undefined {
+  const id = deliveryId(routeName, headers);
+  if (!id) return undefined;
+  pruneSeenDeliveries(now);
   seenDeliveries.set(id, now);
-  return false;
+  return id;
+}
+
+function completeDelivery(id: string | undefined, now = Date.now()): void {
+  if (!id) return;
+  pruneSeenDeliveries(now);
+  seenDeliveries.set(id, now);
+}
+
+function forgetDelivery(id: string | undefined): void {
+  if (id) seenDeliveries.delete(id);
 }
 
 function checkRateLimit(route: ResolvedWebhookRouteConfig, config: ResolvedWebhookConfig, now = Date.now()): boolean {
@@ -163,7 +183,6 @@ export async function handleWebhookRequest(opts: WebhookHandlerOptions): Promise
   if (!opts.config.enabled) return { status: 503, body: { error: 'webhooks_disabled' } };
   const route = opts.config.routes[opts.routeName];
   if (!route) return { status: 404, body: { error: 'unknown_route' } };
-  if (!checkRateLimit(route, opts.config)) return { status: 429, body: { error: 'rate_limited', route: route.name } };
 
   const secret = route.secret || opts.config.secret;
   const sig = verifyWebhookSignature(secret, opts.rawBody, opts.headers);
@@ -180,15 +199,21 @@ export async function handleWebhookRequest(opts: WebhookHandlerOptions): Promise
   if (route.events.length && (!event || !route.events.includes(event))) {
     return { status: 200, body: { status: 'ignored', route: route.name, event: event ?? null } };
   }
-  if (checkDuplicate(route.name, opts.headers)) return { status: 200, body: { status: 'duplicate', route: route.name } };
+  if (route.deliverOnly && route.deliver === 'log') {
+    return { status: 400, body: { error: 'deliver_only_requires_target', route: route.name } };
+  }
+  if (hasSeenDelivery(route.name, opts.headers)) return { status: 200, body: { status: 'duplicate', route: route.name } };
+  if (!checkRateLimit(route, opts.config)) return { status: 429, body: { error: 'rate_limited', route: route.name } };
+  const trackedDeliveryId = beginDelivery(route.name, opts.headers);
 
   const rendered = renderWebhookTemplate(route.prompt, payload);
   if (route.deliverOnly) {
-    if (route.deliver === 'log') return { status: 400, body: { error: 'deliver_only_requires_target', route: route.name } };
     try {
       const delivery = await deliverToTarget(route.deliver, rendered, { subject: `Webhook ${route.name}` });
+      completeDelivery(trackedDeliveryId);
       return { status: 200, body: { status: 'delivered', route: route.name, target: delivery.target } };
     } catch (e) {
+      forgetDelivery(trackedDeliveryId);
       opts.onLog?.(`Webhook delivery error (${route.name}): ${redactKey((e as Error).message)}`);
       return { status: 502, body: { error: 'delivery_failed', route: route.name } };
     }
@@ -206,11 +231,14 @@ export async function handleWebhookRequest(opts: WebhookHandlerOptions): Promise
     });
     if (out.suppressDelivery || route.deliver === 'log') {
       opts.onLog?.(`Webhook ${route.name}: ${truncate(out.text || '(ไม่มีผลลัพธ์)', 500)}`);
+      completeDelivery(trackedDeliveryId);
       return { status: 200, body: { status: 'processed', route: route.name, delivered: false } };
     }
     const delivery = await deliverToTarget(route.deliver, out.text || '(ไม่มีผลลัพธ์)', { subject: `Webhook ${route.name}` });
+    completeDelivery(trackedDeliveryId);
     return { status: 200, body: { status: 'delivered', route: route.name, target: delivery.target } };
   } catch (e) {
+    forgetDelivery(trackedDeliveryId);
     opts.onLog?.(`Webhook run error (${route.name}): ${redactKey((e as Error).message)}`);
     return { status: 500, body: { error: 'agent_failed', route: route.name } };
   }
