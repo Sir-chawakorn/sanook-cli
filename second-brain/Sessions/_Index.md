@@ -25,6 +25,8 @@ code/config · subfolder (Sessions = flat เสมอ)
 
 > รายละเอียดทุกโฟลเดอร์ + decision rules → [[Vault Structure Map]]
 
-_(ยังว่าง — โน้ตในโฟลเดอร์นี้จะถูกลิงก์ที่นี่)_
+## Sessions
+
+- [[Sessions/2026-06-17-ai-second-brain-sequence-experiment]] — ทดลองและปรับ AI operating sequence ของ second-brain
 
 up:: [[Home]]

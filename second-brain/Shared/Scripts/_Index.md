@@ -25,6 +25,8 @@ one-off ที่ retired (→Scripts-Archive)
 
 > รายละเอียดทุกโฟลเดอร์ + decision rules → [[Vault Structure Map]]
 
-_(ยังว่าง — โน้ตในโฟลเดอร์นี้จะถูกลิงก์ที่นี่)_
+## Scripts
+
+- `Shared/Scripts/ai-second-brain-method-eval.mjs` — reproducible eval เปรียบเทียบ AI second-brain operating methods; ใช้เป็น evidence ของ [[Research/2026-06-17-ai-second-brain-method-experiment]]
 
 up:: [[Shared/_Index]]

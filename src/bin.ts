@@ -119,6 +119,7 @@ usage:
   ${BRAND.cliName} model                choose provider + model
   ${BRAND.cliName} --json "<task>"     headless, JSONL output (for CI/scripts)
   ${BRAND.cliName} sessions             list/resume-audit saved conversation sessions
+  ${BRAND.cliName} insights             local usage/session insights
   ${BRAND.cliName} dump [--show-keys]   support snapshot (secrets redacted)
   ${BRAND.cliName} update              update ${BRAND.cliName} to the latest npm release
   ${BRAND.cliName} doctor              ตรวจการติดตั้ง + วิธีแก้ PATH (เมื่อพิมพ์ "${BRAND.cliName}" แล้วไม่เจอ)
@@ -172,6 +173,7 @@ config & mcp:
   ${BRAND.cliName} status                         ดู provider/key/brain/gateway status แบบ redacted
   ${BRAND.cliName} auth [list|status|add|remove]  จัดการ API keys ของ providers (BYOK, redacted)
   ${BRAND.cliName} sessions [list|latest|show|rm] จัดการ saved sessions
+  ${BRAND.cliName} insights [--days N] [--all]    ดู usage/session insights ในเครื่อง
   ${BRAND.cliName} dump [--show-keys]             diagnostic/support dump แบบไม่โชว์ raw secret
   ${BRAND.cliName} tools                          ดู tool surface ที่ agent ใช้ได้
   ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/budgetUsd/permissionMode/cacheTtl/compaction/thinking/embeddingModel)
@@ -252,11 +254,14 @@ async function runAgentSetupSummary(): Promise<void> {
   console.log(`${BRAND.productName} agent settings`);
   console.log(`  model:          ${cfg.model}`);
   console.log(`  fallbackModel:  ${cfg.fallbackModel ?? '(not set)'}`);
+  console.log(`  personality:    ${cfg.personality ?? '(none)'}`);
   console.log(`  permissionMode: ${cfg.permissionMode}`);
   console.log(`  maxSteps:       ${cfg.maxSteps}`);
   console.log(`  budgetUsd:      ${cfg.budgetUsd ?? '(not set)'}`);
   console.log(`  brainPath:      ${cfg.brainPath ?? '(not set)'}`);
+  console.log(`  insights:       ${BRAND.cliName} insights [--days N]`);
   console.log('\nแก้ค่าได้ด้วย:');
+  console.log(`  ${BRAND.cliName} config set personality concise`);
   console.log(`  ${BRAND.cliName} config set permissionMode ask`);
   console.log(`  ${BRAND.cliName} config set budgetUsd 0.25`);
   console.log(`  ${BRAND.cliName} config set fallbackModel haiku`);
@@ -1804,6 +1809,7 @@ async function runStatus(): Promise<void> {
   console.log(`  version:   ${VERSION}`);
   console.log(`  model:     ${cfg.model}`);
   console.log(`  provider:  ${provider?.label ?? parsed.provider}`);
+  console.log(`  personality:${cfg.personality ? ` ${cfg.personality}` : ' none'}`);
   console.log(`  key:       ${keyReady ? 'ready' : provider?.requiresKey ? `missing (${provider.envVar})` : 'not required'}`);
   console.log(`  brain:     ${cfg.brainPath ?? '(not configured)'}`);
   console.log('  gateway:   HTTP loopback + cron available');
@@ -2111,6 +2117,18 @@ async function runSessions(args: string[]): Promise<void> {
   process.exit(1);
 }
 
+async function runInsights(args: string[]): Promise<void> {
+  const { parseInsightsDays } = await import('./insights-args.js');
+  const days = parseInsightsDays(args.filter((arg) => arg !== '--all' && arg !== '-a'));
+  if (days === null) {
+    console.error(`ใช้: ${BRAND.cliName} insights [--days N] [--all]`);
+    process.exit(2);
+  }
+  const all = args.includes('--all') || args.includes('-a');
+  const { renderInsights } = await import('./insights.js');
+  console.log(await renderInsights({ days, cwd: all ? null : process.cwd(), includeGateway: true }));
+}
+
 async function runDump(args: string[]): Promise<void> {
   if (args.includes('-h') || args.includes('--help')) {
     console.log(`ใช้: ${BRAND.cliName} dump [--show-keys]\n\nสร้าง diagnostic/support dump โดย redact secret เสมอ`);
@@ -2289,6 +2307,10 @@ async function runAuth(args: string[]): Promise<void> {
 }
 
 async function runSetup(args: string[]): Promise<void> {
+  if (args.includes('-h') || args.includes('--help') || args[0] === 'help' || args[0] === 'list' || args[0] === 'status') {
+    console.log(await setupOverview());
+    return;
+  }
   const section = args.find((a) => !a.startsWith('-')) ?? 'model';
   const start = args.indexOf(section);
   const rest = start === -1 ? [] : args.slice(start + 1);
@@ -2299,6 +2321,76 @@ async function runSetup(args: string[]): Promise<void> {
   if (section === 'brain') return runBrain(['init', ...rest]);
   console.error(`ไม่รู้จัก setup section "${section}" — ใช้ model / gateway / tools / agent / brain`);
   process.exit(1);
+}
+
+async function setupOverview(): Promise<string> {
+  const cfg = await loadConfig({});
+  const {
+    readGatewayConfig,
+    resolveBlueBubblesConfig,
+    resolveDiscordConfig,
+    resolveEmailConfig,
+    resolveGoogleChatConfig,
+    resolveHomeAssistantConfig,
+    resolveLineConfig,
+    resolveMattermostConfig,
+    resolveMatrixConfig,
+    resolveNtfyConfig,
+    resolveSignalConfig,
+    resolveSlackConfig,
+    resolveSmsConfig,
+    resolveTelegramConfig,
+    resolveTeamsConfig,
+    resolveWhatsAppConfig,
+    resolveWebhookConfig,
+  } = await import('./gateway/config.js');
+  const gateway = await readGatewayConfig();
+  const telegram = resolveTelegramConfig(gateway);
+  const discord = resolveDiscordConfig(gateway);
+  const slack = resolveSlackConfig(gateway);
+  const mattermost = resolveMattermostConfig(gateway);
+  const homeassistant = resolveHomeAssistantConfig(gateway);
+  const email = resolveEmailConfig(gateway);
+  const line = resolveLineConfig(gateway);
+  const sms = resolveSmsConfig(gateway);
+  const ntfy = resolveNtfyConfig(gateway);
+  const signal = resolveSignalConfig(gateway);
+  const whatsapp = resolveWhatsAppConfig(gateway);
+  const matrix = resolveMatrixConfig(gateway);
+  const googleChat = resolveGoogleChatConfig(gateway);
+  const bluebubbles = resolveBlueBubblesConfig(gateway);
+  const teams = resolveTeamsConfig(gateway);
+  const webhooks = resolveWebhookConfig(gateway);
+  const configuredPlatforms = [
+    telegram.token ? 'telegram' : '',
+    discord.token ? 'discord' : '',
+    slack.botToken ? 'slack' : '',
+    mattermost.serverUrl && mattermost.token ? 'mattermost' : '',
+    homeassistant.token ? 'homeassistant' : '',
+    email.address ? 'email' : '',
+    line.channelAccessToken ? 'line' : '',
+    sms.accountSid ? 'sms' : '',
+    ntfy.topic ? 'ntfy' : '',
+    signal.account ? 'signal' : '',
+    whatsapp.phoneNumberId && whatsapp.accessToken ? 'whatsapp' : '',
+    matrix.homeserver ? 'matrix' : '',
+    googleChat.serviceAccountJson || googleChat.incomingWebhookUrl ? 'googlechat' : '',
+    bluebubbles.serverUrl && bluebubbles.password ? 'bluebubbles' : '',
+    teams.incomingWebhookUrl || teams.graphAccessToken ? 'teams' : '',
+    webhooks.enabled ? 'webhooks' : '',
+  ].filter(Boolean);
+  return [
+    `${BRAND.productName} setup`,
+    '',
+    `  model    ${BRAND.cliName} setup model      เลือก provider + model (current: ${cfg.model})`,
+    `  gateway  ${BRAND.cliName} setup gateway    เชื่อม messaging platforms (${configuredPlatforms.length ? configuredPlatforms.join(', ') : 'not configured'})`,
+    `  tools    ${BRAND.cliName} setup tools      ดู tool surface + MCP entry points`,
+    `  agent    ${BRAND.cliName} setup agent      ตั้ง permission/budget/personality/insights`,
+    `  brain    ${BRAND.cliName} setup brain      สร้าง Second Brain vault + AGENTS/GEMINI/SANOOK rules`,
+    '',
+    `เริ่มเร็ว: ${BRAND.cliName} setup model`,
+    `ดูสถานะ: ${BRAND.cliName} status`,
+  ].join('\n');
 }
 
 function modelOverrideForProvider(providerArg: string | undefined, modelArg: string | undefined): string | undefined {
@@ -2927,6 +3019,7 @@ async function runConfig(args: string[]): Promise<void> {
     'thinking',
     'summaryModel',
     'embeddingModel',
+    'personality',
   ];
   if (action === 'set') {
     if (!key || rest.length === 0) {
@@ -2974,6 +3067,14 @@ async function runConfig(args: string[]): Promise<void> {
         }
         value = n;
       }
+    } else if (key === 'personality') {
+      const { normalizePersonalityName, personalityListText } = await import('./personality.js');
+      const name = normalizePersonalityName(raw);
+      if (!name) {
+        console.error(`personality ไม่รู้จัก: ${raw}\n${personalityListText()}`);
+        process.exit(1);
+      }
+      value = name === 'none' ? undefined : name;
     } else if (key === 'pricing') {
       try {
         value = parsePricingOverride(raw); // { "provider:model": { input, output, cacheRead?, cacheWrite? } }
@@ -3344,6 +3445,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'status' && (argv.length === 1 || argv[1].startsWith('--'))) return runStatus();
   if (argv[0] === 'auth') return runAuth(argv.slice(1));
   if (argv[0] === 'sessions' || argv[0] === 'session') return runSessions(argv.slice(1));
+  if (argv[0] === 'insights') return runInsights(argv.slice(1));
   if (argv[0] === 'dump') return runDump(argv.slice(1));
   if (argv[0] === 'tools' && (argv.length === 1 || argv[1].startsWith('--'))) return runTools(argv.slice(1));
   if (argv[0] === 'send') return runSend(argv.slice(1));

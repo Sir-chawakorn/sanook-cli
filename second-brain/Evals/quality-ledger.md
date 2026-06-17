@@ -18,6 +18,6 @@ parent: "[[Evals/_Index]]"
 
 ## Entries
 
-_(append ด้านล่าง — ไม่แก้ของเก่า)_
+## [2026-06-17] ai-second-brain-method-experiment | grounded:y retrieval_hit:y distractor:n | Scientific Loop Sequence ชนะ 97.3/100; evidence [[Research/2026-06-17-ai-second-brain-method-experiment]]
 
 up:: [[Evals/_Index]]

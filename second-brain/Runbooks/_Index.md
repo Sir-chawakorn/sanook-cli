@@ -25,6 +25,11 @@ runnable unit (→Skills)
 
 > รายละเอียดทุกโฟลเดอร์ + decision rules → [[Vault Structure Map]]
 
-_(ยังว่าง — โน้ตในโฟลเดอร์นี้จะถูกลิงก์ที่นี่)_
+## Runbooks
+
+- [[Runbooks/ai-second-brain-operating-sequence]] — default sequence สำหรับ AI ทำงานกับ vault จากผลทดลอง 2026-06-17
+- [[Runbooks/eval-loop]] — quality loop หลังงานไม่ trivial
+- [[Runbooks/ingest-quarantine]] — gate สำหรับข้อมูลภายนอก/untrusted content
+- [[Runbooks/sleep-time-consolidation]] — consolidate memory เป็นรอบ
 
 up:: [[Home]]

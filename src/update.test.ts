@@ -58,6 +58,26 @@ describe('CLI update', () => {
     expect(check.isOutdated).toBe(false);
   });
 
+  it('checkForUpdate encodes scoped package names for npm registry lookups', async () => {
+    const seen: { url?: string } = {};
+    await checkForUpdate(
+      { name: '@scope/sanook-cli', version: '0.4.0' },
+      {
+        registry: 'https://registry.example.test/',
+        fetchImpl: async (url) => {
+          seen.url = url;
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ 'dist-tags': { latest: '0.5.0' } }),
+          };
+        },
+      },
+    );
+
+    expect(seen.url).toBe('https://registry.example.test/@scope%2Fsanook-cli');
+  });
+
   it('shouldCheckForUpdate throttles interactive notifier checks', () => {
     const now = Date.parse('2026-06-15T12:00:00Z');
     expect(shouldCheckForUpdate(undefined, now)).toBe(true);

@@ -4,15 +4,23 @@ import { canonicalSpec, consoleUrl, hasUsableEnvKey, PROVIDERS, parseSpec } from
 import { appHomePath, BRAND } from './brand.js';
 import { parseFrontmatter } from './skills.js';
 import { projectConfigPathIfTrusted } from './trust.js';
+import { normalizePersonalityName, personalityListText } from './personality.js';
+import { parseInsightsArgs } from './insights-args.js';
 
 export interface CommandResult {
   /** true = เป็น slash command (ไม่ส่งเข้า agent) */
   handled: boolean;
-  action?: 'clear' | 'compact' | 'quit' | 'help' | 'diff' | 'undo' | 'rewind' | 'retry';
+  action?: 'clear' | 'compact' | 'quit' | 'help' | 'diff' | 'undo' | 'rewind' | 'retry' | 'stop' | 'personality' | 'insights';
   /** ข้อความแสดงกลับ (help / cost / model / unknown) */
   message?: string;
   /** /model <spec> — เปลี่ยน model */
   modelChange?: string;
+  /** /personality <name> — persist named personality overlay */
+  personalityChange?: string;
+  /** /insights [--days N] */
+  insightsDays?: number;
+  /** /insights --all */
+  insightsAll?: boolean;
 }
 
 const HELP_TEXT = `คำสั่ง:
@@ -20,14 +28,19 @@ const HELP_TEXT = `คำสั่ง:
   /new, /reset      เริ่มบทสนทนาใหม่
   /status          ดูสถานะ session ปัจจุบัน
   /model [spec]    ดู/เปลี่ยน model (เช่น /model opus, /model openai:gpt-5)
+  /personality [name]
+                   ดู/ตั้ง personality overlay
   /platforms       ดู providers + messaging platforms ที่รองรับ
   /tools           ดู tools ที่ agent ใช้ได้
   /skills          ดูจำนวน skills (จัดการ: ${BRAND.cliName} skill list)
   /diff            ดู git diff (สิ่งที่ agent แก้ในรอบนี้)
   /retry           รัน prompt ล่าสุดอีกครั้ง
+  /stop            หยุด turn ที่กำลังรัน
   /undo            stash การแก้ไฟล์ล่าสุด (กู้คืนด้วย git stash pop)
   /rewind          ย้อนกลับ 1 turn (คืนไฟล์ git + ตัดบทสนทนา, recoverable)
   /cost, /usage     ดู token + cost รอบล่าสุด
+  /insights [--days N] [--all]
+                   ดู usage/session insights ในเครื่อง
   ↑/↓ ประวัติ · @ไฟล์ แนบ context/รูป · \\ ลงท้าย = บรรทัดใหม่
   /clear           ล้าง conversation (เริ่มใหม่)
   /compact, /compress
@@ -192,6 +205,18 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
     case 'model':
       if (!args[0]) return { handled: true, message: modelMenu(ctx.model) };
       return modelChange(args[0]);
+    case 'personality': {
+      const raw = args.join(' ').trim();
+      if (!raw) return { handled: true, message: personalityListText() };
+      const name = normalizePersonalityName(raw);
+      if (!name) return { handled: true, message: `ไม่รู้จัก personality: ${raw}\n\n${personalityListText()}` };
+      return {
+        handled: true,
+        action: 'personality',
+        personalityChange: name === 'none' ? '' : name,
+        message: name === 'none' ? 'ปิด personality overlay แล้ว' : `ตั้ง personality → ${name}`,
+      };
+    }
     case 'tools':
       return { handled: true, message: `tools ที่ agent ใช้ได้ (+ MCP ที่ตั้งไว้):\n  ${TOOLS_LIST}` };
     case 'platforms':
@@ -202,6 +227,8 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
       return { handled: true, action: 'diff' };
     case 'retry':
       return { handled: true, action: 'retry' };
+    case 'stop':
+      return { handled: true, action: 'stop', message: 'ไม่มี turn ที่กำลังทำงาน' };
     case 'undo':
       return { handled: true, action: 'undo' };
     case 'rewind':
@@ -209,6 +236,11 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
     case 'cost':
     case 'usage':
       return { handled: true, message: ctx.costSummary ?? '(ยังไม่มี usage รอบนี้)' };
+    case 'insights': {
+      const parsed = parseInsightsArgs(args);
+      if (parsed === null) return { handled: true, message: 'ใช้: /insights [--days N] [--all] (N ต้องเป็นจำนวนวันบวก)' };
+      return { handled: true, action: 'insights', insightsDays: parsed.days, insightsAll: parsed.all };
+    }
     default:
       return { handled: true, message: `ไม่รู้จักคำสั่ง /${cmd} — พิมพ์ /help` };
   }
@@ -229,15 +261,18 @@ export const BUILTIN_COMMANDS = new Set([
   'quit',
   'exit',
   'model',
+  'personality',
   'platforms',
   'tools',
   'skills',
   'diff',
   'retry',
+  'stop',
   'undo',
   'rewind',
   'cost',
   'usage',
+  'insights',
 ]);
 
 export interface CustomCommand {

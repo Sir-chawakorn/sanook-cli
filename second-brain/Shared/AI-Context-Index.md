@@ -28,6 +28,17 @@ ai_surface: hot
 4. [[Shared/Decision-Memory/decision-log]] — ตัดสินใจอะไรไปแล้ว
 5. งาน project → [[Projects/_Index]] → overview → context → current-state
 
+## Best AI Operating Sequence
+
+> default สำหรับงานไม่ trivial: [[Runbooks/ai-second-brain-operating-sequence]]
+
+**Frame → Retrieve → Role → JIT Rules → Act → Write → Eval → Consolidate**
+
+- เริ่มด้วย hot path ด้านบนเสมอ
+- เลือกบทบาท AI ก่อนลงมือ: Scientist / Cartographer / Librarian / Operator / Editor / Archivist
+- โหลด rule/runbook เฉพาะ task นั้นแบบ JIT; อย่าโหลดทั้ง vault
+- งาน framework/หลาย session/แก้ durable memory ให้ eval และบันทึก evidence
+
 ## Default Write Path (ก่อนสร้าง/แก้โน้ต)
 
 1. Classify artifact: project work, session log, decision, preference, source, reusable skill, runbook, or temporary scratch
@@ -55,6 +66,7 @@ ai_surface: hot
 
 ## Framework Rules (โหลดตาม task — ดู CLAUDE.md §19)
 
+- **งานไม่ trivial ทุกงาน** → [[Runbooks/ai-second-brain-operating-sequence]] (Scientific Loop Sequence + roles)
 - **ก่อนประกอบ context เสมอ** → [[Shared/Rules/context-assembly-policy]] (head/tail + budget, กัน context-rot)
 - ingest ของนอก → [[Runbooks/ingest-quarantine]] · fact → [[Shared/Rules/frontmatter-standard]] (bi-temporal + `source::`)
 - script ทำซ้ำ → [[Shared/Rules/skills-admission]] (Skills/) · consolidate → [[Runbooks/sleep-time-consolidation]]

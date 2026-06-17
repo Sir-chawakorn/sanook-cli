@@ -118,7 +118,7 @@ sanook cron add "09:00" "สรุปงานเช้านี้" --to bluebu
 sanook cron add "09:00" "สรุปงานเช้านี้" --to teams
 ```
 
-ใน Telegram/Discord/Slack/Mattermost/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix พิมพ์ `/new` หรือ `/reset` เพื่อล้าง history ของ target นั้น, `/status` เพื่อดู session ปัจจุบัน และ `/help` เพื่อดูคำสั่งที่รองรับ; Matrix/Mattermost ใช้ `!new`, `!reset`, `!status`, `!help` ได้ด้วยสำหรับ client ที่กันคำสั่ง `/`
+ใน Telegram/Discord/Slack/Mattermost/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix ใช้คำสั่งสไตล์ Hermes ได้โดยไม่เรียก model: `/new`, `/reset`, `/model`, `/personality`, `/retry`, `/undo`, `/compress`, `/usage`, `/insights`, `/stop`, `/status`, `/sethome`, และ `/help`; Matrix/Mattermost ใช้ `!new`, `!reset`, `!status`, `!help` ได้ด้วยสำหรับ client ที่กันคำสั่ง `/`
 
 Home Assistant ใช้ Long-Lived Access Token, รับเฉพาะ `state_changed` ที่ตรง `--watch-domains`, `--watch-entities` หรือ `--watch-all`, และตอบกลับผ่าน persistent notification (`homeassistant[:notification_id]`). Tools อ่านสถานะ/บริการได้ ส่วน `ha_call_service` ต้องผ่าน approval และ block domain เสี่ยงเช่น `shell_command`, `command_line`, `python_script`, `pyscript`, `hassio`, `rest_command`
 

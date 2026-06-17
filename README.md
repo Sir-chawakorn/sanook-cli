@@ -181,7 +181,7 @@ sanook update            update the CLI to the latest npm release
   -h, --help             show help
 ```
 
-**REPL slash commands:** `/new` · `/reset` · `/status` · `/model` · `/platforms` · `/tools` · `/skills` · `/cost` · `/usage` · `/diff` · `/retry` · `/undo` · `/rewind` · `/clear` · `/compact` · `/compress` · `/help` · `/quit` — plus your own `.sanook/commands/*.md`. Input supports `↑`/`↓` history, `@file` mentions (text or image), and multiline (trailing `\` or Alt+Enter).
+**REPL slash commands:** `/new` · `/reset` · `/status` · `/model` · `/personality` · `/platforms` · `/tools` · `/skills` · `/cost` · `/usage` · `/insights` · `/diff` · `/retry` · `/stop` · `/undo` · `/rewind` · `/clear` · `/compact` · `/compress` · `/help` · `/quit` — plus your own `.sanook/commands/*.md`. Input supports `↑`/`↓` history, `@file` mentions (text or image), and multiline (trailing `\` or Alt+Enter).
 
 ## Updating
 
@@ -373,7 +373,7 @@ sanook gateway run
 
 Messaging channels are **fail-closed** by default: configure a home target or allowlist before accepting remote users, and internal errors are redacted before they reach chat surfaces. See [Security](#security).
 
-Inside Telegram/Discord/Slack/Mattermost/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix conversations, `/new` or `/reset` clears that platform/target history, `/status` shows the current messaging session, and `/help` lists the supported chat commands. Matrix and Mattermost also accept `!new`, `!reset`, `!status`, and `!help` aliases for clients that reserve `/`.
+Inside Telegram/Discord/Slack/Mattermost/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix conversations, Hermes-style commands are handled without calling the model: `/new`, `/reset`, `/model`, `/personality`, `/retry`, `/undo`, `/compress`, `/usage`, `/insights`, `/stop`, `/status`, `/sethome`, and `/help`. Matrix and Mattermost also accept `!new`, `!reset`, `!status`, and `!help` aliases for clients that reserve `/`.
 
 For ntfy, the topic is the identity and trust boundary: use a long random topic, a private/reserved topic with `NTFY_TOKEN`, or a self-hosted ntfy server with ACLs. Sanook authorizes inbound ntfy messages by topic, not by the user-controlled notification title.
 

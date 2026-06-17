@@ -13,8 +13,9 @@ import { getMcpTools } from './mcp.js';
 import { gitContext } from './git.js';
 import { loadRepoMap } from './repomap.js';
 import { autoCompact } from './compaction.js';
-import { agentTuning } from './config.js';
+import { agentTuning, loadConfig } from './config.js';
 import { BRAND } from './brand.js';
+import { personalityPrompt } from './personality.js';
 
 // auto-compact เมื่อ context ใกล้เต็ม — conservative (safe สำหรับ model 200K, เผื่อ output)
 const AUTO_COMPACT_TOKENS = 120_000;
@@ -195,7 +196,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   // โหลด context: auto-memory + skills + git state + repo map + project SANOOK.md → system prompt
   // sub-agent (opts.tools) ข้าม repo map (มี subset tool + prompt เฉพาะอยู่แล้ว — ประหยัด context)
-  const [memory, autoMemory, skills, git, brain, repoMap, tuning] = await Promise.all([
+  const [memory, autoMemory, skills, git, brain, repoMap, tuning, config] = await Promise.all([
     loadMemory(),
     loadAutoMemory(),
     loadSkills(),
@@ -203,6 +204,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     loadBrainContext(),
     opts.tools ? Promise.resolve('') : loadRepoMap(),
     agentTuning(), // cache TTL + thinking budget (อ่านจาก config/env)
+    loadConfig({}, opts.cwd ?? process.cwd()),
   ]);
   const planSuffix = opts.planMode
     ? '\n\nPLAN MODE: สำรวจและวางแผนเท่านั้น — ห้ามแก้ไฟล์หรือรันคำสั่งที่เปลี่ยน state. จบด้วยแผนเป็นขั้นตอนให้ user อนุมัติก่อนลงมือ.'
@@ -214,7 +216,15 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     : '';
   // static preamble (SYSTEM + memory + skills + brain) = เหมือนกันทุก step/turn → cache ได้ (ประหยัด ~10-20%)
   // git แยกออก (volatile — เปลี่ยนทุก commit) ไม่ให้ invalidate cache ของ static prefix
-  const staticSystem = [SYSTEM + planSuffix + brainNudge, autoMemory, renderAvailableSkills(skills), brain, memory, repoMap]
+  const staticSystem = [
+    SYSTEM + planSuffix + brainNudge,
+    personalityPrompt(config.personality),
+    autoMemory,
+    renderAvailableSkills(skills),
+    brain,
+    memory,
+    repoMap,
+  ]
     .filter(Boolean)
     .join('\n\n');
 

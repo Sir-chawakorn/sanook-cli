@@ -15,8 +15,9 @@ import { saveSession, newSessionId } from '../session.js';
 import { getBrainPath, appendBrainWorklog } from '../memory.js';
 import { autoCompact, estimateTokens, summarizeCompact } from '../compaction.js';
 import { makeSummarizer } from '../summarize.js';
-import { agentTuning } from '../config.js';
+import { agentTuning, patchGlobalConfig } from '../config.js';
 import { snapshotWorkTree, restoreWorkTree } from '../checkpoint.js';
+import { renderInsights } from '../insights.js';
 import { useEditor } from './useEditor.js';
 import { loadHistory, appendHistory } from './history.js';
 import { expandMentions } from './mentions.js';
@@ -139,6 +140,13 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       if (a === 'submit') {
         const v = editor.value.trim();
         editor.reset();
+        const slash = parseSlashInvocation(v);
+        if (slash?.name === 'stop') {
+          addTurn('user', v);
+          abortRef.current?.abort();
+          clearQueue();
+          return;
+        }
         if (v) enqueue(v);
       }
       return;
@@ -258,6 +266,18 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       }
       if (cmd.action === 'diff') return void runGit(['diff', '--stat'], 'diff');
       if (cmd.action === 'retry') return void retryLastTurn();
+      if (cmd.action === 'personality') {
+        void patchGlobalConfig({ personality: cmd.personalityChange || undefined })
+          .then(() => addTurn('system', cmd.message ?? 'ตั้ง personality แล้ว'))
+          .catch((e) => addTurn('system', `personality: ${(e as Error).message}`));
+        return;
+      }
+      if (cmd.action === 'insights') {
+        void renderInsights({ days: cmd.insightsDays, cwd: cmd.insightsAll ? null : undefined })
+          .then((msg) => addTurn('system', msg))
+          .catch((e) => addTurn('system', `insights: ${(e as Error).message}`));
+        return;
+      }
       if (cmd.action === 'undo') {
         void runGit(['stash', 'push', '-u', '-m', BRAND.undoStashMessage], 'undo').then(() =>
           addTurn('system', 'กู้คืน: git stash pop'),

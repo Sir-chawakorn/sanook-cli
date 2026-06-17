@@ -12,9 +12,10 @@
 
 ## Sanook CLI Startup
 1. อ่าน `Shared/AI-Context-Index.md` ก่อนตอบหรือแตะ vault เสมอ
-2. ถ้างานเกี่ยวกับสร้าง/ย้าย/แก้โน้ต: อ่าน `Vault Structure Map.md` + `_Index.md` ของโฟลเดอร์ปลายทาง แล้วทำตาม AI Routing Contract
-3. ถ้างานมีหลาย agent หรือแตะ shared state: อ่าน `Shared/Coordination/NOW.md` และ task-board ก่อนเริ่ม
-4. ใช้ `CLAUDE.md` เป็น source of truth สำหรับกฎเต็ม; ไฟล์นี้เป็น adapter เฉพาะ Sanook CLI
+2. งานไม่ trivial ให้ตาม `Runbooks/ai-second-brain-operating-sequence.md`: Frame → Retrieve → Role → JIT Rules → Act → Write → Eval → Consolidate
+3. ถ้างานเกี่ยวกับสร้าง/ย้าย/แก้โน้ต: อ่าน `Vault Structure Map.md` + `_Index.md` ของโฟลเดอร์ปลายทาง แล้วทำตาม AI Routing Contract
+4. ถ้างานมีหลาย agent หรือแตะ shared state: อ่าน `Shared/Coordination/NOW.md` และ task-board ก่อนเริ่ม
+5. ใช้ `CLAUDE.md` เป็น source of truth สำหรับกฎเต็ม; ไฟล์นี้เป็น adapter เฉพาะ Sanook CLI
 
 ## 🔴 Red Lines
 1. verify ก่อนอ้าง ไม่แน่ใจบอกตรงๆ ห้ามแต่ง
@@ -36,6 +37,7 @@
 
 ## CLI Habits
 - ตั้งชื่อ session เมื่อเริ่มงานมีสาระ (`/title ...`) และใช้ `/usage` หรือ `/compress` เมื่อ context เริ่มแน่น
+- ระบุ role ในใจ/สรุปงานเมื่อจำเป็น: Scientist / Cartographer / Librarian / Operator / Editor / Archivist
 - งานยาว/คู่ขนานใช้ Sanook background/worktree เฉพาะเมื่อขอบเขตชัด และสรุปผลกลับเข้า `Sessions/`
 - หลังงานสำคัญเสร็จ: เขียน `Sessions/{{DATE}}-<topic>.md` ตาม 7 หัวข้อใน `CLAUDE.md`
 

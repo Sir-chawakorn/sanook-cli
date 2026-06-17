@@ -75,7 +75,72 @@ describe('gateway chat sessions', () => {
 
     await expect(
       runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: '/help', userText: '/help' }),
-    ).resolves.toMatchObject({ text: expect.stringContaining('/new') });
+    ).resolves.toMatchObject({ text: expect.stringContaining('/sethome') });
     expect(runAgent).not.toHaveBeenCalled();
+  });
+
+  it('handles /sethome by updating gateway config without calling the model', async () => {
+    const { readGatewayConfig } = await import('./config.js');
+    const { runGatewayAgent } = await import('./session.js');
+
+    await expect(
+      runGatewayAgent({ platform: 'discord', target: 'chan-123', model: 'sonnet', prompt: '/sethome', userText: '/sethome' }),
+    ).resolves.toMatchObject({ text: expect.stringContaining('Discord home channel') });
+
+    const cfg = await readGatewayConfig();
+    expect(cfg.discord?.defaultChannelId).toBe('chan-123');
+    expect(cfg.discord?.allowedChannelIds).toEqual(['chan-123']);
+    expect(runAgent).not.toHaveBeenCalled();
+  });
+
+  it('handles Hermes-style messaging model, personality, usage, compress, undo, and retry commands', async () => {
+    const { loadConfig } = await import('../config.js');
+    const { loadGatewaySession, runGatewayAgent } = await import('./session.js');
+
+    await runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: 'first', userText: 'first' });
+    await runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: 'second', userText: 'second' });
+    vi.clearAllMocks();
+
+    await expect(
+      runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: '/model openai:gpt', userText: '/model openai:gpt' }),
+    ).resolves.toMatchObject({ text: expect.stringContaining('openai:gpt-5.5') });
+    expect((await loadGatewaySession('telegram', '111'))?.model).toBe('openai:gpt-5.5');
+    await expect(
+      runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: '/model nope:model', userText: '/model nope:model' }),
+    ).resolves.toMatchObject({ text: expect.stringContaining('ไม่รองรับ') });
+    await expect(
+      runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: '/model openai:', userText: '/model openai:' }),
+    ).resolves.toMatchObject({ text: expect.stringContaining('ไม่รองรับ') });
+    expect((await loadGatewaySession('telegram', '111'))?.model).toBe('openai:gpt-5.5');
+
+    await runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: 'third', userText: 'third' });
+    expect(runAgent).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'openai:gpt-5.5', prompt: 'third' }));
+    vi.clearAllMocks();
+
+    await expect(
+      runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: '/personality concise', userText: '/personality concise' }),
+    ).resolves.toMatchObject({ text: expect.stringContaining('concise') });
+    expect((await loadConfig()).personality).toBe('concise');
+
+    await expect(
+      runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: '/usage', userText: '/usage' }),
+    ).resolves.toMatchObject({ text: expect.stringContaining('messages: 6') });
+    await expect(
+      runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: '/insights -d 14', userText: '/insights -d 14' }),
+    ).resolves.toMatchObject({ text: expect.stringContaining('insights (14d)') });
+    await expect(
+      runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: '/compress', userText: '/compress' }),
+    ).resolves.toMatchObject({ text: expect.stringContaining('compact') });
+
+    await expect(
+      runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: '/undo', userText: '/undo' }),
+    ).resolves.toMatchObject({ text: expect.stringContaining('undo') });
+    expect((await loadGatewaySession('telegram', '111'))?.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+
+    await expect(
+      runGatewayAgent({ platform: 'telegram', target: '111', model: 'sonnet', prompt: '/retry', userText: '/retry' }),
+    ).resolves.toMatchObject({ text: 'reply:second' });
+    expect(runAgent).toHaveBeenCalledTimes(1);
+    expect(runAgent).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'openai:gpt-5.5', prompt: 'second' }));
   });
 });

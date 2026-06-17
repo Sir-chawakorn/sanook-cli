@@ -47,6 +47,8 @@ export const ConfigSchema = z.object({
   summaryModel: z.string().optional().catch(undefined),
   // model สำหรับ semantic search embeddings (เช่น openai:text-embedding-3-small)
   embeddingModel: z.string().optional().catch(undefined),
+  // Hermes-style /personality overlay (stored as a small named prompt)
+  personality: z.string().optional().catch(undefined),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { render } from 'ink-testing-library';
 
 // hoisted holder so the vi.mock factory can record the runAgent opts the App passes
@@ -29,6 +29,9 @@ async function waitFor(cond: () => boolean, tries = 25): Promise<void> {
 
 beforeAll(() => {
   process.env.SANOOK_DISABLE_PERSISTENCE = '1';
+});
+beforeEach(() => {
+  h.opts = null;
 });
 afterAll(() => {
   delete process.env.SANOOK_DISABLE_PERSISTENCE;
@@ -67,6 +70,27 @@ describe('real-time steering', () => {
     await waitFor(() => (cleared = !(lastFrame() ?? '').includes('⏳')));
     expect(cleared).toBe(true);
     expect(lastFrame()).not.toContain('queued follow up');
+
+    unmount();
+  });
+
+  it('/stop typed while busy aborts the running turn instead of queueing', async () => {
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" permissionMode="auto" />);
+
+    stdin.write('first prompt');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => h.opts !== null);
+
+    expect(h.opts!.signal!.aborted).toBe(false);
+
+    stdin.write('/stop');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => h.opts!.signal!.aborted === true);
+
+    expect(h.opts!.signal!.aborted).toBe(true);
+    expect(lastFrame()).not.toContain('⏳');
 
     unmount();
   });

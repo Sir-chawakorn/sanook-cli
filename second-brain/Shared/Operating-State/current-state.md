@@ -13,11 +13,11 @@ ai_surface: starter
 
 ## Now
 
-_(งาน/โฟกัสหลักตอนนี้ — ยังว่าง)_
+- 2026-06-17: ปรับ second-brain ให้ใช้ [[Runbooks/ai-second-brain-operating-sequence]] เป็น default AI operating sequence หลังทดลองเทียบ methods แล้ว
 
 ## Active Bets
 
-_(สิ่งที่กำลังลงแรง/ลงทุน)_
+- Scientific Loop Sequence: single retrieval path + JIT task rules + explicit write routing + eval/consolidation loop
 
 ## Blockers
 
@@ -25,6 +25,6 @@ _(ติดอะไรอยู่)_
 
 ## Next Actions
 
-- [ ] _(เริ่มจดงานแรกที่นี่)_
+- [ ] ใช้ sequence ใหม่นี้กับ session จริง 3 ครั้ง แล้วทบทวนผลใน [[Evals/quality-ledger]]
 
 up:: [[Shared/Operating-State/_Index]]

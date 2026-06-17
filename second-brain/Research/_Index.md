@@ -25,6 +25,8 @@ parent: "[[Home]]"
 
 > รายละเอียดทุกโฟลเดอร์ + decision rules → [[Vault Structure Map]]
 
-_(ยังว่าง — โน้ตในโฟลเดอร์นี้จะถูกลิงก์ที่นี่)_
+## Research Notes
+
+- [[Research/2026-06-17-ai-second-brain-method-experiment]] — ทดลองเปรียบเทียบวิธีใช้ second-brain ร่วมกับ AI และเลือก Scientific Loop Sequence
 
 up:: [[Home]]

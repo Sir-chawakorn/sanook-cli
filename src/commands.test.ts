@@ -53,6 +53,11 @@ describe('parseCommand', () => {
   it('/retry → action retry', () => {
     expect(parseCommand('/retry', ctx).action).toBe('retry');
   });
+  it('/stop → action stop', () => {
+    const r = parseCommand('/stop', ctx);
+    expect(r.action).toBe('stop');
+    expect(r.message).toContain('ไม่มี turn');
+  });
   it('/rewind → action rewind', () => {
     expect(parseCommand('/rewind', ctx).action).toBe('rewind');
   });
@@ -91,11 +96,38 @@ describe('parseCommand', () => {
     expect(r.modelChange).toBeUndefined();
     expect(r.message).toContain('model spec ไม่ครบ');
   });
+  it('/personality → list/set/clear personality overlay', () => {
+    expect(parseCommand('/personality', ctx).message).toContain('concise');
+    expect(parseCommand('/personality concise', ctx)).toMatchObject({
+      action: 'personality',
+      personalityChange: 'concise',
+    });
+    expect(parseCommand('/personality none', ctx)).toMatchObject({
+      action: 'personality',
+      personalityChange: '',
+    });
+    expect(parseCommand('/personality mystery', ctx).message).toContain('ไม่รู้จัก');
+  });
   it('/cost → คืน cost summary จาก ctx', () => {
     expect(parseCommand('/cost', { model: 'sonnet', costSummary: 'tokens: 100' }).message).toBe('tokens: 100');
   });
   it('/usage → Hermes-style alias ของ /cost', () => {
     expect(parseCommand('/usage', { model: 'sonnet', costSummary: 'tokens: 100' }).message).toBe('tokens: 100');
+  });
+  it('/insights → Hermes-style local insights command', () => {
+    expect(parseCommand('/insights', ctx)).toMatchObject({ action: 'insights', insightsDays: 30 });
+    expect(parseCommand('/insights --days 7', ctx)).toMatchObject({ action: 'insights', insightsDays: 7 });
+    expect(parseCommand('/insights --days=8', ctx)).toMatchObject({ action: 'insights', insightsDays: 8 });
+    expect(parseCommand('/insights -d 14', ctx)).toMatchObject({ action: 'insights', insightsDays: 14 });
+    expect(parseCommand('/insights 21', ctx)).toMatchObject({ action: 'insights', insightsDays: 21 });
+    expect(parseCommand('/insights --all', ctx)).toMatchObject({ action: 'insights', insightsDays: 30, insightsAll: true });
+    expect(parseCommand('/insights --all --days 7', ctx)).toMatchObject({
+      action: 'insights',
+      insightsDays: 7,
+      insightsAll: true,
+    });
+    expect(parseCommand('/insights nope', ctx).message).toContain('/insights');
+    expect(parseCommand('/insights --days 0', ctx).message).toContain('/insights');
   });
   it('/platforms → แสดง provider/messaging surface แบบไม่มี China integrations', () => {
     const msg = parseCommand('/platforms', ctx).message ?? '';
