@@ -108,10 +108,15 @@ export function truncateHomeAssistantMessage(raw: string, limit = HA_TEXT_LIMIT)
   return text.length <= limit ? text : `${text.slice(0, Math.max(1, limit - 3)).trimEnd()}...`;
 }
 
-async function readJsonOrThrow<T>(response: Response, label: string): Promise<T> {
+export async function readHomeAssistantJsonResponse<T>(response: Response, label: string): Promise<T> {
   const text = await response.text().catch(() => '');
   if (!response.ok) throw new Error(`${label} ${response.status}${text ? `: ${redactKey(text).slice(0, 200)}` : ''}`);
-  return (text ? JSON.parse(text) : {}) as T;
+  if (!text) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`${label} ${response.status}: response ไม่ใช่ JSON: ${redactKey(text).slice(0, 200)}`);
+  }
 }
 
 export async function sendHomeAssistantNotification(
@@ -129,7 +134,7 @@ export async function sendHomeAssistantNotification(
       notification_id: id,
     }),
   });
-  await readJsonOrThrow<unknown>(r, 'Home Assistant persistent_notification.create');
+  await readHomeAssistantJsonResponse<unknown>(r, 'Home Assistant persistent_notification.create');
   return { notificationId: id, messageId: `${id}:${Date.now()}`, messageCount: 1 };
 }
 

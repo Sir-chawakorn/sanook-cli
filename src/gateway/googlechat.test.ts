@@ -156,6 +156,23 @@ describe('google chat gateway', () => {
     expect(JSON.parse(String(fetchMock.mock.calls[1][1].body)).text).toHaveLength(1);
   });
 
+  it('reports malformed successful webhook responses with a redacted preview', async () => {
+    const webhookUrl = 'https://chat.googleapis.com/v1/spaces/AAAA/messages?key=k&token=secret-webhook-token';
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, _init: RequestInit) => new Response(`bad ${webhookUrl} payload`)));
+
+    const result = sendGoogleChatMessage(
+      config({
+        serviceAccountJson: undefined,
+        incomingWebhookUrl: webhookUrl,
+        homeChannel: 'webhook',
+      }),
+      'hello google chat',
+    );
+
+    await expect(result).rejects.toThrow('response ไม่ใช่ JSON');
+    await expect(result).rejects.not.toThrow('secret-webhook-token');
+  });
+
   it('redacts service-account secrets from OAuth errors', async () => {
     const { privateKey, json } = serviceAccountJson();
     await writeFile(join(TMP, 'google-chat-sa.json'), JSON.stringify(json));

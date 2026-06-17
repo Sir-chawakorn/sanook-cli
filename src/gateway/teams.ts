@@ -73,7 +73,12 @@ export function teamsGraphMessageUrl(config: ResolvedTeamsConfig, explicitTarget
 async function readTeamsJsonOrThrow<T>(response: Response, label: string): Promise<T> {
   const text = await response.text().catch(() => '');
   if (!response.ok) throw new Error(`${label} ${response.status}${text ? `: ${redactKey(text).slice(0, 240)}` : ''}`);
-  return (text ? JSON.parse(text) : {}) as T;
+  if (!text) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`${label} ${response.status}: response ไม่ใช่ JSON: ${redactKey(text).slice(0, 240)}`);
+  }
 }
 
 export async function sendTeamsMessage(

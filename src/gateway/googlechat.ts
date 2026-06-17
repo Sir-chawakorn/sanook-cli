@@ -163,7 +163,12 @@ async function readGoogleChatJsonOrThrow<T extends GoogleOAuthTokenResponse | Go
 ): Promise<T> {
   const text = await response.text().catch(() => '');
   if (!response.ok) throw new Error(`${label} ${response.status}${text ? `: ${redactGoogleChatDetail(text, secrets).slice(0, 240)}` : ''}`);
-  const json = (text ? JSON.parse(text) : {}) as T;
+  let json: T;
+  try {
+    json = (text ? JSON.parse(text) : {}) as T;
+  } catch {
+    throw new Error(`${label} ${response.status}: response ไม่ใช่ JSON: ${redactGoogleChatDetail(text, secrets).slice(0, 240)}`);
+  }
   const maybe = json as GoogleChatErrorBody;
   const error = maybe.error;
   if (error) {

@@ -131,7 +131,12 @@ async function readBlueBubblesJsonOrThrow<T>(
 ): Promise<BlueBubblesResponse<T>> {
   const text = await response.text().catch(() => '');
   if (!response.ok) throw new Error(`${label} ${response.status}${text ? `: ${redactBlueBubblesDetail(text, secrets).slice(0, 240)}` : ''}`);
-  const json = (text ? JSON.parse(text) : {}) as BlueBubblesResponse<T>;
+  let json: BlueBubblesResponse<T>;
+  try {
+    json = (text ? JSON.parse(text) : {}) as BlueBubblesResponse<T>;
+  } catch {
+    throw new Error(`${label} ${response.status}: response ไม่ใช่ JSON: ${redactBlueBubblesDetail(text, secrets).slice(0, 240)}`);
+  }
   const status = typeof json.status === 'number' ? json.status : response.status;
   if (status >= 400 || json.error) {
     const detail = json.error?.error || json.error?.type || json.message || 'unknown error';

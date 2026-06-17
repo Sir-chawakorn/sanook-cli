@@ -90,6 +90,22 @@ describe('Microsoft Teams gateway adapter', () => {
     });
   });
 
+  it('reports malformed successful Graph responses with a redacted preview', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, _init: RequestInit) => new Response('bad sk-secret123456 payload')));
+    const graphConfig = config({
+      deliveryMode: 'graph',
+      incomingWebhookUrl: undefined,
+      graphAccessToken: 'graph-token',
+      chatId: '19:chatid@thread.v2',
+      homeChannel: '19:chatid@thread.v2',
+    });
+
+    const result = sendTeamsMessage(graphConfig, 'hello teams');
+
+    await expect(result).rejects.toThrow('response ไม่ใช่ JSON');
+    await expect(result).rejects.not.toThrow('sk-secret123456');
+  });
+
   it('uses Graph for explicit chat targets even when a webhook URL is configured', async () => {
     const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify({ id: 'teams-message-2' })));
     vi.stubGlobal('fetch', fetchMock);

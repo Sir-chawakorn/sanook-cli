@@ -143,7 +143,12 @@ export function splitMattermostText(raw: string, limit = MATTERMOST_TEXT_LIMIT):
 async function readJsonOrThrow<T>(response: Response, label: string): Promise<T> {
   const text = await response.text().catch(() => '');
   if (!response.ok) throw new Error(`${label} ${response.status}${text ? `: ${redactKey(text).slice(0, 200)}` : ''}`);
-  return (text ? JSON.parse(text) : {}) as T;
+  if (!text) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`${label} ${response.status}: response ไม่ใช่ JSON: ${redactKey(text).slice(0, 200)}`);
+  }
 }
 
 export async function mattermostMe(config: ResolvedMattermostConfig): Promise<MattermostUser> {

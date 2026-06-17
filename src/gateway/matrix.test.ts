@@ -169,6 +169,15 @@ describe('Matrix gateway adapter', () => {
     expect(JSON.parse(String(init.body))).toEqual({ msgtype: 'm.text', body: 'hello matrix' });
   });
 
+  it('reports malformed successful Matrix responses with a redacted preview', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, _init: RequestInit) => new Response('bad sk-secret123456 payload')));
+
+    const result = sendMatrixMessage(config(), '!room:matrix.example.org', 'hello matrix');
+
+    await expect(result).rejects.toThrow('response ไม่ใช่ JSON');
+    await expect(result).rejects.not.toThrow('sk-secret123456');
+  });
+
   it('extracts Matrix text events, detects DMs, ignores self/old events, and applies mention policy', () => {
     const events = extractMatrixTextEvents(syncPayload(), config(), 10000);
     expect(events).toHaveLength(2);

@@ -1,8 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { readGatewayConfig, resolveHomeAssistantConfig, type ResolvedHomeAssistantConfig } from '../gateway/config.js';
-import { homeAssistantApiUrl, homeAssistantAuthHeaders } from '../gateway/homeassistant.js';
-import { redactKey } from '../providers/keys.js';
+import { homeAssistantApiUrl, homeAssistantAuthHeaders, readHomeAssistantJsonResponse } from '../gateway/homeassistant.js';
 
 const BLOCKED_DOMAINS = new Set(['shell_command', 'command_line', 'python_script', 'pyscript', 'hassio', 'rest_command']);
 const ENTITY_ID_RE = /^[a-z_][a-z0-9_]*\.[a-z0-9_]+$/;
@@ -34,9 +33,7 @@ async function haFetch<T>(config: ResolvedHomeAssistantConfig, path: string, ini
       ...((init.headers as Record<string, string> | undefined) ?? {}),
     },
   });
-  const text = await r.text().catch(() => '');
-  if (!r.ok) throw new Error(`Home Assistant API ${r.status}${text ? `: ${redactKey(text).slice(0, 200)}` : ''}`);
-  return (text ? JSON.parse(text) : {}) as T;
+  return readHomeAssistantJsonResponse<T>(r, 'Home Assistant API');
 }
 
 function validateEntityId(entityId: string): string {

@@ -103,6 +103,15 @@ describe('Mattermost gateway adapter', () => {
     });
   });
 
+  it('reports malformed successful Mattermost responses with a redacted preview', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, _init: RequestInit) => new Response('bad sk-secret123456 payload')));
+
+    const result = sendMattermostMessage(config(), 'chan-home', 'hello');
+
+    await expect(result).rejects.toThrow('response ไม่ใช่ JSON');
+    await expect(result).rejects.not.toThrow('sk-secret123456');
+  });
+
   it('parses posted websocket events, ignores bot posts, and applies mention policy', () => {
     const event = parseMattermostPostedEvent(postedEvent(), { userId: 'bot-1', username: 'sanook' });
     expect(event).toMatchObject({

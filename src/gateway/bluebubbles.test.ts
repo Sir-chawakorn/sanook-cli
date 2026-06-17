@@ -91,6 +91,15 @@ describe('BlueBubbles gateway', () => {
     });
   });
 
+  it('reports malformed successful REST responses with a redacted preview', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_url: string | URL) => new Response('bad sk-secret123456 payload')));
+
+    const result = sendBlueBubblesMessage(config({ password: 'sk-secret123456' }), 'hello iMessage', 'iMessage;-;user2@example.com');
+
+    await expect(result).rejects.toThrow('response ไม่ใช่ JSON');
+    await expect(result).rejects.not.toThrow('sk-secret123456');
+  });
+
   it('creates a new chat for address targets when the server private API is enabled', async () => {
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
       if (String(url).includes('/api/v1/chat/query')) return new Response(JSON.stringify({ status: 200, data: [] }));

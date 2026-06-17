@@ -91,6 +91,13 @@ describe('Home Assistant gateway adapter', () => {
     });
   });
 
+  it('reports malformed successful notification responses with a redacted preview', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, _init: RequestInit) => new Response('bad sk-secret123456 payload')));
+
+    await expect(sendHomeAssistantNotification(config(), 'hello home')).rejects.toThrow('response ไม่ใช่ JSON');
+    await expect(sendHomeAssistantNotification(config(), 'hello home')).rejects.not.toThrow('sk-secret123456');
+  });
+
   it('filters state_changed events using watch lists, ignore lists, unchanged values, and cooldowns', () => {
     expect(shouldForwardHomeAssistantEvent(config(), stateEvent()).ok).toBe(true);
     expect(shouldForwardHomeAssistantEvent(config(), stateEvent('sensor.temp', '20', '21')).reason).toBe('not_watched');

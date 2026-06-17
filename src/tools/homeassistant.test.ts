@@ -66,6 +66,14 @@ describe('Home Assistant tools', () => {
     expect(out).toBe('light: turn_off, turn_on');
   });
 
+  it('reports invalid successful JSON responses with a redacted preview', async () => {
+    stubHomeAssistantEnv();
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, _init: RequestInit) => new Response('bad sk-secret123456 payload')));
+
+    await expect(haListServicesTool.execute!({}, opts)).rejects.toThrow('response ไม่ใช่ JSON');
+    await expect(haListServicesTool.execute!({}, opts)).rejects.not.toThrow('sk-secret123456');
+  });
+
   it('blocks unsafe service domains and calls safe services through REST', async () => {
     stubHomeAssistantEnv();
     const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify([{ entity_id: 'light.kitchen' }])));
