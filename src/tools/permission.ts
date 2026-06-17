@@ -59,7 +59,8 @@ function hasRmRecursiveForce(cmd: string): boolean {
 function hasDangerousGitOperation(cmd: string): boolean {
   for (const match of cmd.matchAll(/\bgit\b/gi)) {
     const args = shellishArgsAfter(cmd, match.index + match[0].length).map(cleanShellToken);
-    const aliases = new Map<string, string>();
+    const envAssignments = shellEnvAssignmentsBeforeCommand(cmd, match.index);
+    const { aliases, unknownAliases } = gitAliasesFromEnvConfig(envAssignments);
     for (let i = 0; i < args.length; i += 1) {
       const arg = args[i];
       if (arg === '--') break;
@@ -68,6 +69,21 @@ function hasDangerousGitOperation(cmd: string): boolean {
         const alias = gitAliasFromConfig(configValue.value);
         if (alias) aliases.set(alias.name, alias.command);
         if (configValue.consumesNext) i += 1;
+        continue;
+      }
+      const configEnvValue = gitConfigEnvValue(arg, args[i + 1]);
+      if (configEnvValue) {
+        const alias = gitAliasFromConfigEnv(configEnvValue.value, envAssignments);
+        if (alias) {
+          if (alias.command === undefined) {
+            aliases.delete(alias.name);
+            unknownAliases.add(alias.name);
+          } else {
+            unknownAliases.delete(alias.name);
+            aliases.set(alias.name, alias.command);
+          }
+        }
+        if (configEnvValue.consumesNext) i += 1;
         continue;
       }
       if (arg === 'push') {
@@ -87,6 +103,7 @@ function hasDangerousGitOperation(cmd: string): boolean {
         if (gitAliasHasDeniedOperation(aliasCommand, args.slice(i + 1))) return true;
         break;
       }
+      if (unknownAliases.has(arg)) return true;
       if (gitOptionConsumesNext(arg)) {
         i += 1;
         continue;
@@ -104,9 +121,60 @@ function gitInlineConfigValue(arg: string, next: string | undefined): { value: s
   return undefined;
 }
 
+function gitConfigEnvValue(arg: string, next: string | undefined): { value: string; consumesNext: boolean } | undefined {
+  if (arg === '--config-env') return next ? { value: next, consumesNext: true } : undefined;
+  if (arg.startsWith('--config-env=')) return { value: arg.slice('--config-env='.length), consumesNext: false };
+  return undefined;
+}
+
 function gitAliasFromConfig(config: string): { name: string; command: string } | undefined {
   const match = config.match(/^alias\.([^=\s]+)=(.+)$/i);
   return match ? { name: match[1], command: match[2] } : undefined;
+}
+
+function gitAliasFromConfigEnv(
+  configEnv: string,
+  envAssignments: Map<string, string>,
+): { name: string; command: string | undefined } | undefined {
+  const match = configEnv.match(/^alias\.([^=\s]+)=([A-Za-z_][A-Za-z0-9_]*)$/i);
+  if (!match) return undefined;
+  return { name: match[1], command: envAssignments.get(match[2]) };
+}
+
+function gitAliasesFromEnvConfig(envAssignments: Map<string, string>): {
+  aliases: Map<string, string>;
+  unknownAliases: Set<string>;
+} {
+  const aliases = new Map<string, string>();
+  const unknownAliases = new Set<string>();
+  const countValue = envAssignments.get('GIT_CONFIG_COUNT');
+  if (!countValue || !/^\d+$/.test(countValue)) return { aliases, unknownAliases };
+  const count = Number.parseInt(countValue, 10);
+  const entries: { index: number; key: string }[] = [];
+
+  for (const [name, key] of envAssignments) {
+    const match = name.match(/^GIT_CONFIG_KEY_(\d+)$/);
+    if (!match) continue;
+    const index = Number.parseInt(match[1], 10);
+    if (index >= count) continue;
+    entries.push({ index, key });
+  }
+
+  entries.sort((a, b) => a.index - b.index);
+  for (const { index, key } of entries) {
+    const alias = key.match(/^alias\.([^=\s]+)$/i);
+    if (!alias) continue;
+    const command = envAssignments.get(`GIT_CONFIG_VALUE_${index}`);
+    if (command === undefined) {
+      aliases.delete(alias[1]);
+      unknownAliases.add(alias[1]);
+    } else {
+      unknownAliases.delete(alias[1]);
+      aliases.set(alias[1], command);
+    }
+  }
+
+  return { aliases, unknownAliases };
 }
 
 function gitOptionConsumesNext(arg: string): boolean {
@@ -373,6 +441,78 @@ function shellishTokens(cmd: string): string[] {
   return args;
 }
 
+function shellCommandSegmentStart(cmd: string, end: number): number {
+  let start = 0;
+  let quote = '';
+  let escaping = false;
+
+  for (let i = 0; i < end; i += 1) {
+    const ch = cmd[i];
+    if (escaping) {
+      escaping = false;
+      continue;
+    }
+    if (ch === '\\' && quote !== "'") {
+      escaping = true;
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) quote = '';
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
+    if (ch === '`' || ch === ';' || ch === '&' || ch === '|' || ch === '\n' || ch === '\r') start = i + 1;
+  }
+  return start;
+}
+
+function shellEnvAssignment(clean: string): { name: string; value: string } | undefined {
+  const match = clean.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+  return match ? { name: match[1], value: match[2] } : undefined;
+}
+
+function shellEnvAssignmentsBeforeCommand(cmd: string, commandStart: number): Map<string, string> {
+  const segmentStart = shellCommandSegmentStart(cmd, commandStart);
+  const tokens = shellishTokens(cmd.slice(segmentStart, commandStart));
+  const assignments = new Map<string, string>();
+  let envMode = false;
+  let envOptionsDone = false;
+  let commandSeen = false;
+
+  for (let i = 0; i < tokens.length; i += 1) {
+    const clean = cleanShellToken(tokens[i]);
+    const assignment = shellEnvAssignment(clean);
+    if (assignment && (!commandSeen || envMode)) {
+      assignments.set(assignment.name, assignment.value);
+      continue;
+    }
+    if (!commandSeen && clean === 'env') {
+      envMode = true;
+      envOptionsDone = false;
+      commandSeen = true;
+      continue;
+    }
+    if (envMode) {
+      if (!envOptionsDone && clean === '--') {
+        envOptionsDone = true;
+        continue;
+      }
+      if (!envOptionsDone && envOptionConsumesNext(clean)) {
+        i += 1;
+        continue;
+      }
+      if (!envOptionsDone && clean.startsWith('-')) continue;
+    }
+    commandSeen = true;
+    envMode = false;
+  }
+
+  return assignments;
+}
+
 function inlineRedirectionTarget(token: string): string | undefined {
   const clean = cleanRedirectionToken(token);
   const match = clean.match(/^(?:\d*|&)(?:<>|>>|>|<)(?![<(])(.+)$/);
@@ -442,14 +582,14 @@ function envWrappedCommandDenied(cmd: string, depth: number): boolean {
       }
       const inlineSplitPayload = inlineEnvSplitStringPayload(clean);
       if (inlineSplitPayload !== undefined) {
-        if (!checkBash(cleanCommandPayloadToken(inlineSplitPayload), depth + 1).ok) return true;
-        continue;
+        const payload = [inlineSplitPayload, ...args.slice(i + 1)].join(' ');
+        if (payload && !checkBash(cleanCommandPayloadToken(payload), depth + 1).ok) return true;
+        break;
       }
       if (clean === '-S' || clean === '--split-string') {
-        const payload = args[i + 1];
+        const payload = args.slice(i + 1).join(' ');
         if (payload && !checkBash(cleanCommandPayloadToken(payload), depth + 1).ok) return true;
-        i += 1;
-        continue;
+        break;
       }
       if (envOptionConsumesNext(clean)) {
         i += 1;

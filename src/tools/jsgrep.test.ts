@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, mkdir, writeFile, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { jsGrep } from './search.js';
@@ -109,6 +109,24 @@ describe('jsGrep (ripgrep-less fallback)', () => {
     const out = await jsGrep('needleHere', dir, '.');
     expect(out).not.toContain('node_modules');
     expect(out).not.toContain('blob.dat'); // null byte → treated as binary, skipped
+  });
+
+  it('does not follow symlinked directories during broad fallback searches', async () => {
+    const linkedTarget = await mkdtemp(join(tmpdir(), 'jsgrep-linked-'));
+    try {
+      await writeFile(join(linkedTarget, 'outside.ts'), 'linkedNeedle should not be searched\n');
+      try {
+        await symlink(linkedTarget, join(dir, 'linked-dir'));
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        if (code === 'EPERM' || code === 'EACCES' || code === 'ENOTSUP') return;
+        throw err;
+      }
+
+      expect(await jsGrep('linkedNeedle', dir, '.')).toBe('(no matches)');
+    } finally {
+      await rm(linkedTarget, { recursive: true, force: true });
+    }
   });
 
   it('skips protected env files during broad fallback searches', async () => {

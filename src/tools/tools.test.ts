@@ -115,7 +115,38 @@ describe('permission gate', () => {
     expect(checkBash("git -c alias.fp='!git push -f' fp origin main").ok).toBe(false);
     expect(checkBash("git -c alias.rh='reset --hard' rh HEAD~1").ok).toBe(false);
     expect(checkBash("git -c alias.wipe='clean -fdx' wipe").ok).toBe(false);
+    expect(checkBash("GIT_ALIAS_FP='push -f' git --config-env=alias.fp=GIT_ALIAS_FP fp origin main").ok).toBe(false);
+    expect(checkBash("GIT_ALIAS_DEL='push origin :main' git --config-env alias.del=GIT_ALIAS_DEL del").ok).toBe(false);
+    expect(checkBash("GIT_ALIAS_SHELL='!git push -f' git --config-env=alias.fp=GIT_ALIAS_SHELL fp origin main").ok).toBe(false);
+    expect(checkBash("GIT_ALIAS_RH='reset --hard' git --config-env=alias.rh=GIT_ALIAS_RH rh HEAD~1").ok).toBe(false);
+    expect(checkBash("GIT_ALIAS_WIPE='clean -fdx' git --config-env=alias.wipe=GIT_ALIAS_WIPE wipe").ok).toBe(false);
+    expect(checkBash("env -- GIT_ALIAS_FP='push -f' git --config-env=alias.fp=GIT_ALIAS_FP fp origin main").ok).toBe(false);
+    expect(checkBash("git --config-env=alias.fp=GIT_ALIAS_FROM_ENV fp origin main").ok).toBe(false);
+    expect(
+      checkBash("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.fp GIT_CONFIG_VALUE_0='push -f' git fp origin main").ok,
+    ).toBe(false);
+    expect(
+      checkBash("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.rh GIT_CONFIG_VALUE_0='reset --hard' git rh HEAD~1").ok,
+    ).toBe(false);
+    expect(
+      checkBash("env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.del GIT_CONFIG_VALUE_0='push origin :main' git del").ok,
+    ).toBe(false);
+    expect(checkBash('GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.fp git fp origin main').ok).toBe(false);
+    expect(
+      checkBash(
+        "GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_1=alias.fp GIT_CONFIG_VALUE_1='push -f' GIT_CONFIG_KEY_0=alias.fp GIT_CONFIG_VALUE_0='status --short' git fp origin main",
+      ).ok,
+    ).toBe(false);
     expect(checkBash("git -c alias.st='status --short' st").ok).toBe(true);
+    expect(checkBash("GIT_ALIAS_ST='status --short' git --config-env=alias.st=GIT_ALIAS_ST st").ok).toBe(true);
+    expect(checkBash("env -- GIT_ALIAS_ST='status --short' git --config-env=alias.st=GIT_ALIAS_ST st").ok).toBe(true);
+    expect(checkBash("git --config-env=alias.fp=GIT_ALIAS_FROM_ENV status").ok).toBe(true);
+    expect(
+      checkBash("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.st GIT_CONFIG_VALUE_0='status --short' git st").ok,
+    ).toBe(true);
+    expect(
+      checkBash("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.fp GIT_CONFIG_VALUE_0='push -f' git status").ok,
+    ).toBe(true);
   });
   it('block forced git clean commands', () => {
     expect(checkBash('git clean -f').ok).toBe(false);
@@ -170,7 +201,10 @@ describe('permission gate', () => {
     expect(checkBash('env -C config cat .env.local').ok).toBe(false);
     expect(checkBash("env -S 'cat .env'").ok).toBe(false);
     expect(checkBash("env -S'cat .env.local'").ok).toBe(false);
+    expect(checkBash("env -Sbash -lc 'cat .env'").ok).toBe(false);
+    expect(checkBash("env -S'cat' .env.local").ok).toBe(false);
     expect(checkBash('env --split-string="cat .env.local"').ok).toBe(false);
+    expect(checkBash("env --split-string='cat' .env.local").ok).toBe(false);
     expect(checkBash("env -S 'bash -lc \"cat .env\"'").ok).toBe(false);
     expect(checkBash("bash -lc 'cat .env'").ok).toBe(false);
     expect(checkBash("bash -lc'cat .env'").ok).toBe(false);
@@ -238,7 +272,9 @@ describe('permission gate', () => {
     expect(checkBash("rg --glob='!.env' API_KEY .").ok).toBe(true);
     expect(checkBash('rg -g!.env.local API_KEY .').ok).toBe(true);
     expect(checkBash("env -S 'cat .env.example'").ok).toBe(true);
+    expect(checkBash("env -S'cat' .env.example").ok).toBe(true);
     expect(checkBash('env --split-string="cat .env.example"').ok).toBe(true);
+    expect(checkBash("env --split-string='cat' .env.example").ok).toBe(true);
   });
   it('allow safe cmd', () => expect(checkBash('ls -la && grep foo bar').ok).toBe(true));
   it('block write to .env', async () => expect((await checkWritePath('.env')).ok).toBe(false));

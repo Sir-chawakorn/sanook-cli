@@ -25,6 +25,6 @@ reflection รายงาน (→Retrospectives)
 
 > รายละเอียดทุกโฟลเดอร์ + decision rules → [[Vault Structure Map]]
 
-_(ยังว่าง — โน้ตในโฟลเดอร์นี้จะถูกลิงก์ที่นี่)_
+- [[Reviews/2026-06-18-auto-improve-maintenance]] — recurring local maintenance baseline and next candidate
 
 up:: [[Home]]
