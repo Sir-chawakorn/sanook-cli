@@ -40,6 +40,10 @@ export function hasPricingForKey(specKey: string): boolean {
   return specKey in PRICING;
 }
 
+function isPricingKey(key: string): boolean {
+  return /^[^:\s]+:\S+$/.test(key);
+}
+
 /**
  * merge pricing เพิ่ม/override (จาก config `pricing` หรือ env SANOOK_PRICING)
  * — ให้ budget cap ใช้ได้กับ provider ที่ยังไม่มีในตาราง โดยไม่ต้องแก้โค้ด
@@ -47,6 +51,7 @@ export function hasPricingForKey(specKey: string): boolean {
 export function registerPricing(extra: Record<string, Partial<Pricing>> | undefined): void {
   if (!extra) return;
   for (const [key, p] of Object.entries(extra)) {
+    if (!isPricingKey(key)) continue;
     if (p == null || typeof p !== 'object') continue;
     const base = PRICING[key] ?? { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
     const inputRate = Number(p.input ?? base.input);

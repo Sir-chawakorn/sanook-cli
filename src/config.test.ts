@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfig, parsePricingOverride } from './config.js';
+import { hasPricingForKey, PRICING } from './cost.js';
 
 // ใช้ cwd = temp dir (ไม่แตะ process.env) — test project/CLI layering แบบ relative
 describe('loadConfig layering', () => {
@@ -13,6 +14,9 @@ describe('loadConfig layering', () => {
   });
   afterEach(async () => {
     vi.unstubAllEnvs();
+    for (const key of Object.keys(PRICING)) {
+      if (key.startsWith('test:')) delete PRICING[key];
+    }
     await rm(dir, { recursive: true, force: true });
   });
 
@@ -75,6 +79,15 @@ describe('loadConfig layering', () => {
     expect(c.model).toBe('ok'); // แต่ model (preference) ยัง apply ได้
   });
 
+  it('untrusted project ตั้ง pricing ปลอมไม่ได้', async () => {
+    await writeFile(
+      join(dir, '.sanook', 'config.json'),
+      JSON.stringify({ pricing: { 'test:untrusted-pricing': { input: 0.001, output: 0.001 } } }),
+    );
+    await loadConfig({}, dir);
+    expect(hasPricingForKey('test:untrusted-pricing')).toBe(false);
+  });
+
   it('trusted project ตั้ง budgetUsd ได้', async () => {
     vi.stubEnv('SANOOK_TRUST_PROJECT', '1');
     await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ budgetUsd: 2.5 }));
@@ -91,9 +104,20 @@ describe('loadConfig layering', () => {
     expect(parsePricingOverride('{"openai:gpt-x":{"input":1,"output":3}}')).toEqual({
       'openai:gpt-x': { input: 1, output: 3 },
     });
-    expect(() => parsePricingOverride('{"openai:gpt-x":{"input":"1"}}')).toThrow();
-    expect(() => parsePricingOverride('{"openai:gpt-x":{"input":-1}}')).toThrow();
-    expect(() => parsePricingOverride('{"openai:gpt-x":{"unknown":1}}')).toThrow();
+    expect(() => parsePricingOverride('{bad json')).toThrow(/pricing JSON parse ไม่สำเร็จ/);
+    expect(() => parsePricingOverride('{"openai:gpt-x":{"input":"1"}}')).toThrow(/openai:gpt-x.input/);
+    expect(() => parsePricingOverride('{"openai:gpt-x":{"input":-1}}')).toThrow(/openai:gpt-x.input/);
+    expect(() => parsePricingOverride('{"openai:gpt-x":{"unknown":1}}')).toThrow(/openai:gpt-x/);
+    expect(() => parsePricingOverride('{"openai-gpt-x":{"input":1}}')).toThrow(/provider:model/);
+  });
+
+  it('SANOOK_PRICING ใช้ parser เดียวกับ CLI แต่ invalid env ไม่ทำ boot พัง', async () => {
+    vi.stubEnv('SANOOK_PRICING', '{bad json');
+    await expect(loadConfig({}, dir)).resolves.toBeDefined();
+
+    vi.stubEnv('SANOOK_PRICING', '{"test:env-pricing":{"input":1,"output":2}}');
+    await loadConfig({}, dir);
+    expect(hasPricingForKey('test:env-pricing')).toBe(true);
   });
 });
 

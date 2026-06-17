@@ -1,8 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { CostMeter, PRICING, SharedBudget, registerPricing } from './cost.js';
 import { PROVIDERS } from './providers/registry.js';
 
 describe('CostMeter budget cap', () => {
+  afterEach(() => {
+    for (const key of Object.keys(PRICING)) {
+      if (key.startsWith('test:')) delete PRICING[key];
+    }
+  });
+
   it('haiku (default fast alias) มี pricing → budget cap ทำงานจริง', () => {
     const m = new CostMeter('anthropic:claude-haiku-4-5', 0.001);
     expect(m.hasPricing).toBe(true);
@@ -32,6 +38,16 @@ describe('CostMeter budget cap', () => {
 
     registerPricing({ 'test:ok': { input: 1, output: 2 } });
     expect(new CostMeter('test:ok').hasPricing).toBe(true);
+  });
+
+  it('registerPricing ข้าม key ที่ไม่ใช่ provider:model', () => {
+    registerPricing({
+      'test-bad': { input: 1, output: 2 },
+      'test:ok-key': { input: 1, output: 2 },
+    });
+
+    expect(new CostMeter('test-bad').hasPricing).toBe(false);
+    expect(new CostMeter('test:ok-key').hasPricing).toBe(true);
   });
 
   it('override ที่ใส่แค่ input/output → cacheRead อนุมานจาก input ไม่ใช่ 0 (กัน undercount)', () => {

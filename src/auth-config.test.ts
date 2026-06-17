@@ -52,4 +52,31 @@ describe('auth config store', () => {
     await loadKeysIntoEnv();
     expect(process.env.OPENAI_API_KEY).toBe('env-key');
   });
+
+  it('ignores malformed auth store entries when reading and loading env', async () => {
+    await mkdir(join(home, '.sanook'), { recursive: true });
+    await writeFile(
+      join(home, '.sanook', 'auth.json'),
+      JSON.stringify({
+        OPENAI_API_KEY: 'stored-key',
+        '1BAD': 'numeric-prefix',
+        'BAD-NAME': 'dash',
+        ['__proto__']: 'reserved',
+        NESTED: { value: 'not-a-string' },
+      }),
+    );
+
+    const { loadKeysIntoEnv, readStoredAuthRaw, removeStoredKey, saveKey } = await import('./config.js');
+    await expect(saveKey('BAD-NAME', 'x')).rejects.toThrow(/env var/);
+    await expect(removeStoredKey('BAD-NAME')).resolves.toBe(false);
+    await expect(removeStoredKey('toString')).resolves.toBe(false);
+    await expect(readStoredAuthRaw()).resolves.toEqual({ OPENAI_API_KEY: 'stored-key' });
+
+    delete process.env.OPENAI_API_KEY;
+    await loadKeysIntoEnv();
+    expect(process.env.OPENAI_API_KEY).toBe('stored-key');
+    expect(process.env['1BAD']).toBeUndefined();
+    expect(process.env['BAD-NAME']).toBeUndefined();
+    expect(process.env.NESTED).toBeUndefined();
+  });
 });

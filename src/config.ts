@@ -8,9 +8,13 @@ import { registerPricing, type Pricing } from './cost.js';
 export const CONFIG_DIR = appHomePath();
 const CONFIG_PATH = join(CONFIG_DIR, 'config.json');
 const AUTH_PATH = join(CONFIG_DIR, 'auth.json'); // API keys (chmod 0600)
+const AUTH_ENV_VAR_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const RESERVED_AUTH_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+const PricingKeySchema = z.string().regex(/^[^:\s]+:\S+$/, 'key ต้องเป็น provider:model');
 
 export const PricingOverrideSchema = z.record(
-  z.string(),
+  PricingKeySchema,
   z
     .object({
       input: z.number().finite().nonnegative().optional(),
@@ -147,16 +151,29 @@ function parseEnvPricing(): PricingOverride | undefined {
   const raw = process.env.SANOOK_PRICING;
   if (!raw) return undefined;
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    const res = PricingOverrideSchema.safeParse(parsed);
-    return res.success ? res.data : undefined;
+    return parsePricingOverride(raw);
   } catch {
     return undefined; // JSON ไม่ถูก = ข้าม (ไม่ทำให้ boot ล้ม)
   }
 }
 
 export function parsePricingOverride(raw: string): PricingOverride {
-  return PricingOverrideSchema.parse(JSON.parse(raw));
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('pricing JSON parse ไม่สำเร็จ');
+  }
+
+  const res = PricingOverrideSchema.safeParse(parsed);
+  if (!res.success) {
+    const details = res.error.issues
+      .slice(0, 3)
+      .map((issue) => `${issue.path.length ? issue.path.join('.') : 'pricing'}: ${issue.message}`)
+      .join('; ');
+    throw new Error(`pricing schema ไม่ถูกต้อง${details ? ` — ${details}` : ''}`);
+  }
+  return res.data;
 }
 
 /** ครั้งแรกที่รัน (ยังไม่มี global config) → ต้องทำ setup wizard */
@@ -195,12 +212,16 @@ export function authConfigPath(): string {
   return AUTH_PATH;
 }
 
+function isSafeAuthEnvVarName(name: string): boolean {
+  return AUTH_ENV_VAR_RE.test(name) && !RESERVED_AUTH_KEYS.has(name);
+}
+
 /** อ่าน auth.json ดิบแบบกรองเฉพาะ string values — caller ต้อง redact ก่อนโชว์ */
 export async function readStoredAuthRaw(): Promise<Record<string, string>> {
   const raw = await readJson(AUTH_PATH);
   const auth: Record<string, string> = {};
   for (const [k, v] of Object.entries(raw)) {
-    if (typeof v === 'string') auth[k] = v;
+    if (isSafeAuthEnvVarName(k) && typeof v === 'string') auth[k] = v;
   }
   return auth;
 }
@@ -215,6 +236,7 @@ export async function patchGlobalConfig(patch: Record<string, unknown>): Promise
 
 /** บันทึก API key ลง ~/.sanook/auth.json (chmod 0600) + set env ทันทีสำหรับ session นี้ */
 export async function saveKey(envVar: string, key: string): Promise<void> {
+  if (!isSafeAuthEnvVarName(envVar)) throw new Error(`env var ไม่ถูกต้อง: ${envVar}`);
   await mkdir(CONFIG_DIR, { recursive: true });
   const auth = await readStoredAuthRaw();
   auth[envVar] = key;
@@ -225,9 +247,10 @@ export async function saveKey(envVar: string, key: string): Promise<void> {
 
 /** ลบ key ที่ Sanook เก็บไว้ใน auth.json (ไม่แตะ env จริงของ shell ภายนอก) */
 export async function removeStoredKey(envVar: string): Promise<boolean> {
+  if (!isSafeAuthEnvVarName(envVar)) return false;
   await mkdir(CONFIG_DIR, { recursive: true });
   const auth = await readStoredAuthRaw();
-  if (!(envVar in auth)) return false;
+  if (!Object.prototype.hasOwnProperty.call(auth, envVar)) return false;
   delete auth[envVar];
   await writeFile(AUTH_PATH, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
   await chmod(AUTH_PATH, 0o600).catch(() => {});
@@ -247,9 +270,9 @@ export async function clearStoredAuth(): Promise<void> {
 /** โหลด key จาก auth.json เข้า env ตอน boot (ไม่ override env ที่ตั้งไว้แล้ว) */
 export async function loadKeysIntoEnv(): Promise<void> {
   try {
-    const auth = JSON.parse(await readFile(AUTH_PATH, 'utf8')) as Record<string, unknown>;
+    const auth = await readStoredAuthRaw();
     for (const [k, v] of Object.entries(auth)) {
-      if (!process.env[k] && typeof v === 'string') process.env[k] = v;
+      if (!process.env[k]) process.env[k] = v;
     }
   } catch {
     /* ไม่มี auth.json = ข้าม */
