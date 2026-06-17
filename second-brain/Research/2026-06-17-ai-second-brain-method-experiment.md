@@ -61,11 +61,11 @@ Metric:
 
 | Rank | Method | Score | File Coverage | Capability Coverage | Avg Tokens |
 |---:|---|---:|---:|---:|---:|
-| 1 | Scientific loop sequence | 97.3 | 100% | 100% | ~2719 |
-| 2 | Index + JIT context policy | 62.7 | 64% | 43% | ~2108 |
-| 3 | Single retrieval index | 40.6 | 39% | 18% | ~1683 |
-| 4 | Folder map + destination indexes | 21.1 | 13% | 18% | ~2530 |
-| 5 | Session-log only | 16.4 | 6% | 10% | ~245 |
+| 1 | Scientific loop sequence | 97.0 | 100% | 100% | ~2859 |
+| 2 | Index + JIT context policy | 62.6 | 64% | 43% | ~2231 |
+| 3 | Single retrieval index | 40.6 | 39% | 18% | ~1879 |
+| 4 | Folder map + destination indexes | 20.9 | 13% | 18% | ~2561 |
+| 5 | Session-log only | 16.4 | 6% | 10% | ~276 |
 
 ## Interpretation
 
@@ -81,7 +81,7 @@ Metric:
 
 ข้อควรระวัง:
 
-- Avg tokens ~2719 สูงกว่า target ~2k
+- Avg tokens ~2859 สูงกว่า target ~2k
 - บาง scenario สูงเพราะต้องโหลดไฟล์ใหญ่ เช่น `Vault Structure Map.md` และ ingest rules
 - ดังนั้น implementation ต้องใช้แบบ **JIT**: โหลด heading/index ก่อน, expand body เฉพาะเมื่อจำเป็น, และอย่า preload ทุก rule ทุกครั้ง
 

@@ -25,6 +25,14 @@ pack รวม context พร้อมโหลด
 
 > รายละเอียดทุกโฟลเดอร์ + decision rules → [[Vault Structure Map]]
 
-_(ยังว่าง — โน้ตในโฟลเดอร์นี้จะถูกลิงก์ที่นี่)_
+## Context Packs
+
+- [[Shared/Context-Packs/second-brain-maintenance]] — แก้ vault structure, routing, memory policy, indexes, runbooks, agent adapters
+- [[Shared/Context-Packs/coding-release]] — แก้ code/tests/build/release/CLI scripts
+- [[Shared/Context-Packs/research-to-framework]] — research/experiment → framework update
+
+## Use Rule
+
+โหลด pack เมื่อ task ตรงกับ pack ชัดเจน; ถ้าไม่ตรงให้ใช้ [[Shared/AI-Context-Index]] + JIT rules ปกติ
 
 up:: [[Shared/_Index]]

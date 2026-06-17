@@ -38,6 +38,7 @@
 ## CLI Habits
 - ตั้งชื่อ session เมื่อเริ่มงานมีสาระ (`/title ...`) และใช้ `/usage` หรือ `/compress` เมื่อ context เริ่มแน่น
 - ระบุ role ในใจ/สรุปงานเมื่อจำเป็น: Scientist / Cartographer / Librarian / Operator / Editor / Archivist
+- งานซ้ำให้เช็ก `Shared/Context-Packs/_Index.md`; งาน framework ให้เช็ก `Evals/second-brain-benchmarks.md`
 - งานยาว/คู่ขนานใช้ Sanook background/worktree เฉพาะเมื่อขอบเขตชัด และสรุปผลกลับเข้า `Sessions/`
 - หลังงานสำคัญเสร็จ: เขียน `Sessions/{{DATE}}-<topic>.md` ตาม 7 หัวข้อใน `CLAUDE.md`
 

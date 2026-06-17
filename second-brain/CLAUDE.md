@@ -94,6 +94,9 @@ Merge don't append · ลบ fact obsolete · รวม fact ซ้อน · ห
 | เมื่อ | อ่าน / ทำ |
 |---|---|
 | **งานไม่ trivial ทุกงาน** | `Runbooks/ai-second-brain-operating-sequence.md` — Scientific Loop Sequence + เลือก role (Scientist/Cartographer/Librarian/Operator/Editor/Archivist) |
+| **งานซ้ำ/task family ชัดเจน** | `Shared/Context-Packs/_Index.md` — เลือก context pack ก่อนประกอบ context เอง |
+| **ก่อน/หลังแก้ framework** | `Evals/second-brain-benchmarks.md` — benchmark ว่า AI ใช้ vault ได้ดีขึ้นจริงไหม |
+| **ปรับ owner-facing style** | `Shared/User-Memory/response-examples.md` — taste examples + update rule |
 | **ก่อนประกอบ context ทุกงาน** | `Shared/Rules/context-assembly-policy.md` — สำคัญที่หัว/ท้าย ไม่ฝังกลาง · budget ~2k · identifier ก่อน body (กัน context-rot) |
 | **ingest content ภายนอก** (web/paste/email) | `Runbooks/ingest-quarantine.md` → ลง `Intake/_Quarantine/` + scan injection ก่อน promote |
 | **เขียน/แก้ fact** | `Shared/Rules/frontmatter-standard.md` — bi-temporal (`valid_from`/`invalidated_at`/`status`/`superseded_by`) แทนการทับเงียบ |

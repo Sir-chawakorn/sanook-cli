@@ -11,7 +11,7 @@ parent: "[[Home]]"
 > quality loop (runner + ผล) — error-analysis + self-eval
 
 ## ใส่ที่นี่
-failure-taxonomy/self-eval-rubric/golden-set/correction-pairs/quality-ledger
+failure-taxonomy/self-eval-rubric/golden-set/correction-pairs/quality-ledger/benchmarks
 
 ## ไม่ใส่ที่นี่
 golden case เอง (→Acceptance)
@@ -25,6 +25,14 @@ golden case เอง (→Acceptance)
 
 > รายละเอียดทุกโฟลเดอร์ + decision rules → [[Vault Structure Map]]
 
-_(ยังว่าง — โน้ตในโฟลเดอร์นี้จะถูกลิงก์ที่นี่)_
+## Evaluation Assets
+
+- [[Evals/second-brain-benchmarks]] — benchmark set สำหรับวัดว่า AI ใช้ vault/framework ได้ดีขึ้นจริงไหม
+- [[Evals/self-eval-rubric]] — binary self-eval หลังงานไม่ trivial
+- [[Evals/retrieval-eval]] — eval ว่าโหลด context ถูกตัวไหม
+- [[Evals/quality-ledger]] — ledger ผล eval ตามเวลา
+- [[Evals/failure-taxonomy]] — taxonomy ของ failure
+- [[Evals/correction-pairs]] — ❌→✅ examples + lessons
+- [[Evals/golden-set]] — curated golden set
 
 up:: [[Home]]

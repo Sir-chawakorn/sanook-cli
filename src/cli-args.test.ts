@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseArgs } from './cli-args.js';
+import { hasContinueAnyRequest, hasContinueRequest, hasResumeRequest, parseArgs } from './cli-args.js';
 
 describe('parseArgs', () => {
   it('parses headless prompt flags', () => {
@@ -23,10 +23,102 @@ describe('parseArgs', () => {
     expect(parseArgs(['-r', 'abc123']).resume).toBe('abc123');
   });
 
+  it('detects split and inline resume requests', () => {
+    expect(hasResumeRequest(['--resume', 'abc123'])).toBe(true);
+    expect(hasResumeRequest(['-r', 'abc123'])).toBe(true);
+    expect(hasResumeRequest(['--resume=abc123'])).toBe(true);
+    expect(hasResumeRequest(['--continue'])).toBe(false);
+  });
+
+  it('detects continue requests before the option terminator', () => {
+    expect(hasContinueRequest(['--continue'])).toBe(true);
+    expect(hasContinueRequest(['-c'])).toBe(true);
+    expect(hasContinueRequest(['--continue-any'])).toBe(true);
+    expect(hasContinueAnyRequest(['--continue-any'])).toBe(true);
+    expect(hasContinueAnyRequest(['--continue'])).toBe(false);
+  });
+
+  it('treats arguments after -- as prompt text', () => {
+    const argv = ['--model', 'openai:gpt-5.5', '--', '-r', 'abc123', '--continue-any', 'fix'];
+
+    expect(parseArgs(argv)).toMatchObject({
+      model: 'openai:gpt-5.5',
+      resume: undefined,
+      prompt: '-r abc123 --continue-any fix',
+    });
+    expect(hasResumeRequest(argv)).toBe(false);
+    expect(hasContinueRequest(argv)).toBe(false);
+    expect(hasContinueAnyRequest(argv)).toBe(false);
+  });
+
   it('maps output-format aliases', () => {
     expect(parseArgs(['--output-format', 'json', 'x']).json).toBe(true);
     expect(parseArgs(['--output-format', 'final', 'x']).quiet).toBe(true);
     expect(parseArgs(['--output-format', 'quiet', 'x']).quiet).toBe(true);
+  });
+
+  it('accepts inline values for long value flags', () => {
+    expect(parseArgs(['--model=openai:gpt-5.5', '--budget=0.25', '--output-format=json', '--resume=abc123', 'fix'])).toMatchObject({
+      model: 'openai:gpt-5.5',
+      budget: 0.25,
+      json: true,
+      resume: 'abc123',
+      prompt: 'fix',
+    });
+  });
+
+  it('does not let missing option values consume following flags', () => {
+    expect(parseArgs(['--model', '--json', 'fix'])).toMatchObject({
+      model: undefined,
+      json: true,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--budget', '--quiet', 'fix'])).toMatchObject({
+      budget: undefined,
+      quiet: true,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--resume', '--plan', 'fix'])).toMatchObject({
+      resume: undefined,
+      planMode: true,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--model', '--budget=0.25', 'fix'])).toMatchObject({
+      model: undefined,
+      budget: 0.25,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--model', '--unknown-mode', 'fix'])).toMatchObject({
+      model: undefined,
+      prompt: '--unknown-mode fix',
+    });
+  });
+
+  it('normalizes invalid budgets to undefined', () => {
+    expect(parseArgs(['--budget', 'abc', 'fix'])).toMatchObject({
+      budget: undefined,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--budget=Infinity', 'fix'])).toMatchObject({
+      budget: undefined,
+      prompt: 'fix',
+    });
+  });
+
+  it('keeps negative numeric values distinct from short flags', () => {
+    expect(parseArgs(['--budget', '-0.25', 'fix'])).toMatchObject({
+      budget: -0.25,
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--model', '-1', 'fix'])).toMatchObject({
+      model: '-1',
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--model', '-q', 'fix'])).toMatchObject({
+      model: undefined,
+      quiet: true,
+      prompt: 'fix',
+    });
   });
 
   it('accepts Hermes-style yolo aliases as auto-approve', () => {

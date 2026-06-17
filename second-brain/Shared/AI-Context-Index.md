@@ -36,8 +36,14 @@ ai_surface: hot
 
 - เริ่มด้วย hot path ด้านบนเสมอ
 - เลือกบทบาท AI ก่อนลงมือ: Scientist / Cartographer / Librarian / Operator / Editor / Archivist
+- ถ้ามี pack ตรงงาน ให้ใช้ [[Shared/Context-Packs/_Index]] แทนการประกอบ context ใหม่จากศูนย์
 - โหลด rule/runbook เฉพาะ task นั้นแบบ JIT; อย่าโหลดทั้ง vault
 - งาน framework/หลาย session/แก้ durable memory ให้ eval และบันทึก evidence
+
+## Taste & Benchmarks
+
+- owner-facing tone/examples → [[Shared/User-Memory/response-examples]]
+- framework quality checks → [[Evals/second-brain-benchmarks]]
 
 ## Default Write Path (ก่อนสร้าง/แก้โน้ต)
 
@@ -67,6 +73,8 @@ ai_surface: hot
 ## Framework Rules (โหลดตาม task — ดู CLAUDE.md §19)
 
 - **งานไม่ trivial ทุกงาน** → [[Runbooks/ai-second-brain-operating-sequence]] (Scientific Loop Sequence + roles)
+- **งานซ้ำ/task family ชัดเจน** → [[Shared/Context-Packs/_Index]] (ใช้ context pack แทน assemble ใหม่)
+- **ก่อน/หลังแก้ framework** → [[Evals/second-brain-benchmarks]] (วัดว่าดีขึ้นจริงไหม)
 - **ก่อนประกอบ context เสมอ** → [[Shared/Rules/context-assembly-policy]] (head/tail + budget, กัน context-rot)
 - ingest ของนอก → [[Runbooks/ingest-quarantine]] · fact → [[Shared/Rules/frontmatter-standard]] (bi-temporal + `source::`)
 - script ทำซ้ำ → [[Shared/Rules/skills-admission]] (Skills/) · consolidate → [[Runbooks/sleep-time-consolidation]]

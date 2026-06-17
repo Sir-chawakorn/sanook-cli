@@ -27,7 +27,7 @@ import { chmod, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { appHomePath, BRAND, BRAND_ENV, envFlag } from './brand.js';
 import type { UpdateCache } from './update.js';
-import { parseArgs } from './cli-args.js';
+import { hasContinueAnyRequest, hasContinueRequest, hasResumeRequest, parseArgs } from './cli-args.js';
 
 // สี: เคารพ NO_COLOR + auto-plain เมื่อ pipe/redirect (legacy Windows cmd ก็ไม่เห็น garbage ANSI); FORCE_COLOR บังคับได้
 const useColor = !process.env.NO_COLOR && (Boolean(process.env.FORCE_COLOR) || process.stdout.isTTY === true);
@@ -1947,13 +1947,18 @@ async function loadSessionOrExit(id: string): Promise<Session> {
 }
 
 async function requestedResumeSession(rawArgs: string[], resumeId: string | undefined): Promise<Session | null> {
-  const requested = rawArgs.includes('--resume') || rawArgs.includes('-r');
+  const requested = hasResumeRequest(rawArgs);
   if (!requested) return null;
   if (!resumeId) {
     console.error(`ใช้: ${BRAND.cliName} --resume <session_id> "<task>"`);
     process.exit(2);
   }
   return loadSessionOrExit(resumeId);
+}
+
+async function requestedContinuationHistory(rawArgs: string[]): Promise<ModelMessage[] | undefined> {
+  if (!hasContinueRequest(rawArgs)) return undefined;
+  return (await latestSession(hasContinueAnyRequest(rawArgs) ? null : process.cwd()))?.messages;
 }
 
 function printSessionStats(sessions: Session[], scope: string): void {
@@ -2450,11 +2455,7 @@ providers: ${providerIds()}`);
         fallbackModel: config.fallbackModel,
         budgetUsd: config.budgetUsd,
         permissionMode: parsed.yes || yolo ? 'auto' : safeMode ? 'ask' : config.permissionMode,
-        initialHistory:
-          resumeSession?.messages ??
-          (cleaned.includes('--continue') || cleaned.includes('-c') || cleaned.includes('--continue-any')
-            ? (await latestSession(cleaned.includes('--continue-any') ? null : process.cwd()))?.messages
-            : undefined),
+        initialHistory: resumeSession?.messages ?? (await requestedContinuationHistory(cleaned)),
       },
     });
     return;
@@ -2466,8 +2467,7 @@ providers: ${providerIds()}`);
     process.stderr.write(`${noKey}\n`);
     process.exit(1);
   }
-  const wantsContinue = args.includes('--continue') || args.includes('-c') || args.includes('--continue-any');
-  const history = resumeSession?.messages ?? (wantsContinue ? (await latestSession(args.includes('--continue-any') ? null : process.cwd()))?.messages : undefined);
+  const history = resumeSession?.messages ?? (await requestedContinuationHistory(args));
   await runHeadless(
     config.model,
     prompt,
@@ -2483,7 +2483,7 @@ providers: ${providerIds()}`);
 }
 
 async function runPureOneShot(args: string[]): Promise<void> {
-  const rest = args[0] === '--' ? args.slice(1) : args;
+  const rest = args;
   const parsed = parseArgs(rest);
   const resumeSession = await requestedResumeSession(rest, parsed.resume);
   const budgetUsd = Number.isFinite(parsed.budget) ? parsed.budget : undefined;
@@ -2499,8 +2499,7 @@ async function runPureOneShot(args: string[]): Promise<void> {
     process.stderr.write(`${noKey}\n`);
     process.exit(1);
   }
-  const wantsContinue = rest.includes('--continue') || rest.includes('-c') || rest.includes('--continue-any');
-  const history = resumeSession?.messages ?? (wantsContinue ? (await latestSession(rest.includes('--continue-any') ? null : process.cwd()))?.messages : undefined);
+  const history = resumeSession?.messages ?? (await requestedContinuationHistory(rest));
   await runHeadless(
     config.model,
     prompt,
@@ -3484,12 +3483,7 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     // --continue / -c → โหลด session ล่าสุดมาต่อ (จำว่าทำถึงไหน)
-    const wantsContinue = argv.includes('--continue') || argv.includes('-c') || argv.includes('--continue-any');
-    const history =
-      resumeSession?.messages ??
-      (wantsContinue
-        ? (await latestSession(argv.includes('--continue-any') ? null : process.cwd()))?.messages
-        : undefined);
+    const history = resumeSession?.messages ?? (await requestedContinuationHistory(argv));
     await runHeadless(
       config.model,
       prompt,
@@ -3530,11 +3524,7 @@ async function main(): Promise<void> {
     needsSetup = await modelNeedsSetup(config.model);
   }
   // --continue / -c → โหลด conversation ล่าสุดเข้า REPL (เดิม resume ได้แค่ headless)
-  const initialHistory =
-    resumeSession?.messages ??
-    (argv.includes('--continue') || argv.includes('-c') || argv.includes('--continue-any')
-      ? (await latestSession(argv.includes('--continue-any') ? null : process.cwd()))?.messages
-      : undefined);
+  const initialHistory = resumeSession?.messages ?? (await requestedContinuationHistory(argv));
   const { startApp } = await import('./ui/render.js');
   startApp({
     needsSetup,

@@ -28,5 +28,6 @@ code/config · subfolder (Sessions = flat เสมอ)
 ## Sessions
 
 - [[Sessions/2026-06-17-ai-second-brain-sequence-experiment]] — ทดลองและปรับ AI operating sequence ของ second-brain
+- [[Sessions/2026-06-17-ai-framework-additional-zones]] — เพิ่ม benchmark, response examples, และ context packs เข้า framework
 
 up:: [[Home]]

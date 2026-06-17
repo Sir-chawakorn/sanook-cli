@@ -28,6 +28,7 @@ evidence:: [[Research/2026-06-17-ai-second-brain-method-experiment]]
 2. **Retrieve**
    - อ่าน [[Shared/AI-Context-Index]] ก่อนเสมอ.
    - โหลด hot path เท่าที่จำเป็น: [[USER]], [[Shared/Operating-State/current-state]], [[Shared/User-Memory/user-preferences]], [[Shared/Decision-Memory/decision-log]].
+   - ถ้างานตรงกับ pack ที่มีอยู่ ให้โหลด [[Shared/Context-Packs/_Index]] แล้วเลือก pack ก่อนประกอบเอง.
    - ใช้ [[Shared/Rules/context-assembly-policy]] เพื่อวาง context สำคัญไว้หัว/ท้าย.
 
 3. **Role**
@@ -57,6 +58,7 @@ evidence:: [[Research/2026-06-17-ai-second-brain-method-experiment]]
      - grounded?
      - verification passed?
      - มี distractor หรือ stale note ไหม?
+   - ก่อน/หลังแก้ framework ให้ใช้ [[Evals/second-brain-benchmarks]] เป็น regression check.
    - บันทึกผลใน [[Evals/quality-ledger]] เมื่อเป็นงาน framework/ระบบ/หลาย session.
 
 8. **Consolidate**
@@ -84,6 +86,7 @@ evidence:: [[Research/2026-06-17-ai-second-brain-method-experiment]]
 | Ingest web/paste/source | Librarian | Scientist |
 | Multi-agent work | Archivist | Operator |
 | Owner-facing summary | Editor | Scientist |
+| Repeated task family | Cartographer | Operator |
 
 ## Token Rule
 
@@ -97,6 +100,7 @@ Target core context: ~2k tokens.
 4. บอก owner ถ้า evidence ยังไม่พอ.
 
 related:: [[Shared/AI-Context-Index]]
+related:: [[Shared/Context-Packs/_Index]]
 related:: [[Shared/Rules/context-assembly-policy]]
 related:: [[Runbooks/eval-loop]]
 related:: [[Runbooks/sleep-time-consolidation]]

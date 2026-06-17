@@ -18,6 +18,8 @@ parent: "[[Evals/_Index]]"
 
 ## Entries
 
-## [2026-06-17] ai-second-brain-method-experiment | grounded:y retrieval_hit:y distractor:n | Scientific Loop Sequence ชนะ 97.3/100; evidence [[Research/2026-06-17-ai-second-brain-method-experiment]]
+## [2026-06-17] ai-second-brain-method-experiment | grounded:y retrieval_hit:y distractor:n | Scientific Loop Sequence ชนะ 97.0/100; evidence [[Research/2026-06-17-ai-second-brain-method-experiment]]
+
+## [2026-06-17] ai-framework-additional-zones | grounded:y retrieval_hit:y distractor:n | เพิ่ม benchmark, taste examples, และ context packs ตาม framework; evidence [[Sessions/2026-06-17-ai-framework-additional-zones]]
 
 up:: [[Evals/_Index]]

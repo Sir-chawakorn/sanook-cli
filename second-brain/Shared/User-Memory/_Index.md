@@ -25,6 +25,9 @@ identity static (→User-Persona)
 
 > รายละเอียดทุกโฟลเดอร์ + decision rules → [[Vault Structure Map]]
 
-_(ยังว่าง — โน้ตในโฟลเดอร์นี้จะถูกลิงก์ที่นี่)_
+## User-Memory Notes
+
+- [[Shared/User-Memory/user-preferences]] — durable preferences ของเจ้าของ
+- [[Shared/User-Memory/response-examples]] — examples/taste signals ว่าคำตอบ AI แบบไหนดีหรือไม่ดี
 
 up:: [[Shared/_Index]]
