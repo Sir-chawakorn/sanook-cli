@@ -26,6 +26,10 @@ async function canonical(p: string): Promise<string> {
   }
 }
 
+function isUsableStoredRoot(root: unknown): root is string {
+  return typeof root === 'string' && root.trim().length > 0 && !root.includes('\0');
+}
+
 export async function projectRoot(cwd: string = process.cwd()): Promise<string> {
   let dir = resolve(cwd);
   for (;;) {
@@ -39,8 +43,13 @@ export async function projectRoot(cwd: string = process.cwd()): Promise<string> 
 
 async function readStore(): Promise<TrustStore> {
   try {
-    const parsed = JSON.parse(await readFile(TRUST_FILE, 'utf8')) as TrustStore;
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    const parsed = JSON.parse(await readFile(TRUST_FILE, 'utf8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const roots = (parsed as { trustedProjectRoots?: unknown }).trustedProjectRoots;
+    if (roots === undefined) return {};
+    return {
+      trustedProjectRoots: Array.isArray(roots) ? roots.filter(isUsableStoredRoot) : [],
+    };
   } catch {
     return {};
   }
