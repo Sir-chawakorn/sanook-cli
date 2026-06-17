@@ -52,10 +52,45 @@ function protectedEnvToken(token: string): boolean {
   return hasProtectedEnvSegment(clean);
 }
 
+function decodeEscapedCodePoint(match: string, value: string, radix: number): string {
+  const codePoint = Number.parseInt(value, radix);
+  return codePoint >= 0 && codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : match;
+}
+
+function decodeAnsiCQuoteBody(body: string): string {
+  return body
+    .replace(/\\x([0-9a-fA-F]{1,2})/g, (match, hex: string) => decodeEscapedCodePoint(match, hex, 16))
+    .replace(/\\u([0-9a-fA-F]{1,4})/g, (match, hex: string) => decodeEscapedCodePoint(match, hex, 16))
+    .replace(/\\U([0-9a-fA-F]{1,8})/g, (match, hex: string) => decodeEscapedCodePoint(match, hex, 16))
+    .replace(/\\([0-7]{1,3})/g, (match, octal: string) => decodeEscapedCodePoint(match, octal, 8))
+    .replace(/\\([abefnrtv\\'"])/g, (_match, escaped: string) => {
+      const mapped: Record<string, string> = {
+        a: '\x07',
+        b: '\b',
+        e: '\x1b',
+        f: '\f',
+        n: '\n',
+        r: '\r',
+        t: '\t',
+        v: '\v',
+        '\\': '\\',
+        "'": "'",
+        '"': '"',
+      };
+      return mapped[escaped] ?? escaped;
+    });
+}
+
+function expandAnsiCQuotes(token: string): string {
+  return token.replace(/\$'((?:\\.|[^'])*)'/g, (_match, body: string) => decodeAnsiCQuoteBody(body));
+}
+
 function cleanShellToken(token: string): string {
-  return token
+  return expandAnsiCQuotes(token)
     .trim()
+    .replace(/\$(['"])/g, '$1')
     .replace(/^['"`]+|['"`]+$/g, '')
+    .replace(/['"`]/g, '')
     .replace(/\\(.)/g, '$1')
     .replace(/^\d*(?:<|>)+/, '')
     .replace(/[),\]}]+$/g, '');
@@ -70,9 +105,10 @@ function cleanRedirectionToken(token: string): string {
 }
 
 function cleanCommandPayloadToken(token: string): string {
-  return token
+  return expandAnsiCQuotes(token)
     .trim()
     .replace(/[),\]}]+$/g, '')
+    .replace(/\$(['"])/g, '$1')
     .replace(/^['"`]+|['"`]+$/g, '')
     .replace(/\\(.)/g, '$1');
 }
@@ -108,6 +144,20 @@ function rgGlobReadsProtectedEnv(value: string): boolean {
 
 function hasProtectedEnvSegment(path: string): boolean {
   return path.split(/[\\/]+/).some((part) => part.startsWith('.env') && part !== '.env.example');
+}
+
+function shellTokenExcludesProtectedEnvPath(token: string): boolean {
+  const clean = cleanShellToken(token);
+  return /^(?:--exclude|--exclude-dir)=/.test(clean) && clean.split('=').slice(1).every(optionValueHasProtectedEnvSegment);
+}
+
+function mentionsProtectedEnvPath(cmd: string): boolean {
+  return shellishTokens(cmd).some((token) => {
+    if (shellTokenExcludesProtectedEnvPath(token)) return false;
+    return cleanShellToken(token)
+      .split(/[=$(){}\[\],;<>|&]+/)
+      .some((part) => hasProtectedEnvSegment(cleanShellToken(part)));
+  });
 }
 
 function shellishArgsAfter(cmd: string, start: number): string[] {
@@ -334,7 +384,7 @@ export function checkBash(cmd: string, depth = 0): GateResult {
   if (hasRmRecursiveForce(cmd) || DESTRUCTIVE_CMD.test(cmd)) {
     return { ok: false, reason: `คำสั่งทำลายล้าง/irreversible ถูกปฏิเสธ: "${cmd}"` };
   }
-  if (PROTECTED_CMD_PATH.test(cmd) || readsProtectedEnvFile(cmd)) {
+  if (PROTECTED_CMD_PATH.test(cmd) || mentionsProtectedEnvPath(cmd) || readsProtectedEnvFile(cmd)) {
     return { ok: false, reason: `คำสั่งที่อ่าน/แตะ path ลับถูกปฏิเสธ: "${cmd}"` };
   }
   if (nestedShellCommandDenied(cmd, depth)) {

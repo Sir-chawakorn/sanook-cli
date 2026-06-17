@@ -85,6 +85,14 @@ describe('permission gate', () => {
     expect(checkBash('sh -c "echo safe > .env.example"').ok).toBe(true);
     expect(checkBash('grep API_KEY .env.example').ok).toBe(true);
     expect(checkBash('diff <(cat .env.example) expected.txt').ok).toBe(true);
+    expect(checkBash('node -e "require(\'fs\').readFileSync(\'.env.example\')"').ok).toBe(true);
+    expect(checkBash('node --env-file=.env.example app.js').ok).toBe(true);
+    expect(checkBash('node --env-file=.en"v".example app.js').ok).toBe(true);
+    expect(checkBash('docker run --env-file .env.example app').ok).toBe(true);
+    expect(checkBash("cat $'.env.example'").ok).toBe(true);
+    expect(checkBash("cat $'.env.\\x65xample'").ok).toBe(true);
+    expect(checkBash('cat $".env.example"').ok).toBe(true);
+    expect(checkBash("bash -lc $'cat .env.example'").ok).toBe(true);
   });
   it('block reading secret .env variants through bash guard', () => {
     expect(checkBash('cat .env').ok).toBe(false);
@@ -146,9 +154,33 @@ describe('permission gate', () => {
     expect(checkBash('echo ok\r\ncat .env.local').ok).toBe(false);
     expect(checkBash('diff <(cat .env) expected.txt').ok).toBe(false);
     expect(checkBash('comm <(sed -n 1p .env.local) safe.txt').ok).toBe(false);
+    expect(checkBash('node -e "require(\'fs\').readFileSync(\'.env\')"').ok).toBe(false);
+    expect(checkBash("python -c 'open(\"config/.env.local\").read()'").ok).toBe(false);
+    expect(checkBash('tar -czf env.tgz .env.local').ok).toBe(false);
+    expect(checkBash('node --env-file=.env app.js').ok).toBe(false);
+    expect(checkBash('cat .en"v"').ok).toBe(false);
+    expect(checkBash('node --env-file=.en"v" app.js').ok).toBe(false);
+    expect(checkBash('docker run --env-file config/.en"v".local app').ok).toBe(false);
+    expect(checkBash('docker run --env-file config/.env.local app').ok).toBe(false);
+    expect(checkBash("cat $'.env'").ok).toBe(false);
+    expect(checkBash("cat $'.e\\x6ev'").ok).toBe(false);
+    expect(checkBash("cat $'\\U0000002eenv'").ok).toBe(false);
+    expect(checkBash("cat $'\\056env'").ok).toBe(false);
+    expect(checkBash('cat $".env"').ok).toBe(false);
+    expect(checkBash("cat config/$'.env.local'").ok).toBe(false);
+    expect(checkBash("cat < $'.env.local'").ok).toBe(false);
+    expect(checkBash("node --env-file=$'.env' app.js").ok).toBe(false);
+    expect(checkBash("bash -lc $'cat .env'").ok).toBe(false);
+    expect(checkBash("bash -lc $'cat .e\\x6ev'").ok).toBe(false);
+    expect(checkBash("sh -c $'echo safe > .env.local'").ok).toBe(false);
+  });
+  it('handles malformed ANSI-C unicode escapes without crashing', () => {
+    expect(() => checkBash("cat $'\\U00110000'")).not.toThrow();
   });
   it('allow reader options that exclude protected env files or target .env.example', () => {
     expect(checkBash('grep -R --include=.env.example SAFE .').ok).toBe(true);
+    expect(checkBash('grep -R --exclude=.env API_KEY .').ok).toBe(true);
+    expect(checkBash('grep -R --exclude-dir=.env.local API_KEY .').ok).toBe(true);
     expect(checkBash('rg --glob=!.env API_KEY .').ok).toBe(true);
     expect(checkBash("rg --glob='!.env' API_KEY .").ok).toBe(true);
     expect(checkBash('rg -g!.env.local API_KEY .').ok).toBe(true);
