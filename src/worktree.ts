@@ -127,11 +127,43 @@ export async function removeWorktree(wt: Worktree): Promise<void> {
   await runGit(['worktree', 'prune'], wt.repoRoot).catch(() => {});
 }
 
+function decodeGitQuotedPath(p: string): string {
+  const bytes: number[] = [];
+  for (let i = 1; i < p.length - 1; ) {
+    const ch = p[i];
+    if (ch !== '\\') {
+      const codePoint = p.codePointAt(i);
+      if (codePoint == null) break;
+      const raw = String.fromCodePoint(codePoint);
+      bytes.push(...Buffer.from(raw));
+      i += raw.length;
+      continue;
+    }
+
+    const escaped = p[++i];
+    if (escaped == null) break;
+    if (/[0-7]/.test(escaped)) {
+      let octal = escaped;
+      while (octal.length < 3 && i + 1 < p.length - 1 && /[0-7]/.test(p[i + 1])) octal += p[++i];
+      bytes.push(Number.parseInt(octal, 8));
+      i++;
+      continue;
+    }
+
+    const controls: Record<string, number> = { a: 7, b: 8, f: 12, n: 10, r: 13, t: 9, v: 11 };
+    const control = controls[escaped];
+    if (control != null) bytes.push(control);
+    else bytes.push(...Buffer.from(escaped));
+    i++;
+  }
+  return Buffer.from(bytes).toString('utf8');
+}
+
 /** git quote paths ที่มีอักขระพิเศษ/ช่องว่างเป็น "..." แบบ C-escape → คืน path จริง (best-effort) */
 function unquotePath(p: string): string {
   if (p.startsWith('"') && p.endsWith('"')) {
     try {
-      return JSON.parse(p) as string;
+      return decodeGitQuotedPath(p);
     } catch {
       return p.slice(1, -1);
     }
@@ -139,10 +171,94 @@ function unquotePath(p: string): string {
   return p;
 }
 
+function unquoteDiffSidePath(p: string): string {
+  return unquotePath(p).replace(/^[ab]\//, '');
+}
+
+function diffMarkerPath(p: string): string | null {
+  const token = p.startsWith('"') ? (readQuotedPathToken(p)?.token ?? p) : p.split('\t', 1)[0];
+  if (token === '/dev/null') return null;
+  return unquoteDiffSidePath(token);
+}
+
+function readQuotedPathToken(input: string, start = 0): { token: string; next: number } | null {
+  if (input[start] !== '"') return null;
+  let escaped = false;
+  for (let i = start + 1; i < input.length; i++) {
+    const ch = input[i];
+    if (escaped) {
+      escaped = false;
+    } else if (ch === '\\') {
+      escaped = true;
+    } else if (ch === '"') {
+      return { token: input.slice(start, i + 1), next: i + 1 };
+    }
+  }
+  return null;
+}
+
+function sameUnquotedDiffPathSplit(input: string): number | null {
+  for (let i = input.indexOf(' b/'); i !== -1; i = input.indexOf(' b/', i + 1)) {
+    const from = input.slice(0, i);
+    const to = input.slice(i + 1);
+    if (unquoteDiffSidePath(from) === unquoteDiffSidePath(to)) return i;
+  }
+  return null;
+}
+
+function readDiffPathToken(input: string, start = 0): { token: string; next: number } | null {
+  if (input[start] === '"') return readQuotedPathToken(input, start);
+  const next = input.indexOf(' ', start);
+  const end = next === -1 ? input.length : next;
+  if (end === start) return null;
+  return { token: input.slice(start, end), next: end };
+}
+
+function diffGitPaths(line: string): { from: string; to: string } | null {
+  if (!line.startsWith('diff --git ')) return null;
+  const rest = line.slice('diff --git '.length);
+  if (!rest.startsWith('"')) {
+    const split = sameUnquotedDiffPathSplit(rest);
+    if (split != null) {
+      return { from: unquoteDiffSidePath(rest.slice(0, split)), to: unquoteDiffSidePath(rest.slice(split + 1)) };
+    }
+  }
+  const from = readDiffPathToken(rest);
+  if (!from || rest[from.next] !== ' ') return null;
+  const to = readDiffPathToken(rest, from.next + 1);
+  if (!to || to.next !== rest.length) return null;
+  return { from: unquoteDiffSidePath(from.token), to: unquoteDiffSidePath(to.token) };
+}
+
 /** changed file paths in a captured diff (dest side — for a human-readable summary). */
 export function diffFiles(diff: string): string[] {
   const files = new Set<string>();
-  for (const m of diff.matchAll(/^diff --git a\/(.+?) b\/(.+)$/gm)) files.add(m[2]);
+  let current: { headerTo?: string; markerFrom?: string; markerTo?: string; renamedTo?: string } | null = null;
+  const flush = () => {
+    if (!current) return;
+    const path = current.renamedTo ?? current.markerTo ?? current.headerTo ?? current.markerFrom;
+    if (path) files.add(path);
+  };
+
+  for (const line of diff.split('\n')) {
+    const paths = diffGitPaths(line);
+    if (paths || line.startsWith('diff --git ')) {
+      flush();
+      current = { headerTo: paths?.to };
+      continue;
+    }
+    if (!current) continue;
+
+    let m: RegExpMatchArray | null;
+    if ((m = line.match(/^(?:rename|copy) to (.+)$/))) {
+      current.renamedTo = unquotePath(m[1]);
+    } else if ((m = line.match(/^--- (.+)$/))) {
+      current.markerFrom = diffMarkerPath(m[1]) ?? current.markerFrom;
+    } else if ((m = line.match(/^\+\+\+ (.+)$/))) {
+      current.markerTo = diffMarkerPath(m[1]) ?? current.markerTo;
+    }
+  }
+  flush();
   return [...files];
 }
 
@@ -155,17 +271,23 @@ export function diffTouchedPaths(diff: string): string[] {
   const set = new Set<string>();
   for (const line of diff.split('\n')) {
     let m: RegExpMatchArray | null;
-    if (
+    const paths = diffGitPaths(line);
+    if (paths) {
+      set.add(paths.from);
+      set.add(paths.to);
+    } else if (
       (m = line.match(/^rename from (.+)$/)) ||
       (m = line.match(/^rename to (.+)$/)) ||
       (m = line.match(/^copy from (.+)$/)) ||
       (m = line.match(/^copy to (.+)$/))
     ) {
       set.add(unquotePath(m[1]));
-    } else if ((m = line.match(/^--- (.+)$/)) && m[1] !== '/dev/null') {
-      set.add(unquotePath(m[1].replace(/^a\//, '')));
-    } else if ((m = line.match(/^\+\+\+ (.+)$/)) && m[1] !== '/dev/null') {
-      set.add(unquotePath(m[1].replace(/^b\//, '')));
+    } else if ((m = line.match(/^--- (.+)$/))) {
+      const path = diffMarkerPath(m[1]);
+      if (path) set.add(path);
+    } else if ((m = line.match(/^\+\+\+ (.+)$/))) {
+      const path = diffMarkerPath(m[1]);
+      if (path) set.add(path);
     }
   }
   return [...set];
