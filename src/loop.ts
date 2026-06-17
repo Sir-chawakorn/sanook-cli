@@ -47,36 +47,90 @@ export interface AgentEvent {
   detail?: unknown;
 }
 
+type ProviderErrorLike = {
+  message?: string;
+  statusCode?: number;
+  responseBody?: unknown;
+  lastError?: unknown;
+  cause?: unknown;
+};
+
+function unwrapProviderError(err: unknown): ProviderErrorLike {
+  const seen = new Set<unknown>();
+  let current = err;
+  while (current && typeof current === 'object' && !seen.has(current)) {
+    seen.add(current);
+    const e = current as ProviderErrorLike;
+    if (e.statusCode != null || e.responseBody != null) return e;
+    current = e.lastError ?? e.cause ?? current;
+    if (current === e) break;
+  }
+  return (current ?? err) as ProviderErrorLike;
+}
+
+function nonBlankString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const text = value.trim();
+  return text ? text : undefined;
+}
+
+function fallbackProviderErrorText(err: unknown): string {
+  const text = String(err);
+  return text === '[object Object]' ? 'Provider error' : text;
+}
+
 /**
  * ดึงข้อความ error ที่อ่านรู้เรื่องจาก provider error (AI SDK APICallError / RetryError)
  * — provider error จริง (เช่น "Insufficient balance", rate limit, auth) มักฝังใน lastError.responseBody
  * ไม่งั้นจะได้ "No output generated" กำกวม + stack dump ยาว
  */
 export function cleanProviderError(err: unknown): string {
-  const e = err as { message?: string; lastError?: unknown };
-  const api = (e?.lastError ?? e) as { message?: string; statusCode?: number; responseBody?: unknown };
-  let detail = api?.message;
+  const e = err as ProviderErrorLike;
+  const api = unwrapProviderError(err);
+  let detail = nonBlankString(api?.message);
   try {
-    const body = typeof api?.responseBody === 'string' ? JSON.parse(api.responseBody) : api?.responseBody;
-    const m = (body as { error?: { message?: string } })?.error?.message;
-    if (m) detail = m;
+    const rawBody = api?.responseBody;
+    let body = rawBody;
+    if (typeof rawBody === 'string') {
+      try {
+        body = JSON.parse(rawBody);
+      } catch {
+        body = rawBody;
+      }
+    }
+    let message: unknown;
+    if (typeof body === 'string') {
+      message = body.trim();
+    } else if (body && typeof body === 'object') {
+      const parsed = body as { error?: unknown; message?: unknown; detail?: unknown };
+      if (typeof parsed.error === 'string') {
+        message = parsed.error;
+      } else if (parsed.error && typeof parsed.error === 'object') {
+        const error = parsed.error as { message?: unknown; code?: unknown; type?: unknown };
+        message = error.message;
+        if (typeof message !== 'string' || !message.trim()) message = parsed.message ?? parsed.detail ?? error.code ?? error.type;
+      }
+      if (typeof message !== 'string' || !message.trim()) message = parsed.message ?? parsed.detail;
+    }
+    detail = nonBlankString(message) ?? detail;
   } catch {
-    /* responseBody ไม่ใช่ JSON — ใช้ message เดิม */
+    /* unexpected responseBody shape — use message below */
   }
-  detail = detail ?? e?.message ?? String(err);
+  detail = detail ?? nonBlankString(e?.message) ?? fallbackProviderErrorText(err);
   return api?.statusCode ? `${detail} (HTTP ${api.statusCode})` : detail;
 }
 
 function errStatus(err: unknown): number | undefined {
-  const e = err as { statusCode?: number; lastError?: { statusCode?: number } };
-  return e?.statusCode ?? e?.lastError?.statusCode;
+  return unwrapProviderError(err)?.statusCode;
 }
 
 /** rate-limit / overloaded (429/503) → retry-able ด้วย backoff (ต่างจาก auth ที่ retry ไปก็ไม่ผ่าน) */
 export function isRateLimit(err: unknown): boolean {
   const code = errStatus(err);
+  if (code === 401 || code === 403 || code === 402) return false;
+  const msg = cleanProviderError(err).toLowerCase();
+  if (/insufficient|balance|billing|quota|credit|payment|subscription/.test(msg)) return false;
   if (code === 429 || code === 503) return true;
-  const msg = ((err as { message?: string })?.message ?? '').toLowerCase();
   return /rate.?limit|too many requests|overloaded|429|503/.test(msg);
 }
 
