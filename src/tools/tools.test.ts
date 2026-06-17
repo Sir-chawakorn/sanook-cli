@@ -77,13 +77,55 @@ describe('permission gate', () => {
     expect(checkBash('git push origin main --force').ok).toBe(false);
     expect(checkBash('git push -f origin main').ok).toBe(false);
     expect(checkBash('git push --force-with-lease origin main').ok).toBe(false);
+    expect(checkBash('git push origin +main').ok).toBe(false);
+    expect(checkBash('git push origin +HEAD:main').ok).toBe(false);
+    expect(checkBash('git push origin -- +HEAD:main').ok).toBe(false);
     expect(checkBash('git -C repo push -f origin main').ok).toBe(false);
+    expect(checkBash('git -Crepo push -f origin main').ok).toBe(false);
     expect(checkBash('git -c protocol.version=2 push --force origin main').ok).toBe(false);
+    expect(checkBash('git -cprotocol.version=2 push --force origin main').ok).toBe(false);
     expect(checkBash('git --git-dir repo/.git --work-tree repo push --force-with-lease origin main').ok).toBe(false);
+    expect(checkBash('git --git-dir=repo/.git --work-tree=repo push --force-with-lease origin main').ok).toBe(false);
     expect(checkBash("bash -lc 'git push -f origin main'").ok).toBe(false);
     expect(checkBash("env -u PATH git push --force origin main").ok).toBe(false);
     expect(checkBash('git push -- -f').ok).toBe(true);
     expect(checkBash('git -C repo status -- -f').ok).toBe(true);
+  });
+  it('block git push remote deletion flags and refspecs', () => {
+    expect(checkBash('git push origin --delete main').ok).toBe(false);
+    expect(checkBash('git push -d origin main').ok).toBe(false);
+    expect(checkBash('git push origin -d main').ok).toBe(false);
+    expect(checkBash('git push -dn origin main').ok).toBe(false);
+    expect(checkBash('git push origin -dn main').ok).toBe(false);
+    expect(checkBash('git push -vd origin main').ok).toBe(false);
+    expect(checkBash('git push --mirror origin').ok).toBe(false);
+    expect(checkBash('git push --prune origin').ok).toBe(false);
+    expect(checkBash('git push origin :main').ok).toBe(false);
+    expect(checkBash('git push origin +:refs/heads/main').ok).toBe(false);
+    expect(checkBash('git push origin -- :main').ok).toBe(false);
+    expect(checkBash("bash -lc 'git push origin :main'").ok).toBe(false);
+    expect(checkBash("env -u PATH git push --delete origin main").ok).toBe(false);
+    expect(checkBash('git push origin HEAD:main').ok).toBe(true);
+    expect(checkBash('git push origin -- --delete').ok).toBe(true);
+  });
+  it('block dangerous inline git aliases', () => {
+    expect(checkBash("git -c alias.fp='push -f' fp origin main").ok).toBe(false);
+    expect(checkBash("git -c alias.fp='push' fp --force origin main").ok).toBe(false);
+    expect(checkBash("git -calias.del='push origin :main' del").ok).toBe(false);
+    expect(checkBash("git -c alias.fp='!git push -f' fp origin main").ok).toBe(false);
+    expect(checkBash("git -c alias.rh='reset --hard' rh HEAD~1").ok).toBe(false);
+    expect(checkBash("git -c alias.wipe='clean -fdx' wipe").ok).toBe(false);
+    expect(checkBash("git -c alias.st='status --short' st").ok).toBe(true);
+  });
+  it('block forced git clean commands', () => {
+    expect(checkBash('git clean -f').ok).toBe(false);
+    expect(checkBash('git clean -fdx').ok).toBe(false);
+    expect(checkBash('git clean --force -d').ok).toBe(false);
+    expect(checkBash('git -C repo clean -fd').ok).toBe(false);
+    expect(checkBash("bash -lc 'git clean -fdx'").ok).toBe(false);
+    expect(checkBash('git clean -nfd').ok).toBe(true);
+    expect(checkBash('git clean --dry-run --force').ok).toBe(true);
+    expect(checkBash('git clean -- -f').ok).toBe(true);
   });
   it('allow reading .env.example documentation through bash guard', () => {
     expect(checkBash('cat .env.example').ok).toBe(true);

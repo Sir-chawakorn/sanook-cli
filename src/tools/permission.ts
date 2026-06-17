@@ -56,14 +56,35 @@ function hasRmRecursiveForce(cmd: string): boolean {
   return false;
 }
 
-function hasGitForcePush(cmd: string): boolean {
+function hasDangerousGitOperation(cmd: string): boolean {
   for (const match of cmd.matchAll(/\bgit\b/gi)) {
     const args = shellishArgsAfter(cmd, match.index + match[0].length).map(cleanShellToken);
+    const aliases = new Map<string, string>();
     for (let i = 0; i < args.length; i += 1) {
       const arg = args[i];
       if (arg === '--') break;
+      const configValue = gitInlineConfigValue(arg, args[i + 1]);
+      if (configValue) {
+        const alias = gitAliasFromConfig(configValue.value);
+        if (alias) aliases.set(alias.name, alias.command);
+        if (configValue.consumesNext) i += 1;
+        continue;
+      }
       if (arg === 'push') {
-        if (gitPushHasForceFlag(args.slice(i + 1))) return true;
+        if (gitPushHasDeniedOperation(args.slice(i + 1))) return true;
+        break;
+      }
+      if (arg === 'reset') {
+        if (gitResetHasHardFlag(args.slice(i + 1))) return true;
+        break;
+      }
+      if (arg === 'clean') {
+        if (gitCleanHasForceFlag(args.slice(i + 1))) return true;
+        break;
+      }
+      const aliasCommand = aliases.get(arg);
+      if (aliasCommand) {
+        if (gitAliasHasDeniedOperation(aliasCommand, args.slice(i + 1))) return true;
         break;
       }
       if (gitOptionConsumesNext(arg)) {
@@ -77,14 +98,80 @@ function hasGitForcePush(cmd: string): boolean {
   return false;
 }
 
+function gitInlineConfigValue(arg: string, next: string | undefined): { value: string; consumesNext: boolean } | undefined {
+  if (arg === '-c') return next ? { value: next, consumesNext: true } : undefined;
+  if (arg.startsWith('-c') && arg.length > 2) return { value: arg.slice(2), consumesNext: false };
+  return undefined;
+}
+
+function gitAliasFromConfig(config: string): { name: string; command: string } | undefined {
+  const match = config.match(/^alias\.([^=\s]+)=(.+)$/i);
+  return match ? { name: match[1], command: match[2] } : undefined;
+}
+
 function gitOptionConsumesNext(arg: string): boolean {
   return GIT_OPTIONS_WITH_VALUE.has(arg);
 }
 
-function gitPushHasForceFlag(args: string[]): boolean {
+function gitAliasHasDeniedOperation(command: string, remainingArgs: string[]): boolean {
+  const aliasArgs = shellishArgsAfter(command, 0).map(cleanShellToken);
+  if (aliasArgs.length === 0) return false;
+  if (aliasArgs[0].startsWith('!')) {
+    const shellCommand = [aliasArgs[0].slice(1), ...aliasArgs.slice(1), ...remainingArgs].join(' ');
+    return hasRmRecursiveForce(shellCommand) || hasDangerousGitOperation(shellCommand) || DESTRUCTIVE_CMD.test(shellCommand);
+  }
+  return gitExpandedArgsHaveDeniedOperation([...aliasArgs, ...remainingArgs]);
+}
+
+function gitExpandedArgsHaveDeniedOperation(args: string[]): boolean {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--') break;
+    if (arg === 'push') return gitPushHasDeniedOperation(args.slice(i + 1));
+    if (arg === 'reset') return gitResetHasHardFlag(args.slice(i + 1));
+    if (arg === 'clean') return gitCleanHasForceFlag(args.slice(i + 1));
+    if (gitOptionConsumesNext(arg)) {
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith('-')) continue;
+    break;
+  }
+  return false;
+}
+
+function gitResetHasHardFlag(args: string[]): boolean {
   for (const arg of args) {
     if (arg === '--') break;
+    if (arg === '--hard') return true;
+  }
+  return false;
+}
+
+function gitCleanHasForceFlag(args: string[]): boolean {
+  let force = false;
+  let dryRun = false;
+  for (const arg of args) {
+    if (arg === '--') break;
+    if (arg === '--dry-run') dryRun = true;
+    if (arg === '--force' || /^-[^-]*f/.test(arg)) force = true;
+    if (/^-[^-]*n/.test(arg)) dryRun = true;
+  }
+  return force && !dryRun;
+}
+
+function gitPushHasDeniedOperation(args: string[]): boolean {
+  let optionsDone = false;
+  for (const arg of args) {
+    if (arg === '--') {
+      optionsDone = true;
+      continue;
+    }
+    if (/^\+.+/.test(arg)) return true;
+    if (/^\+?:[^:]/.test(arg)) return true;
+    if (optionsDone) continue;
     if (/^--force(?:$|[=-])/.test(arg) || /^-[^-]*f/.test(arg)) return true;
+    if (arg === '--delete' || /^-[^-]*d/.test(arg) || arg === '--mirror' || arg === '--prune') return true;
   }
   return false;
 }
@@ -424,7 +511,7 @@ function readsProtectedEnvFile(cmd: string): boolean {
 }
 
 export function checkBash(cmd: string, depth = 0): GateResult {
-  if (hasRmRecursiveForce(cmd) || hasGitForcePush(cmd) || DESTRUCTIVE_CMD.test(cmd)) {
+  if (hasRmRecursiveForce(cmd) || hasDangerousGitOperation(cmd) || DESTRUCTIVE_CMD.test(cmd)) {
     return { ok: false, reason: `คำสั่งทำลายล้าง/irreversible ถูกปฏิเสธ: "${cmd}"` };
   }
   if (PROTECTED_CMD_PATH.test(cmd) || mentionsProtectedEnvPath(cmd) || readsProtectedEnvFile(cmd)) {
