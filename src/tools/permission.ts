@@ -31,6 +31,16 @@ const PROTECTED_EXACT = new Set(
 const PROTECTED_DIRS = ['.ssh', '.aws', '.gnupg', '.sanook'].map((d) => join(HOME, d));
 const PROTECTED_SEGMENTS = new Set(['.git', 'node_modules', '.ssh', '.aws', '.gnupg', '.sanook']);
 const ENV_OPTIONS_WITH_VALUE = new Set(['-C', '--chdir', '-S', '--split-string', '-u', '--unset']);
+const GIT_OPTIONS_WITH_VALUE = new Set([
+  '-C',
+  '-c',
+  '--config-env',
+  '--exec-path',
+  '--git-dir',
+  '--namespace',
+  '--super-prefix',
+  '--work-tree',
+]);
 const SHELL_OPTIONS_WITH_VALUE = new Set(['--init-file', '--rcfile']);
 
 export type GateResult = { ok: true } | { ok: false; reason: string };
@@ -42,6 +52,39 @@ function hasRmRecursiveForce(cmd: string): boolean {
     const recursive = /r/i.test(shortFlags) || parts.includes('--recursive') || parts.includes('--dir');
     const force = /f/i.test(shortFlags) || parts.includes('--force');
     if (recursive && force) return true;
+  }
+  return false;
+}
+
+function hasGitForcePush(cmd: string): boolean {
+  for (const match of cmd.matchAll(/\bgit\b/gi)) {
+    const args = shellishArgsAfter(cmd, match.index + match[0].length).map(cleanShellToken);
+    for (let i = 0; i < args.length; i += 1) {
+      const arg = args[i];
+      if (arg === '--') break;
+      if (arg === 'push') {
+        if (gitPushHasForceFlag(args.slice(i + 1))) return true;
+        break;
+      }
+      if (gitOptionConsumesNext(arg)) {
+        i += 1;
+        continue;
+      }
+      if (arg.startsWith('-')) continue;
+      break;
+    }
+  }
+  return false;
+}
+
+function gitOptionConsumesNext(arg: string): boolean {
+  return GIT_OPTIONS_WITH_VALUE.has(arg);
+}
+
+function gitPushHasForceFlag(args: string[]): boolean {
+  for (const arg of args) {
+    if (arg === '--') break;
+    if (/^--force(?:$|[=-])/.test(arg) || /^-[^-]*f/.test(arg)) return true;
   }
   return false;
 }
@@ -381,7 +424,7 @@ function readsProtectedEnvFile(cmd: string): boolean {
 }
 
 export function checkBash(cmd: string, depth = 0): GateResult {
-  if (hasRmRecursiveForce(cmd) || DESTRUCTIVE_CMD.test(cmd)) {
+  if (hasRmRecursiveForce(cmd) || hasGitForcePush(cmd) || DESTRUCTIVE_CMD.test(cmd)) {
     return { ok: false, reason: `คำสั่งทำลายล้าง/irreversible ถูกปฏิเสธ: "${cmd}"` };
   }
   if (PROTECTED_CMD_PATH.test(cmd) || mentionsProtectedEnvPath(cmd) || readsProtectedEnvFile(cmd)) {

@@ -1,9 +1,23 @@
+import { inspect } from 'node:util';
 import type { ToolSet } from 'ai';
 
 // ครอบ tool ด้วย timeout — กัน read/grep/glob/edit บนไฟล์ใหญ่ค้าง แล้วแขวน loop ทั้ง session ไม่จบ
 // tool ที่จัดการ timeout เองอยู่แล้ว → ไม่ครอบ: run_bash (120s ในตัว), task (sub-agent อาจรันนาน)
 const SELF_TIMED = new Set(['run_bash', 'task']);
 export const DEFAULT_TOOL_TIMEOUT = 120_000;
+
+function formatToolError(e: unknown): string {
+  if (e instanceof Error) return e.message || e.name;
+  if (typeof e === 'string') return e;
+  if (e == null) return String(e);
+  try {
+    const json = JSON.stringify(e);
+    if (json) return json;
+  } catch {
+    return inspect(e, { breakLength: Infinity, depth: 2 });
+  }
+  return String(e);
+}
 
 /** Promise.race tool execute กับ timer — timeout คืนเป็น ERROR string (tool ไม่ throw เข้า loop) */
 export function wrapToolsWithTimeout(tools: ToolSet, ms = DEFAULT_TOOL_TIMEOUT): ToolSet {
@@ -24,7 +38,7 @@ export function wrapToolsWithTimeout(tools: ToolSet, ms = DEFAULT_TOOL_TIMEOUT):
         try {
           return await Promise.race([Promise.resolve(orig(input, opts)), timeout]);
         } catch (e) {
-          return `ERROR: ${(e as Error).message}`;
+          return `ERROR: ${formatToolError(e)}`;
         } finally {
           if (timer) clearTimeout(timer);
         }

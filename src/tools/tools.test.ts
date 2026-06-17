@@ -73,7 +73,18 @@ describe('permission gate', () => {
     expect(checkBash("env -u PATH bash -lc 'rm -rf /tmp/x'").ok).toBe(false);
   });
   it('block git reset --hard', () => expect(checkBash('git reset --hard HEAD~2').ok).toBe(false));
-  it('block git push --force', () => expect(checkBash('git push origin main --force').ok).toBe(false));
+  it('block git push force flags', () => {
+    expect(checkBash('git push origin main --force').ok).toBe(false);
+    expect(checkBash('git push -f origin main').ok).toBe(false);
+    expect(checkBash('git push --force-with-lease origin main').ok).toBe(false);
+    expect(checkBash('git -C repo push -f origin main').ok).toBe(false);
+    expect(checkBash('git -c protocol.version=2 push --force origin main').ok).toBe(false);
+    expect(checkBash('git --git-dir repo/.git --work-tree repo push --force-with-lease origin main').ok).toBe(false);
+    expect(checkBash("bash -lc 'git push -f origin main'").ok).toBe(false);
+    expect(checkBash("env -u PATH git push --force origin main").ok).toBe(false);
+    expect(checkBash('git push -- -f').ok).toBe(true);
+    expect(checkBash('git -C repo status -- -f').ok).toBe(true);
+  });
   it('allow reading .env.example documentation through bash guard', () => {
     expect(checkBash('cat .env.example').ok).toBe(true);
     expect(checkBash("sed -n '1,20p' .env.example").ok).toBe(true);

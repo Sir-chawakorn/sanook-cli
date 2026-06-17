@@ -18,6 +18,76 @@ describe('wrapToolsWithTimeout', () => {
     expect(await exec(wrapped, 'fast')({}, {})).toBe('ok');
   });
 
+  it('tool error คืน ERROR string แทนการ throw เข้า loop', async () => {
+    const wrapped = wrapToolsWithTimeout(
+      mk({
+        fail: {
+          execute: async () => {
+            throw new Error('boom');
+          },
+        },
+      }),
+      1000,
+    );
+
+    await expect(exec(wrapped, 'fail')({}, {})).resolves.toBe('ERROR: boom');
+  });
+
+  it('จับ synchronous throw จาก execute เป็น ERROR string', async () => {
+    const wrapped = wrapToolsWithTimeout(
+      mk({
+        syncFail: {
+          execute: () => {
+            throw new TypeError('sync boom');
+          },
+        },
+      }),
+      1000,
+    );
+
+    await expect(exec(wrapped, 'syncFail')({}, {})).resolves.toBe('ERROR: sync boom');
+  });
+
+  it('รองรับ tool ที่ throw ค่าไม่ใช่ Error', async () => {
+    const wrapped = wrapToolsWithTimeout(
+      mk({
+        textFail: {
+          execute: async () => {
+            throw 'plain failure';
+          },
+        },
+        objectFail: {
+          execute: async () => {
+            throw { code: 'E_TOOL', retry: false };
+          },
+        },
+      }),
+      1000,
+    );
+
+    await expect(exec(wrapped, 'textFail')({}, {})).resolves.toBe('ERROR: plain failure');
+    await expect(exec(wrapped, 'objectFail')({}, {})).resolves.toBe('ERROR: {"code":"E_TOOL","retry":false}');
+  });
+
+  it('แสดง thrown object ที่ stringify ไม่ได้ให้พอ debug ได้', async () => {
+    const circular: { self?: unknown } = {};
+    circular.self = circular;
+    const wrapped = wrapToolsWithTimeout(
+      mk({
+        circularFail: {
+          execute: async () => {
+            throw circular;
+          },
+        },
+      }),
+      1000,
+    );
+
+    const res = await exec(wrapped, 'circularFail')({}, {});
+    expect(String(res)).toContain('ERROR:');
+    expect(String(res)).toContain('Circular');
+  });
+
   it('ไม่ครอบ run_bash / task (จัดการ timeout เอง)', () => {
     const bash = { execute: async () => 'x' };
     const task = { execute: async () => 'y' };
