@@ -2123,15 +2123,14 @@ async function runSessions(args: string[]): Promise<void> {
 }
 
 async function runInsights(args: string[]): Promise<void> {
-  const { parseInsightsDays } = await import('./insights-args.js');
-  const days = parseInsightsDays(args.filter((arg) => arg !== '--all' && arg !== '-a'));
-  if (days === null) {
+  const { parseInsightsArgs } = await import('./insights-args.js');
+  const parsed = parseInsightsArgs(args);
+  if (parsed === null) {
     console.error(`ใช้: ${BRAND.cliName} insights [--days N] [--all]`);
     process.exit(2);
   }
-  const all = args.includes('--all') || args.includes('-a');
   const { renderInsights } = await import('./insights.js');
-  console.log(await renderInsights({ days, cwd: all ? null : process.cwd(), includeGateway: true }));
+  console.log(await renderInsights({ days: parsed.days, cwd: parsed.all ? null : process.cwd(), includeGateway: true }));
 }
 
 async function runDump(args: string[]): Promise<void> {

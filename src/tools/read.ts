@@ -4,6 +4,13 @@ import { readFile } from 'node:fs/promises';
 import { clamp, resolveAgentPath } from './util.js';
 import { checkReadPath } from './permission.js';
 
+function splitReadableLines(content: string): string[] {
+  if (!content) return [];
+  const lines = content.split('\n');
+  if (content.endsWith('\n')) lines.pop();
+  return lines;
+}
+
 export const readFileTool = tool({
   description:
     'อ่านไฟล์ใน workspace (UTF-8). อ่านก่อนแก้ไฟล์เสมอ. ' +
@@ -22,9 +29,10 @@ export const readFileTool = tool({
       // ไม่ระบุช่วง → คืนทั้งไฟล์ (clamp) เหมือนเดิม
       if (offset == null && limit == null) return clamp(content);
       // ระบุช่วง → อ่านเฉพาะบรรทัด start..end (ส่งเฉพาะที่ต้องการเข้า context, ประหยัด token)
-      const lines = content.split('\n');
-      const start = Math.max(0, (offset ?? 1) - 1);
-      if (start >= lines.length) return `(ไฟล์มี ${lines.length} บรรทัด — offset ${offset} เกินช่วง)`;
+      const lines = splitReadableLines(content);
+      const requestedOffset = offset ?? 1;
+      const start = Math.max(0, requestedOffset - 1);
+      if (start >= lines.length) return `(ไฟล์มี ${lines.length} บรรทัด — offset ${requestedOffset} เกินช่วง)`;
       const end = limit == null ? lines.length : Math.min(lines.length, start + limit);
       const slice = lines.slice(start, end).join('\n');
       return clamp(`[บรรทัด ${start + 1}-${end} จาก ${lines.length}]\n${slice}`);

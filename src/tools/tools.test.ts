@@ -334,6 +334,24 @@ describe('write / read / list tools', () => {
     await writeFile(f, 'only\n');
     expect(String(await readFileTool.execute!({ path: f, offset: 99 }, opts))).toContain('เกินช่วง');
   });
+  it('read offset does not expose a phantom line after a trailing newline', async () => {
+    const f = join(dir, 'trailing-newline.txt');
+    await writeFile(f, 'only\n');
+
+    const out = String(await readFileTool.execute!({ path: f, offset: 2 }, opts));
+
+    expect(out).toContain('เกินช่วง');
+    expect(out).toContain('ไฟล์มี 1 บรรทัด');
+  });
+  it('read limit-only range reports the default offset for empty files', async () => {
+    const f = join(dir, 'empty.txt');
+    await writeFile(f, '');
+
+    const out = String(await readFileTool.execute!({ path: f, limit: 1 }, opts));
+
+    expect(out).toContain('offset 1 เกินช่วง');
+    expect(out).not.toContain('undefined');
+  });
   it('list คืนชื่อไฟล์ในโฟลเดอร์', async () => {
     await writeFile(join(dir, 'a.txt'), '');
     expect(await listDirTool.execute!({ path: dir }, opts)).toContain('a.txt');

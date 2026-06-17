@@ -16,6 +16,31 @@ describe('parseSearchArgs', () => {
     });
   });
 
+  it('accepts inline values for search options', () => {
+    expect(parseSearchArgs(['race', 'condition', '--mode=hybrid', '--limit=5', '--sources=vault,memory'])).toEqual({
+      ok: true,
+      value: { query: 'race condition', mode: 'hybrid', limit: 5, sources: ['vault', 'memory'] },
+    });
+  });
+
+  it('rejects empty inline search option values', () => {
+    expect(parseSearchArgs(['deploy', '--mode=']).ok).toBe(false);
+    expect(parseSearchArgs(['deploy', '--limit=']).ok).toBe(false);
+    expect(parseSearchArgs(['deploy', '--source=']).ok).toBe(false);
+    expect(parseSearchArgs(['deploy', '--sources=']).ok).toBe(false);
+  });
+
+  it('treats arguments after -- as literal query text', () => {
+    expect(parseSearchArgs(['--', '--mode', 'hybrid'])).toEqual({
+      ok: true,
+      value: { query: '--mode hybrid', mode: 'auto', limit: 8, sources: undefined },
+    });
+    expect(parseSearchArgs(['--mode', 'fts', '--limit', '3', '--', '--source', 'vault'])).toEqual({
+      ok: true,
+      value: { query: '--source vault', mode: 'fts', limit: 3, sources: undefined },
+    });
+  });
+
   it('rejects invalid mode instead of silently falling back to fts', () => {
     const res = parseSearchArgs(['deploy', '--mode', 'nope']);
     if (res.ok) throw new Error('expected invalid mode to fail');

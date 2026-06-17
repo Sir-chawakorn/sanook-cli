@@ -60,6 +60,19 @@ describe('agentCwd scoping of file tools', () => {
     expect(blocked).toContain('BLOCKED');
   });
 
+  it('permission guard blocks writes through symlinks that resolve outside the threaded cwd', async () => {
+    const cwd = await scopedDir();
+    const outside = await scopedDir();
+    await symlink(outside, join(cwd, 'outside-link'));
+
+    const blocked = await runScoped(cwd, () =>
+      writeFileTool.execute!({ path: 'outside-link/leak.txt', content: 'secret' }, {} as never),
+    );
+
+    expect(blocked).toContain('BLOCKED');
+    expect(blocked).toContain('นอก workspace');
+  });
+
   it('permission guard blocks writes through symlinks into protected directories even with outside-workspace opt-in', async () => {
     vi.stubEnv('SANOOK_ALLOW_OUTSIDE_WORKSPACE', '1');
     const cwd = await scopedDir();
