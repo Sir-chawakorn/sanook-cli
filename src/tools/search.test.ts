@@ -25,4 +25,8 @@ describe('ripgrep output formatting', () => {
   it('normalizes CRLF line separators', () => {
     expect(formatRipgrepOutput('file.ts:1:needle\r\nfile.ts:2:needle\r\n')).toBe('file.ts:1:needle\nfile.ts:2:needle');
   });
+
+  it('normalizes bare carriage-return line separators', () => {
+    expect(formatRipgrepOutput('file.ts:1:needle\rfile.ts:2:needle\r')).toBe('file.ts:1:needle\nfile.ts:2:needle');
+  });
 });

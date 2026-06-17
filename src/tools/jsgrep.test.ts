@@ -62,6 +62,20 @@ describe('jsGrep (ripgrep-less fallback)', () => {
     expect(out).toContain('JS fallback');
   });
 
+  it('caps matches per file while continuing to later files', async () => {
+    const noisyLines = Array.from({ length: 55 }, (_v, i) => `perFileNeedle ${i + 1}`).join('\n');
+    await writeFile(join(dir, 'noisy.ts'), `${noisyLines}\n`);
+    await writeFile(join(dir, 'after-noisy.ts'), 'perFileNeedle after\n');
+
+    const out = await jsGrep('perFileNeedle', dir, '.');
+    const matches = out.split('\n').filter((line) => line.includes('perFileNeedle'));
+
+    expect(matches.filter((line) => line.startsWith('noisy.ts:'))).toHaveLength(50);
+    expect(out).not.toContain('noisy.ts:51:perFileNeedle 51');
+    expect(out).toContain('after-noisy.ts:1:perFileNeedle after');
+    expect(out).not.toContain('truncated');
+  });
+
   it('does not report global truncation when fallback matches exactly the result cap', async () => {
     for (let i = 0; i < 200; i += 1) {
       await writeFile(join(dir, `cap-${String(i).padStart(3, '0')}.ts`), 'capNeedle\n');

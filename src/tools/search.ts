@@ -215,7 +215,7 @@ export async function jsGrep(pattern: string, base: string, target: string): Pro
     }
     if (content.includes('\u0000')) return; // binary
     const rel = relative(base, full) || full;
-    const lines = content.split(/\r?\n/);
+    const lines = content.split(/\r\n|\n|\r/);
     let perFile = 0;
     for (let i = 0; i < lines.length && !truncated; i++) {
       if (re.test(lines[i])) {
@@ -265,9 +265,9 @@ const execFileAsync = promisify(execFile);
 const MAX_RESULTS = 200;
 
 export function formatRipgrepOutput(stdout: string): string {
-  const text = stdout.replace(/\r?\n$/, '');
+  const text = stdout.replace(/(?:\r\n|\n|\r)$/, '');
   if (!text) return '(no matches)';
-  const allLines = text.split(/\r?\n/);
+  const allLines = text.split(/\r\n|\n|\r/);
   const lines = allLines.slice(0, MAX_RESULTS);
   if (allLines.length > MAX_RESULTS) lines.push(`... [>${MAX_RESULTS} matches, truncated]`);
   return clamp(lines.join('\n')) || '(no matches)';

@@ -263,6 +263,14 @@ describe('editFileTool (integration)', () => {
     expect(await readFile(f, 'utf8')).toBe('a();\r\nB();\r\nc();\r\n');
   });
 
+  it('แก้ไฟล์ CR โดยไม่ทำลาย line ending', async () => {
+    const f = join(dir, 'cr.ts');
+    await writeFile(f, 'a();\rb();\rc();\r');
+    const out = await editFileTool.execute!({ path: f, old_string: 'b();', new_string: 'B();' }, opts);
+    expect(out).toMatch(/OK/);
+    expect(await readFile(f, 'utf8')).toBe('a();\rB();\rc();\r');
+  });
+
   it('flex match (indent ต่าง) → คง indentation เดิม ไม่ de-indent code', async () => {
     const f = join(dir, 'indent.ts');
     await writeFile(f, 'function g() {\n    const x = 1;\n    const y = 2;\n}\n');
@@ -320,6 +328,15 @@ describe('write / read / list tools', () => {
   it('read คืน ERROR (ไม่ throw) เมื่อไฟล์ไม่มี', async () => {
     expect(await readFileTool.execute!({ path: join(dir, 'nope.txt') }, opts)).toMatch(/ERROR/);
   });
+  it('read full file normalizes carriage-return line endings for display', async () => {
+    const f = join(dir, 'full-cr.txt');
+    await writeFile(f, 'L1\rL2\r\nL3\r');
+
+    const out = String(await readFileTool.execute!({ path: f }, opts));
+
+    expect(out).toBe('L1\nL2\nL3\n');
+    expect(out).not.toContain('\r');
+  });
   it('read offset/limit อ่านเฉพาะช่วงบรรทัด (ประหยัด token)', async () => {
     const f = join(dir, 'big.txt');
     await writeFile(f, 'L1\nL2\nL3\nL4\nL5\n');
@@ -328,6 +345,25 @@ describe('write / read / list tools', () => {
     expect(out).toContain('L2\nL3');
     expect(out).not.toContain('L1');
     expect(out).not.toContain('L5');
+  });
+  it('read offset/limit strips CRLF carriage returns from ranged output', async () => {
+    const f = join(dir, 'crlf.txt');
+    await writeFile(f, 'L1\r\nL2\r\nL3\r\n');
+
+    const out = String(await readFileTool.execute!({ path: f, offset: 2, limit: 2 }, opts));
+
+    expect(out).toContain('L2\nL3');
+    expect(out).not.toContain('\r');
+  });
+  it('read offset/limit handles bare carriage-return line endings', async () => {
+    const f = join(dir, 'cr.txt');
+    await writeFile(f, 'L1\rL2\rL3\r');
+
+    const out = String(await readFileTool.execute!({ path: f, offset: 2, limit: 2 }, opts));
+
+    expect(out).toContain('[บรรทัด 2-3 จาก 3]');
+    expect(out).toContain('L2\nL3');
+    expect(out).not.toContain('\r');
   });
   it('read offset เกินช่วง → บอกชัด ไม่ throw', async () => {
     const f = join(dir, 'small.txt');

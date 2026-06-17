@@ -11,6 +11,22 @@ export interface Match {
   count: number;
 }
 
+type LineEnding = '\n' | '\r\n' | '\r';
+
+function detectLineEnding(content: string): LineEnding {
+  if (content.includes('\r\n')) return '\r\n';
+  if (content.includes('\r')) return '\r';
+  return '\n';
+}
+
+function normalizeLineEndings(content: string): string {
+  return content.replace(/\r\n|\r/g, '\n');
+}
+
+function restoreLineEndings(content: string, lineEnding: LineEnding): string {
+  return lineEnding === '\n' ? content : content.replace(/\n/g, lineEnding);
+}
+
 /** tier 1: exact substring match + นับจำนวนครั้ง */
 export function exactMatch(content: string, needle: string): Match | null {
   if (needle.length === 0) return null; // กัน infinite loop จาก empty needle
@@ -95,12 +111,12 @@ export const editFileTool = tool({
       return `ERROR: อ่านไฟล์ "${path}" ไม่ได้ — ${(err as Error).message}`;
     }
 
-    // normalize CRLF→LF เพื่อให้ match/offset consistent แล้ว restore EOL เดิมตอนเขียน
-    // (กัน flex match กิน \r แล้วทำ line ending พังบนไฟล์ Windows)
-    const usesCRLF = raw.includes('\r\n');
-    const content = usesCRLF ? raw.replace(/\r\n/g, '\n') : raw;
-    const oldNorm = old_string.replace(/\r\n/g, '\n');
-    const newNorm = new_string.replace(/\r\n/g, '\n');
+    // normalize CRLF/CR→LF เพื่อให้ match/offset consistent แล้ว restore EOL เดิมตอนเขียน
+    // (กัน flex match กิน \r แล้วทำ line ending พังบนไฟล์ Windows/legacy Mac)
+    const lineEnding = detectLineEnding(raw);
+    const content = normalizeLineEndings(raw);
+    const oldNorm = normalizeLineEndings(old_string);
+    const newNorm = normalizeLineEndings(new_string);
 
     // replace_all: แทนที่ทุกที่ที่ตรง "เป๊ะ" (exact เท่านั้น — flex หลายช่วงกำกวม) → old_string สั้นได้ ไม่ต้อง unique
     if (replace_all) {
@@ -109,8 +125,7 @@ export const editFileTool = tool({
         return `ERROR: ไม่พบ old_string ในไฟล์ "${path}" — replace_all ใช้ match แบบตรงเป๊ะเท่านั้น (อ่านไฟล์ใหม่แล้วคัดข้อความที่ตรง)`;
       }
       const parts = content.split(oldNorm); // split/join = แทนที่ทุกที่ (string literal, ไม่ใช่ regex)
-      let updated = parts.join(newNorm);
-      if (usesCRLF) updated = updated.replace(/\n/g, '\r\n');
+      const updated = restoreLineEndings(parts.join(newNorm), lineEnding);
       try {
         await writeFile(full, updated, 'utf8');
       } catch (err) {
@@ -146,8 +161,7 @@ export const editFileTool = tool({
       }
     }
 
-    let updated = content.slice(0, m.start) + replacement + content.slice(m.end);
-    if (usesCRLF) updated = updated.replace(/\n/g, '\r\n');
+    const updated = restoreLineEndings(content.slice(0, m.start) + replacement + content.slice(m.end), lineEnding);
     try {
       await writeFile(full, updated, 'utf8');
     } catch (err) {

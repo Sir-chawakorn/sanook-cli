@@ -6,9 +6,13 @@ import { checkReadPath } from './permission.js';
 
 function splitReadableLines(content: string): string[] {
   if (!content) return [];
-  const lines = content.split('\n');
-  if (content.endsWith('\n')) lines.pop();
+  const lines = content.split(/\r\n|\n|\r/);
+  if (/(\r\n|\n|\r)$/.test(content)) lines.pop();
   return lines;
+}
+
+function normalizeReadableLineEndings(content: string): string {
+  return content.replace(/\r\n|\r/g, '\n');
 }
 
 export const readFileTool = tool({
@@ -27,7 +31,7 @@ export const readFileTool = tool({
     try {
       const content = await readFile(full, 'utf8');
       // ไม่ระบุช่วง → คืนทั้งไฟล์ (clamp) เหมือนเดิม
-      if (offset == null && limit == null) return clamp(content);
+      if (offset == null && limit == null) return clamp(normalizeReadableLineEndings(content));
       // ระบุช่วง → อ่านเฉพาะบรรทัด start..end (ส่งเฉพาะที่ต้องการเข้า context, ประหยัด token)
       const lines = splitReadableLines(content);
       const requestedOffset = offset ?? 1;
