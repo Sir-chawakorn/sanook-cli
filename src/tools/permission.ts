@@ -42,11 +42,16 @@ const GIT_OPTIONS_WITH_VALUE = new Set([
   '--work-tree',
 ]);
 const SHELL_OPTIONS_WITH_VALUE = new Set(['--init-file', '--rcfile']);
+const SEARCH_COMMANDS_WITH_LITERAL_PATTERN = new Set(['grep', 'rg']);
+const SHELL_COMMAND_PREFIXES = new Set(['if', 'then', 'elif', 'while', 'until', 'do', 'time', 'command', 'builtin', 'exec']);
 
 export type GateResult = { ok: true } | { ok: false; reason: string };
+type ShellTokenEntry = { raw: string; start: number; end: number; segment: number };
 
 function hasRmRecursiveForce(cmd: string): boolean {
+  const literalPatternRanges = literalSearchPatternRanges(cmd);
   for (const match of cmd.matchAll(/\brm\b([^;&|]*)/gi)) {
+    if (match.index !== undefined && inRanges(match.index, literalPatternRanges)) continue;
     const parts = match[1].split(/\s+/).filter(Boolean);
     const shortFlags = parts.filter((part) => /^-[^-]/.test(part)).join('');
     const recursive = /r/i.test(shortFlags) || parts.includes('--recursive') || parts.includes('--dir');
@@ -54,6 +59,96 @@ function hasRmRecursiveForce(cmd: string): boolean {
     if (recursive && force) return true;
   }
   return false;
+}
+
+function inRanges(index: number, ranges: Array<{ start: number; end: number }>): boolean {
+  return ranges.some(({ start, end }) => index >= start && index < end);
+}
+
+function isLiteralSingleQuotedToken(raw: string): boolean {
+  const token = raw.trim();
+  return /^'(?:[^']*)'$/.test(token) || /^\$'(?:\\.|[^'])*'$/.test(token);
+}
+
+function literalSearchPatternRanges(cmd: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  const bySegment = new Map<number, ShellTokenEntry[]>();
+  for (const entry of shellishTokenEntries(cmd)) {
+    const segment = bySegment.get(entry.segment);
+    if (segment) segment.push(entry);
+    else bySegment.set(entry.segment, [entry]);
+  }
+
+  for (const entries of bySegment.values()) {
+    const commandIndex = shellSegmentCommandIndex(entries);
+    if (commandIndex < 0) continue;
+    const command = cleanShellToken(entries[commandIndex].raw).toLowerCase();
+    if (!SEARCH_COMMANDS_WITH_LITERAL_PATTERN.has(command)) continue;
+
+    for (let j = commandIndex + 1; j < entries.length; j += 1) {
+      const clean = cleanShellToken(entries[j].raw);
+      if (clean === '--') continue;
+      if (clean === '-e' || clean === '--regexp') {
+        const value = entries[j + 1];
+        if (value && isLiteralSingleQuotedToken(value.raw)) ranges.push({ start: value.start, end: value.end });
+        j += 1;
+        continue;
+      }
+      const attachedPattern = attachedLiteralSearchPatternOption(entries[j].raw);
+      if (attachedPattern) {
+        ranges.push({ start: entries[j].start, end: entries[j].end });
+        continue;
+      }
+      if (clean.startsWith('-')) continue;
+      if (isLiteralSingleQuotedToken(entries[j].raw)) ranges.push({ start: entries[j].start, end: entries[j].end });
+      break;
+    }
+  }
+
+  return ranges;
+}
+
+function attachedLiteralSearchPatternOption(raw: string): boolean {
+  const token = raw.trim();
+  if (token.startsWith('-e')) return isLiteralSingleQuotedToken(token.slice(2));
+  const longRegexp = token.match(/^--regexp=(.+)$/);
+  return longRegexp ? isLiteralSingleQuotedToken(longRegexp[1]) : false;
+}
+
+function shellSegmentCommandIndex(entries: ShellTokenEntry[]): number {
+  let envMode = false;
+  let envOptionsDone = false;
+
+  for (let i = 0; i < entries.length; i += 1) {
+    const clean = cleanShellToken(entries[i].raw);
+    if (!clean) continue;
+
+    if (!envMode && shellEnvAssignment(clean)) continue;
+    if (!envMode && SHELL_COMMAND_PREFIXES.has(clean)) continue;
+    if (!envMode && clean === 'env') {
+      envMode = true;
+      envOptionsDone = false;
+      continue;
+    }
+
+    if (envMode) {
+      if (!envOptionsDone && clean === '--') {
+        envOptionsDone = true;
+        continue;
+      }
+      if (!envOptionsDone && envOptionConsumesNext(clean)) {
+        i += 1;
+        continue;
+      }
+      if (!envOptionsDone && clean.startsWith('-')) continue;
+      if (shellEnvAssignment(clean)) continue;
+      return i;
+    }
+
+    return i;
+  }
+
+  return -1;
 }
 
 function hasDangerousGitOperation(cmd: string): boolean {
@@ -439,6 +534,62 @@ function shellishTokens(cmd: string): string[] {
   }
   if (token) args.push(token);
   return args;
+}
+
+function shellishTokenEntries(cmd: string): ShellTokenEntry[] {
+  const entries: ShellTokenEntry[] = [];
+  let token = '';
+  let tokenStart = 0;
+  let segment = 0;
+  let quote = '';
+  let escaping = false;
+
+  const flush = (end: number): void => {
+    if (!token) return;
+    entries.push({ raw: token, start: tokenStart, end, segment });
+    token = '';
+  };
+
+  const append = (ch: string, index: number): void => {
+    if (!token) tokenStart = index;
+    token += ch;
+  };
+
+  for (let i = 0; i < cmd.length; i += 1) {
+    const ch = cmd[i];
+    if (escaping) {
+      append(ch, i);
+      escaping = false;
+      continue;
+    }
+    if (ch === '\\' && quote !== "'") {
+      escaping = true;
+      append(ch, i);
+      continue;
+    }
+    if (quote) {
+      append(ch, i);
+      if (ch === quote) quote = '';
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      append(ch, i);
+      continue;
+    }
+    if (/[;|&\n\r]/.test(ch)) {
+      flush(i);
+      segment += 1;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      flush(i);
+      continue;
+    }
+    append(ch, i);
+  }
+  flush(cmd.length);
+  return entries;
 }
 
 function shellCommandSegmentStart(cmd: string, end: number): number {

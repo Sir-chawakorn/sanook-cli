@@ -66,6 +66,20 @@ describe('permission gate', () => {
     expect(checkBash('rm --recursive --force /tmp/x').ok).toBe(false);
     expect(checkBash('rm --force --recursive /tmp/x').ok).toBe(false);
   });
+  it('allows literal rm -rf text in single-quoted search patterns only', () => {
+    expect(checkBash("grep 'rm -rf' README.md").ok).toBe(true);
+    expect(checkBash("grep -R -e 'rm -rf' .").ok).toBe(true);
+    expect(checkBash("grep -e'rm -rf' README.md").ok).toBe(true);
+    expect(checkBash("grep --regexp='rm -rf' README.md").ok).toBe(true);
+    expect(checkBash("env FOO=bar grep 'rm -rf' README.md").ok).toBe(true);
+    expect(checkBash("rg 'rm -rf' src").ok).toBe(true);
+    expect(checkBash("rg -e 'rm -rf' src").ok).toBe(true);
+    expect(checkBash("rg -e'rm -rf' src").ok).toBe(true);
+    expect(checkBash("echo grep 'rm -rf /tmp/x'").ok).toBe(false);
+    expect(checkBash('grep "$(rm -rf /tmp/x)" README.md').ok).toBe(false);
+    expect(checkBash('node -e \'require("child_process").execSync(process.argv[2])\' grep \'rm -rf /tmp/x\'').ok).toBe(false);
+    expect(checkBash('node -e \'require("child_process").execSync("rm -rf /tmp/x")\'').ok).toBe(false);
+  });
   it('block destructive commands inside nested shell -c payloads', () => {
     expect(checkBash("bash -c 'rm -rf /tmp/x'").ok).toBe(false);
     expect(checkBash("bash -c'rm -rf /tmp/x'").ok).toBe(false);
