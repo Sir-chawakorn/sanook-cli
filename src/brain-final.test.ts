@@ -22,6 +22,23 @@ describe('parseBrainFinalArgs', () => {
     expect(parseBrainFinalArgs(['--json']).ok).toBe(false);
     expect(parseBrainFinalArgs(['--task=']).ok).toBe(false);
   });
+
+  it('rejects missing split option values without consuming the next flag', () => {
+    const task = parseBrainFinalArgs(['--task', '--lite', 'ship final']);
+    const output = parseBrainFinalArgs(['ship final', '--output', '--force']);
+
+    expect(task.ok).toBe(false);
+    if (!task.ok) expect(task.message).toContain('--task');
+    expect(output.ok).toBe(false);
+    if (!output.ok) expect(output.message).toContain('--output');
+  });
+
+  it('treats arguments after -- as literal task text', () => {
+    expect(parseBrainFinalArgs(['--lite', '--', '--task', 'literal'])).toEqual({
+      ok: true,
+      value: { task: '--task literal', fromDiff: false, lite: true, force: false },
+    });
+  });
 });
 
 describe('createBrainFinal', () => {

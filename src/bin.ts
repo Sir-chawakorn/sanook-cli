@@ -3377,32 +3377,23 @@ async function runMcp(args: string[]): Promise<void> {
       getMcpRegistryServer,
       parseKeyValueList,
       formatRegistryInfo,
+      parseMcpRegistryInstallArgs,
     } = await import('./mcp-registry.js');
-    const name = positionals(rest, new Set(['--name', '--transport', '--env', '--header', '--version']))[0];
-    if (!name) {
-      console.error(`ใช้: ${BRAND.cliName} mcp install <registry-server-name> [--name alias] [--transport auto|remote|stdio] [--env KEY=value] [--header KEY=value] [--project]`);
+    const parsedInstall = parseMcpRegistryInstallArgs(rest);
+    if (!parsedInstall.ok) {
+      console.error(parsedInstall.message);
       process.exit(1);
     }
-    const optionValues = (flag: string): string[] => {
-      const out: string[] = [];
-      for (let i = 0; i < rest.length; i++) {
-        if (rest[i] === flag && rest[i + 1]) out.push(rest[++i]);
-        else if (rest[i].startsWith(`${flag}=`)) out.push(rest[i].slice(flag.length + 1));
-      }
-      return out;
-    };
-    const valueOf = (flag: string): string | undefined => optionValues(flag)[0];
-    const alias = valueOf('--name');
+    const { name, alias, transport, version, env, headers, project } = parsedInstall.value;
     if (alias && !isValidMcpServerName(alias)) {
       console.error('ชื่อ MCP server ต้องเป็น a-z/A-Z/0-9/_/- ความยาวไม่เกิน 64 และห้ามใช้ชื่อพิเศษ');
       process.exit(1);
     }
-    const transport = valueOf('--transport') as 'auto' | 'remote' | 'stdio' | undefined;
     if (transport && !['auto', 'remote', 'stdio'].includes(transport)) {
       console.error('--transport ต้องเป็น auto, remote, หรือ stdio');
       process.exit(1);
     }
-    const server = await getMcpRegistryServer(name, { version: valueOf('--version') });
+    const server = await getMcpRegistryServer(name, { version });
     if (!server) {
       console.error(`ไม่เจอ MCP registry server: ${name}`);
       process.exit(1);
@@ -3410,8 +3401,8 @@ async function runMcp(args: string[]): Promise<void> {
     const plan = buildMcpInstallPlan(server, {
       alias,
       transport,
-      env: parseKeyValueList(optionValues('--env')),
-      headers: parseKeyValueList(optionValues('--header')),
+      env: parseKeyValueList(env),
+      headers: parseKeyValueList(headers),
     });
     if (!plan.ok) {
       console.log(formatRegistryInfo(server));
@@ -3422,7 +3413,7 @@ async function runMcp(args: string[]): Promise<void> {
       process.exit(1);
     }
     let targetPath = mcpPath;
-    if (rest.includes('--project')) {
+    if (project) {
       const { projectConfigPathIfTrusted, projectRoot } = await import('./trust.js');
       const root = await projectRoot(process.cwd());
       const projectPath = await projectConfigPathIfTrusted('mcp.json', root);

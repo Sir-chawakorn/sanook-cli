@@ -70,6 +70,20 @@ export type McpRegistrySearchArgsResult =
   | { ok: true; value: ParsedMcpRegistrySearchArgs }
   | { ok: false; message: string };
 
+export interface ParsedMcpRegistryInstallArgs {
+  name: string;
+  alias?: string;
+  transport?: 'auto' | 'remote' | 'stdio';
+  version?: string;
+  env: string[];
+  headers: string[];
+  project: boolean;
+}
+
+export type McpRegistryInstallArgsResult =
+  | { ok: true; value: ParsedMcpRegistryInstallArgs }
+  | { ok: false; message: string };
+
 export interface McpRegistryInstallOptions {
   alias?: string;
   transport?: 'auto' | 'remote' | 'stdio';
@@ -147,13 +161,18 @@ interface RawRegistryEntry {
 export function parseKeyValueList(values: string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const value of values) {
-    const idx = value.indexOf('=');
-    if (idx <= 0) throw new Error(`ต้องใช้รูปแบบ KEY=value: ${value}`);
-    const key = value.slice(0, idx).trim();
-    if (!key) throw new Error(`ต้องใช้รูปแบบ KEY=value: ${value}`);
-    out[key] = value.slice(idx + 1);
+    const parsed = parseKeyValueEntry(value);
+    out[parsed.key] = parsed.value;
   }
   return out;
+}
+
+function parseKeyValueEntry(value: string): { key: string; value: string } {
+  const idx = value.indexOf('=');
+  if (idx <= 0) throw new Error(`ต้องใช้รูปแบบ KEY=value: ${value}`);
+  const key = value.slice(0, idx).trim();
+  if (!key) throw new Error(`ต้องใช้รูปแบบ KEY=value: ${value}`);
+  return { key, value: value.slice(idx + 1) };
 }
 
 function parseRegistrySearchLimit(raw: string | undefined): number | undefined {
@@ -193,6 +212,89 @@ export function parseMcpRegistrySearchArgs(args: string[]): McpRegistrySearchArg
   }
 
   return { ok: true, value: { query: query.join(' ').trim(), limit, cursor } };
+}
+
+function parseInstallOptionValue(args: string[], index: number, flag: string): { value?: string; nextIndex: number } {
+  const arg = args[index];
+  if (arg === flag) return takeValue(args, index);
+  return { value: inlineValue(flag, arg), nextIndex: index };
+}
+
+export function parseMcpRegistryInstallArgs(args: string[]): McpRegistryInstallArgsResult {
+  const positionals: string[] = [];
+  const env: string[] = [];
+  const headers: string[] = [];
+  let alias: string | undefined;
+  let transport: ParsedMcpRegistryInstallArgs['transport'];
+  let version: string | undefined;
+  let project = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') {
+      positionals.push(...args.slice(i + 1));
+      break;
+    }
+    if (a === '--project') {
+      project = true;
+    } else if (a === '--name' || a.startsWith('--name=')) {
+      const next = parseInstallOptionValue(args, i, '--name');
+      if (next.nextIndex !== i) i = next.nextIndex;
+      const value = next.value?.trim();
+      if (!value) return { ok: false, message: '--name ต้องระบุค่า' };
+      alias ??= value;
+    } else if (a === '--transport' || a.startsWith('--transport=')) {
+      const next = parseInstallOptionValue(args, i, '--transport');
+      if (next.nextIndex !== i) i = next.nextIndex;
+      const value = next.value?.trim();
+      if (!value) return { ok: false, message: '--transport ต้องระบุค่า' };
+      if (!['auto', 'remote', 'stdio'].includes(value)) {
+        return { ok: false, message: '--transport ต้องเป็น auto, remote, หรือ stdio' };
+      }
+      transport ??= value as ParsedMcpRegistryInstallArgs['transport'];
+    } else if (a === '--version' || a.startsWith('--version=')) {
+      const next = parseInstallOptionValue(args, i, '--version');
+      if (next.nextIndex !== i) i = next.nextIndex;
+      const value = next.value?.trim();
+      if (!value) return { ok: false, message: '--version ต้องระบุค่า' };
+      version ??= value;
+    } else if (a === '--env' || a.startsWith('--env=')) {
+      const next = parseInstallOptionValue(args, i, '--env');
+      if (next.nextIndex !== i) i = next.nextIndex;
+      const value = next.value;
+      if (!value?.trim()) return { ok: false, message: '--env ต้องระบุ KEY=value' };
+      try {
+        parseKeyValueEntry(value);
+      } catch {
+        return { ok: false, message: `--env ต้องใช้รูปแบบ KEY=value: ${value}` };
+      }
+      env.push(value);
+    } else if (a === '--header' || a.startsWith('--header=')) {
+      const next = parseInstallOptionValue(args, i, '--header');
+      if (next.nextIndex !== i) i = next.nextIndex;
+      const value = next.value;
+      if (!value?.trim()) return { ok: false, message: '--header ต้องระบุ KEY=value' };
+      try {
+        parseKeyValueEntry(value);
+      } catch {
+        return { ok: false, message: `--header ต้องใช้รูปแบบ KEY=value: ${value}` };
+      }
+      headers.push(value);
+    } else if (a.startsWith('-')) {
+      return { ok: false, message: `ไม่รู้จัก option: ${a}` };
+    } else if (!a.startsWith('-')) {
+      positionals.push(a);
+    }
+  }
+
+  const name = positionals[0];
+  if (!name) {
+    return { ok: false, message: 'ใช้: sanook mcp install <registry-server-name> [--name alias] [--transport auto|remote|stdio] [--env KEY=value] [--header KEY=value] [--project]' };
+  }
+  if (positionals.length > 1) {
+    return { ok: false, message: `ระบุ registry server ได้เพียงชื่อเดียว: ${positionals.slice(1).join(' ')}` };
+  }
+  return { ok: true, value: { name, alias, transport, version, env, headers, project } };
 }
 
 export function aliasFromRegistryName(name: string): string {

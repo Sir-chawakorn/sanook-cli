@@ -7,6 +7,7 @@ import {
   formatRegistrySearch,
   getMcpRegistryServer,
   parseKeyValueList,
+  parseMcpRegistryInstallArgs,
   parseMcpRegistrySearchArgs,
   searchMcpRegistry,
   type McpRegistryServer,
@@ -88,6 +89,87 @@ describe('mcp registry helpers', () => {
     if (!emptyCursor.ok) expect(emptyCursor.message).toContain('--cursor');
     expect(whitespaceCursor.ok).toBe(false);
     if (!whitespaceCursor.ok) expect(whitespaceCursor.message).toContain('--cursor');
+  });
+
+  it('parses mcp install options without consuming following flags as values', () => {
+    expect(
+      parseMcpRegistryInstallArgs([
+        'com.gitlab/mcp',
+        '--name',
+        'gitlab',
+        '--transport=remote',
+        '--version',
+        '1.0.0',
+        '--env',
+        'TOKEN=abc',
+        '--header=Authorization=Bearer x',
+        '--project',
+      ]),
+    ).toEqual({
+      ok: true,
+      value: {
+        name: 'com.gitlab/mcp',
+        alias: 'gitlab',
+        transport: 'remote',
+        version: '1.0.0',
+        env: ['TOKEN=abc'],
+        headers: ['Authorization=Bearer x'],
+        project: true,
+      },
+    });
+
+    expect(
+      parseMcpRegistryInstallArgs([
+        '--env=TOKEN=abc',
+        '--env',
+        'OTHER=def',
+        '--header',
+        'Authorization=Bearer x',
+        '--header=X-Team=platform',
+        '--',
+        '-internal/server',
+      ]),
+    ).toEqual({
+      ok: true,
+      value: {
+        name: '-internal/server',
+        env: ['TOKEN=abc', 'OTHER=def'],
+        headers: ['Authorization=Bearer x', 'X-Team=platform'],
+        project: false,
+      },
+    });
+
+    const missingName = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--name', '--project']);
+    const missingEnv = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--env', '--header', 'A=b']);
+    const invalidEnv = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--env', 'TOKEN']);
+    const missingHeader = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--header=']);
+    const invalidHeader = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--header', '=Bearer x']);
+    const missingTransport = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--transport', '--project']);
+    const invalidTransport = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--transport', 'websocket']);
+    const missingVersion = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--version', '--project']);
+    const unknownFlag = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--heder', 'A=b']);
+    const extraServerName = parseMcpRegistryInstallArgs(['com.gitlab/mcp', 'app.linear/linear']);
+
+    expect(missingName.ok).toBe(false);
+    if (!missingName.ok) expect(missingName.message).toContain('--name');
+    expect(missingEnv.ok).toBe(false);
+    if (!missingEnv.ok) expect(missingEnv.message).toContain('--env');
+    expect(invalidEnv.ok).toBe(false);
+    if (!invalidEnv.ok) expect(invalidEnv.message).toContain('--env');
+    expect(missingHeader.ok).toBe(false);
+    if (!missingHeader.ok) expect(missingHeader.message).toContain('--header');
+    expect(invalidHeader.ok).toBe(false);
+    if (!invalidHeader.ok) expect(invalidHeader.message).toContain('--header');
+    expect(missingTransport.ok).toBe(false);
+    if (!missingTransport.ok) expect(missingTransport.message).toContain('--transport');
+    expect(invalidTransport.ok).toBe(false);
+    if (!invalidTransport.ok) expect(invalidTransport.message).toContain('auto, remote, หรือ stdio');
+    expect(missingVersion.ok).toBe(false);
+    if (!missingVersion.ok) expect(missingVersion.message).toContain('--version');
+    expect(unknownFlag.ok).toBe(false);
+    if (!unknownFlag.ok) expect(unknownFlag.message).toContain('--heder');
+    expect(extraServerName.ok).toBe(false);
+    if (!extraServerName.ok) expect(extraServerName.message).toContain('registry server');
   });
 
   it('searches registry and filters older duplicate versions', async () => {

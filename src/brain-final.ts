@@ -3,6 +3,7 @@ import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { inlineValue, takeValue } from './cli-option-values.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -74,16 +75,16 @@ export function parseBrainFinalArgs(args: string[]): BrainFinalArgsResult {
       parsed.lite = true;
     } else if (arg === '--force') {
       parsed.force = true;
-    } else if (arg === '--task') {
-      const value = args[++i];
+    } else if (arg === '--task' || arg.startsWith('--task=')) {
+      const next = arg === '--task' ? takeValue(args, i) : undefined;
+      const value = next ? next.value : inlineValue('--task', arg);
+      if (next) i = next.nextIndex;
       if (!value?.trim()) return { ok: false, message: 'ต้องระบุค่าให้ --task' };
       parsed.task = value.trim();
-    } else if (arg.startsWith('--task=')) {
-      const value = arg.slice('--task='.length).trim();
-      if (!value) return { ok: false, message: 'ต้องระบุค่าให้ --task' };
-      parsed.task = value;
     } else if (arg === '--output') {
-      const value = args[++i];
+      const next = takeValue(args, i);
+      const value = next.value;
+      i = next.nextIndex;
       if (!value?.trim()) return { ok: false, message: 'ต้องระบุค่าให้ --output' };
       parsed.output = value.trim();
     } else if (arg.startsWith('--output=')) {
