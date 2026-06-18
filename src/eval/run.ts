@@ -3,12 +3,18 @@
 //   ANTHROPIC_API_KEY=... npm run eval
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tasks } from './tasks.js';
 import { runAgent } from '../loop.js';
 
+export function evalModelFromEnv(env: { SANOOK_MODEL?: string } = process.env): string {
+  const model = env.SANOOK_MODEL?.trim();
+  return model || 'sonnet';
+}
+
 async function main(): Promise<void> {
-  const model = process.env.SANOOK_MODEL ?? 'sonnet';
+  const model = evalModelFromEnv();
   const orig = process.cwd();
   let passed = 0;
 
@@ -34,4 +40,8 @@ async function main(): Promise<void> {
   process.exit(passed === tasks.length ? 0 : 1);
 }
 
-void main();
+function isDirectRun(): boolean {
+  return Boolean(process.argv[1]) && fileURLToPath(import.meta.url) === resolve(process.argv[1]);
+}
+
+if (isDirectRun()) void main();

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { clamp } from './tools/util.js';
 
-const SAFE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'APPDATA'];
+const SAFE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR', 'APPDATA'];
 const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024;
 
 export interface ProcessRunOptions {
@@ -113,4 +113,3 @@ export function formatProcessResult(result: ProcessRunResult): string {
       : `exit ${result.code ?? 'unknown'}${result.signal ? ` (${result.signal})` : ''}`;
   return clamp(`ERROR: process failed — ${status}${body ? `\n${body}` : ''}${truncated}`);
 }
-

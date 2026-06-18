@@ -85,7 +85,12 @@ function portErrorValue(raw: string | undefined): string {
 }
 
 function modelErrorValue(raw: string | undefined): string | undefined {
-  return raw === undefined || raw.trim() === '' ? 'ต้องระบุค่า' : undefined;
+  return cleanModelValue(raw) ? undefined : 'ต้องระบุค่า';
+}
+
+function cleanModelValue(raw: string | undefined): string | undefined {
+  const clean = raw?.trim();
+  return clean ? clean : undefined;
 }
 
 export function parseServeArgs(argv: string[]): ParsedServeArgs {
@@ -106,14 +111,16 @@ export function parseServeArgs(argv: string[]): ParsedServeArgs {
     } else if (a === '--model' || a === '-m' || a.startsWith('--model=')) {
       if (a.startsWith('--model=')) {
         const raw = inlineValue('--model', a);
+        const clean = cleanModelValue(raw);
         const error = modelErrorValue(raw);
         if (error) modelError = error;
-        else model = raw;
+        else model = clean;
       } else {
         const next = takeValue(argv, i);
+        const clean = cleanModelValue(next.value);
         const error = modelErrorValue(next.value);
         if (error) modelError = error;
-        else model = next.value;
+        else model = clean;
         i = next.nextIndex;
       }
     }
@@ -143,8 +150,8 @@ export function parseArgs(argv: string[]): Args {
       rest.push(...argv.slice(i + 1));
       break;
     }
-    if (a.startsWith('--model=')) model = inlineValue('--model', a);
-    else if (a === '--model' || a === '-m') model = takeArgValue(i);
+    if (a.startsWith('--model=')) model = cleanModelValue(inlineValue('--model', a));
+    else if (a === '--model' || a === '-m') model = cleanModelValue(takeArgValue(i));
     else if (a.startsWith('--budget=')) {
       budget = parseBudgetUsd(inlineValue('--budget', a));
     } else if (a === '--budget' || a === '-b') {

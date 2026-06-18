@@ -24,6 +24,7 @@ import { loadSkills } from '../skills.js';
 import { activeFacts, effImportance, loadStore, type Fact } from '../memory-store.js';
 import { chunkMarkdown } from './chunk.js';
 import { addDoc, removeDoc, removeSource, type Doc, type InvertedIndex } from './index-core.js';
+import { embeddingModelSpec } from './embedding-config.js';
 import { loadIndex, saveIndex, type Manifest } from './store.js';
 import { buildVectorIndex, embedTexts, getEmbedder, invalidateVectors, saveVectors, type VectorIndex } from './embed-store.js';
 
@@ -249,15 +250,6 @@ export function nodeVaultFS(root: string): VaultFS {
 
 const SESSIONS_DIR = appHomePath('sessions');
 
-async function configEmbeddingModel(): Promise<string | undefined> {
-  try {
-    const cfg = JSON.parse(await readFile(appHomePath('config.json'), 'utf8')) as { embeddingModel?: string };
-    return cfg.embeddingModel;
-  } catch {
-    return undefined;
-  }
-}
-
 /** load first-user-message of the most recent sessions (bounded) for the session corpus. */
 export async function loadRecentSessions(limit = 60): Promise<SessionDoc[]> {
   const out: SessionDoc[] = [];
@@ -329,7 +321,7 @@ export async function reindex(now: number = Date.now()): Promise<IndexReport> {
   await saveIndex(index, nextManifest);
 
   let vectors = 0;
-  const embedder = getEmbedder(process.env.SANOOK_EMBEDDING_MODEL ?? (await configEmbeddingModel()));
+  const embedder = getEmbedder(await embeddingModelSpec());
   if (!embedder) {
     await invalidateVectors().catch(() => {});
   } else {

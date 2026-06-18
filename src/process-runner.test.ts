@@ -27,5 +27,19 @@ describe('process runner', () => {
       HOME: '/home/me',
     });
   });
-});
 
+  it('keeps runtime discovery variables needed by spawned language tools', () => {
+    expect(
+      safeProcessEnv({
+        NODE_PATH: '/opt/node_modules',
+        NVM_DIR: '/home/me/.nvm',
+        TMP: '/tmp',
+        API_KEY: 'nope',
+      }),
+    ).toEqual({
+      TMP: '/tmp',
+      NODE_PATH: '/opt/node_modules',
+      NVM_DIR: '/home/me/.nvm',
+    });
+  });
+});

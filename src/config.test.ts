@@ -62,6 +62,16 @@ describe('loadConfig layering', () => {
     expect((await loadConfig({ model: 'cli-model' }, dir)).model).toBe('cli-model');
   });
 
+  it('trims SANOOK_MODEL and ignores blank values', async () => {
+    await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ model: 'proj-model' }));
+
+    vi.stubEnv('SANOOK_MODEL', '  env-model  ');
+    expect((await loadConfig({}, dir)).model).toBe('env-model');
+
+    vi.stubEnv('SANOOK_MODEL', '   ');
+    expect((await loadConfig({}, dir)).model).toBe('proj-model');
+  });
+
   it('keeps embeddingModel for semantic search config', async () => {
     await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ embeddingModel: 'openai:text-embedding-3-small' }));
     expect((await loadConfig({}, dir)).embeddingModel).toBe('openai:text-embedding-3-small');

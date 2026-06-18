@@ -76,6 +76,21 @@ describe('parseArgs', () => {
     });
   });
 
+  it('trims model values and ignores blanks', () => {
+    expect(parseArgs(['--model', '  openai:gpt-5.5  ', 'fix'])).toMatchObject({
+      model: 'openai:gpt-5.5',
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--model=  sonnet  ', 'fix'])).toMatchObject({
+      model: 'sonnet',
+      prompt: 'fix',
+    });
+    expect(parseArgs(['--model', '   ', 'fix'])).toMatchObject({
+      model: undefined,
+      prompt: 'fix',
+    });
+  });
+
   it('does not let missing option values consume following flags', () => {
     expect(parseArgs(['--model', '--json', 'fix'])).toMatchObject({
       model: undefined,
@@ -253,6 +268,17 @@ describe('parseServeArgs', () => {
       port: 9001,
       model: 'openai:gpt-5.5',
       portError: undefined,
+    });
+  });
+
+  it('trims serve model values before loading config overrides', () => {
+    expect(parseServeArgs(['--model', '  openai:gpt-5.5  '])).toMatchObject({
+      model: 'openai:gpt-5.5',
+      modelError: undefined,
+    });
+    expect(parseServeArgs(['--model=  sonnet  '])).toMatchObject({
+      model: 'sonnet',
+      modelError: undefined,
     });
   });
 

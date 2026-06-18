@@ -160,7 +160,8 @@ export async function loadConfig(
   const trust = await projectTrustStatus(root);
   const project = trust.trusted ? projectRaw : sanitizeUntrustedProjectConfig(projectRaw);
   const envConfig: Record<string, unknown> = {};
-  if (process.env[BRAND.modelEnvVar]) envConfig.model = process.env[BRAND.modelEnvVar];
+  const envModel = trimmedString(process.env[BRAND.modelEnvVar]);
+  if (envModel) envConfig.model = envModel;
 
   const cleanOverrides: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(overrides)) {

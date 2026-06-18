@@ -14,8 +14,6 @@
 // lazily, and on ANY embedding error degrades to BM25 with a `degraded` flag —
 // search must never throw at the floor.
 // ============================================================================
-import { readFile } from 'node:fs/promises';
-import { appHomePath } from '../brand.js';
 import { bm25Search, termList, type InvertedIndex, type SearchSource } from './index-core.js';
 import { rrfFuse } from './fuse.js';
 import {
@@ -26,6 +24,7 @@ import {
   vectorsMtimeMs,
   type VectorIndex,
 } from './embed-store.js';
+import { embeddingModelSpec } from './embedding-config.js';
 import { indexMtimeMs, loadIndex } from './store.js';
 
 export type SearchMode = 'auto' | 'fts' | 'semantic' | 'hybrid';
@@ -184,16 +183,6 @@ async function cachedVectors(): Promise<VectorIndex> {
   return vectorCache.vectors;
 }
 
-/** read an optional embeddingModel spec from ~/.sanook/config.json. */
-async function configEmbeddingModel(): Promise<string | undefined> {
-  try {
-    const cfg = JSON.parse(await readFile(appHomePath('config.json'), 'utf8')) as { embeddingModel?: string };
-    return cfg.embeddingModel;
-  } catch {
-    return undefined;
-  }
-}
-
 /** drop in-process caches (tests + after a reindex in the same process). */
 export function resetSearchCaches(): void {
   indexCache = null;
@@ -213,7 +202,7 @@ export async function search(query: string, opts: SearchOptions = {}): Promise<S
 
   if (mode === 'fts') return rankSearch(index, query, opts);
 
-  const spec = opts.embeddingModel ?? process.env.SANOOK_EMBEDDING_MODEL ?? (await configEmbeddingModel());
+  const spec = await embeddingModelSpec(opts.embeddingModel);
   const embedder = getEmbedder(spec);
   if (!embedder) {
     const res = rankSearch(index, query, opts);

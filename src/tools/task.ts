@@ -32,6 +32,12 @@ const SUBAGENT_EXCLUDE = ['schedule_task', 'list_scheduled', 'cancel_scheduled',
 // registry ของ background task — อยู่ระดับ process (อยู่ข้าม tool call ใน session เดียว)
 const registry = new TaskRegistry();
 
+function trimmedString(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const clean = v.trim();
+  return clean ? clean : undefined;
+}
+
 interface ParentCtx {
   model?: string;
   budgetUsd?: number;
@@ -73,7 +79,7 @@ function makeRunner(parent: ParentCtx): SubagentRunner {
       : entries.filter(([k]) => !SUBAGENT_EXCLUDE.includes(k));
     // model: explicit spec ก่อน → SANOOK_SUBAGENT_MODEL (opt-in: route งาน subagent ไป model ถูกกว่า เช่น haiku
     // สำหรับ exploration/search ที่เป็นงานกลไก — ประหยัด cost มาก โดย quality หลักไม่กระทบ) → inherit จาก parent
-    const model = spec.model ?? process.env.SANOOK_SUBAGENT_MODEL ?? parent.model ?? 'sonnet';
+    const model = trimmedString(spec.model) ?? trimmedString(process.env.SANOOK_SUBAGENT_MODEL) ?? parent.model ?? 'sonnet';
     const depth = parent.depth + 1;
     const cwd = spec.cwd ?? parent.cwd; // worktree ของ subagent นี้ (ถ้า isolate) ไม่งั้น inherit
     const childStore = { model, budgetUsd: parent.budgetUsd, sharedBudget: parent.sharedBudget, depth, cwd };

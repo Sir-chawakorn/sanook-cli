@@ -1,6 +1,31 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { agentContext } from '../agentContext.js';
 import { taskTool, taskParallelTool, taskSpawnTool, taskCancelTool, taskStatusTool } from './task.js';
+
+const h = vi.hoisted(() => ({
+  runAgent: vi.fn(),
+}));
+
+vi.mock('../loop.js', () => ({
+  runAgent: h.runAgent,
+}));
+
+vi.mock('./index.js', () => ({
+  tools: {
+    read_file: {},
+    task: {},
+    task_parallel: {},
+  },
+}));
+
+beforeEach(() => {
+  h.runAgent.mockResolvedValue({ text: 'subagent output' });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  h.runAgent.mockReset();
+});
 
 describe('subagent depth guard (กัน spawn ไม่จบ) — return ก่อน import loop (no network)', () => {
   it('task: depth >= MAX_DEPTH (2) → ปฏิเสธ', async () => {
@@ -43,5 +68,27 @@ describe('task_cancel', () => {
   it('unknown id → แจ้งไม่พบ', async () => {
     const r = await taskCancelTool.execute!({ id: 'task-nope' }, {} as never);
     expect(String(r)).toContain('ไม่พบ task');
+  });
+});
+
+describe('subagent model selection', () => {
+  it('trims SANOOK_SUBAGENT_MODEL before running a subagent', async () => {
+    vi.stubEnv('SANOOK_SUBAGENT_MODEL', '  haiku-test  ');
+
+    await agentContext.run({ model: 'sonnet', depth: 0 }, () =>
+      taskTool.execute!({ description: 'd', prompt: 'p' }, {} as never),
+    );
+
+    expect(h.runAgent).toHaveBeenCalledWith(expect.objectContaining({ model: 'haiku-test' }));
+  });
+
+  it('ignores blank SANOOK_SUBAGENT_MODEL and inherits the parent model', async () => {
+    vi.stubEnv('SANOOK_SUBAGENT_MODEL', '   ');
+
+    await agentContext.run({ model: 'parent-model', depth: 0 }, () =>
+      taskTool.execute!({ description: 'd', prompt: 'p' }, {} as never),
+    );
+
+    expect(h.runAgent).toHaveBeenCalledWith(expect.objectContaining({ model: 'parent-model' }));
   });
 });
