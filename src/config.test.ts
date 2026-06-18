@@ -121,7 +121,10 @@ describe('loadConfig layering', () => {
   });
 });
 
-import { agentTuning } from './config.js';
+async function freshAgentTuning() {
+  return (await import('./config.js')).agentTuning;
+}
+
 describe('agentTuning (env overrides)', () => {
   let home: string;
   let realHome: string | undefined;
@@ -129,42 +132,136 @@ describe('agentTuning (env overrides)', () => {
     realHome = process.env.HOME;
     home = await mkdtemp(join(tmpdir(), 'sanook-home-'));
     process.env.HOME = home; // no ~/.sanook/config.json → pure defaults + env
+    vi.resetModules();
   });
   afterEach(async () => {
     if (realHome !== undefined) process.env.HOME = realHome;
+    else delete process.env.HOME;
     for (const k of ['SANOOK_CACHE_TTL', 'SANOOK_COMPACTION', 'SANOOK_THINKING', 'SANOOK_SUMMARY_MODEL']) delete process.env[k];
+    vi.resetModules();
     await rm(home, { recursive: true, force: true });
   });
 
   it('defaults: 5m cache, truncate, no thinking', async () => {
-    expect(await agentTuning()).toMatchObject({ cacheTtl: '5m', compaction: 'truncate', thinkingBudget: undefined });
+    const runAgentTuning = await freshAgentTuning();
+
+    expect(await runAgentTuning()).toMatchObject({ cacheTtl: '5m', compaction: 'truncate', thinkingBudget: undefined });
   });
   it('env overrides apply', async () => {
     process.env.SANOOK_CACHE_TTL = '1h';
     process.env.SANOOK_COMPACTION = 'summarize';
     process.env.SANOOK_THINKING = '2000';
     process.env.SANOOK_SUMMARY_MODEL = 'haiku';
-    expect(await agentTuning()).toEqual({ cacheTtl: '1h', compaction: 'summarize', thinkingBudget: 2000, summaryModel: 'haiku' });
+    const runAgentTuning = await freshAgentTuning();
+
+    expect(await runAgentTuning()).toEqual({
+      cacheTtl: '1h',
+      compaction: 'summarize',
+      thinkingBudget: 2000,
+      summaryModel: 'haiku',
+    });
+  });
+  it('trims enum-style env overrides before applying agent tuning', async () => {
+    process.env.SANOOK_CACHE_TTL = ' 1h ';
+    process.env.SANOOK_COMPACTION = ' summarize ';
+    const runAgentTuning = await freshAgentTuning();
+
+    expect(await runAgentTuning()).toMatchObject({ cacheTtl: '1h', compaction: 'summarize' });
+  });
+  it('trims summary model env override before applying agent tuning', async () => {
+    process.env.SANOOK_SUMMARY_MODEL = ' haiku ';
+    const runAgentTuning = await freshAgentTuning();
+
+    expect((await runAgentTuning()).summaryModel).toBe('haiku');
   });
   it('SANOOK_THINKING=on → default budget', async () => {
     process.env.SANOOK_THINKING = 'on';
-    expect((await agentTuning()).thinkingBudget).toBe(4096);
+    const runAgentTuning = await freshAgentTuning();
+
+    expect((await runAgentTuning()).thinkingBudget).toBe(4096);
   });
   it('trims SANOOK_THINKING before parsing flags and budgets', async () => {
+    const runAgentTuning = await freshAgentTuning();
+
     process.env.SANOOK_THINKING = '  yes  ';
-    expect((await agentTuning()).thinkingBudget).toBe(4096);
+    expect((await runAgentTuning()).thinkingBudget).toBe(4096);
 
     process.env.SANOOK_THINKING = '  3000  ';
-    expect((await agentTuning()).thinkingBudget).toBe(3000);
+    expect((await runAgentTuning()).thinkingBudget).toBe(3000);
   });
   it('ignores non-positive and unsafe thinking budgets from env', async () => {
+    const runAgentTuning = await freshAgentTuning();
+
     process.env.SANOOK_THINKING = '0';
-    expect((await agentTuning()).thinkingBudget).toBeUndefined();
+    expect((await runAgentTuning()).thinkingBudget).toBeUndefined();
 
     process.env.SANOOK_THINKING = '0.5';
-    expect((await agentTuning()).thinkingBudget).toBeUndefined();
+    expect((await runAgentTuning()).thinkingBudget).toBeUndefined();
 
     process.env.SANOOK_THINKING = '9'.repeat(400);
-    expect((await agentTuning()).thinkingBudget).toBeUndefined();
+    expect((await runAgentTuning()).thinkingBudget).toBeUndefined();
+  });
+});
+
+describe('agentTuning (global config)', () => {
+  let home: string;
+  let realHome: string | undefined;
+  const tuningEnvKeys = ['SANOOK_CACHE_TTL', 'SANOOK_COMPACTION', 'SANOOK_THINKING', 'SANOOK_SUMMARY_MODEL'];
+
+  beforeEach(async () => {
+    realHome = process.env.HOME;
+    home = await mkdtemp(join(tmpdir(), 'sanook-home-'));
+    process.env.HOME = home;
+    await mkdir(join(home, '.sanook'), { recursive: true });
+    vi.resetModules();
+  });
+
+  afterEach(async () => {
+    if (realHome !== undefined) process.env.HOME = realHome;
+    else delete process.env.HOME;
+    for (const key of tuningEnvKeys) delete process.env[key];
+    vi.resetModules();
+    await rm(home, { recursive: true, force: true });
+  });
+
+  it('trims raw global config tuning strings', async () => {
+    await writeFile(
+      join(home, '.sanook', 'config.json'),
+      JSON.stringify({ cacheTtl: ' 1h ', compaction: ' summarize ', summaryModel: ' haiku ' }),
+    );
+
+    const runAgentTuning = await freshAgentTuning();
+
+    expect(await runAgentTuning()).toMatchObject({ cacheTtl: '1h', compaction: 'summarize', summaryModel: 'haiku' });
+  });
+
+  it('ignores blank env overrides when global config has tuning values', async () => {
+    await writeFile(
+      join(home, '.sanook', 'config.json'),
+      JSON.stringify({ cacheTtl: '1h', compaction: 'summarize', thinking: true, summaryModel: 'haiku' }),
+    );
+    process.env.SANOOK_CACHE_TTL = ' ';
+    process.env.SANOOK_COMPACTION = ' ';
+    process.env.SANOOK_THINKING = ' ';
+    process.env.SANOOK_SUMMARY_MODEL = ' ';
+
+    const runAgentTuning = await freshAgentTuning();
+
+    expect(await runAgentTuning()).toMatchObject({
+      cacheTtl: '1h',
+      compaction: 'summarize',
+      thinkingBudget: 4096,
+      summaryModel: 'haiku',
+    });
+  });
+
+  it('ignores malformed enum env overrides when global config has valid tuning values', async () => {
+    await writeFile(join(home, '.sanook', 'config.json'), JSON.stringify({ cacheTtl: '1h', compaction: 'summarize' }));
+    process.env.SANOOK_CACHE_TTL = 'daily';
+    process.env.SANOOK_COMPACTION = 'compress';
+
+    const runAgentTuning = await freshAgentTuning();
+
+    expect(await runAgentTuning()).toMatchObject({ cacheTtl: '1h', compaction: 'summarize' });
   });
 });

@@ -33,7 +33,12 @@ Verification:
 
 ## Final Gate
 
-For non-trivial work, multi-file changes, framework changes, releases, or anything the owner may later audit, instantiate [[Templates/final]] before the final owner-facing answer.
+For non-trivial work, multi-file changes, framework changes, releases, or anything the owner may later audit, instantiate [[Templates/final]] before the final owner-facing answer. Use [[Templates/final-lite]] for smaller tasks that still need evidence, or run:
+
+```text
+sanook brain final --task "<objective>" --from-diff
+sanook brain final --task "<objective>" --lite
+```
 
 The final gate must prove all eight closeout requirements:
 
@@ -47,6 +52,8 @@ The final gate must prove all eight closeout requirements:
 8. Second-brain routing / memory closeout is handled.
 
 If a row has no evidence, it cannot be `PASS`.
+
+`sanook brain review` checks final-gate notes in `Sessions/` for missing sections, unfilled placeholders, `TODO` rows, and `PASS` rows without evidence. `sanook brain eval` checks that the final-gate templates remain bundled and wired into this standard.
 
 ## Never Claim Done If
 

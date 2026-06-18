@@ -176,6 +176,7 @@ second brain (Obsidian workspace สำหรับจัดเก็บงา�
   ${BRAND.cliName} brain context [--task "..."]    แสดง context ที่ Sanook จะ inject + retrieval hits ต่อ task
   ${BRAND.cliName} brain eval                     รัน second-brain benchmark sanity checks
   ${BRAND.cliName} brain review                   curator review: inbox, packs, sessions, evals, note hygiene
+  ${BRAND.cliName} brain final --task "..."        สร้าง final gate note ใน Sessions พร้อม evidence scaffold
 
 search (BM25 + optional BYOK semantic เหนือ vault + memory + sessions + skills):
   ${BRAND.cliName} index                          (re)index vault+memory แบบ incremental (O(delta))
@@ -3048,12 +3049,32 @@ async function runBrainReview(args: string[]): Promise<void> {
   if (!report.ok) process.exit(1);
 }
 
+/** sanook brain final [--task "..."] [--from-diff] [--lite] — create an evidence-backed closeout note */
+async function runBrainFinal(args: string[]): Promise<void> {
+  const { parseBrainFinalArgs, createBrainFinal, formatBrainFinalReport } = await import('./brain-final.js');
+  const parsed = parseBrainFinalArgs(args);
+  if (!parsed.ok) {
+    console.error(parsed.message);
+    console.error(`ใช้: ${BRAND.cliName} brain final [--task "..."] [--from-diff] [--lite] [--output Sessions/name.md] [--force]`);
+    process.exit(1);
+  }
+  const cfg = await loadConfig({});
+  const report = await createBrainFinal({
+    brainPath: cfg.brainPath,
+    today: new Date().toISOString().slice(0, 10),
+    ...parsed.value,
+  });
+  console.log(formatBrainFinalReport(report));
+  if (!report.ok) process.exit(1);
+}
+
 /** sanook brain init [path] — scaffold second-brain workspace (interactive ถ้าไม่ใส่ path) */
 async function runBrain(args: string[]): Promise<void> {
   if (args[0] === 'doctor') return runBrainDoctor();
   if (args[0] === 'context') return runBrainContext(args.slice(1));
   if (args[0] === 'eval') return runBrainEval(args.slice(1));
   if (args[0] === 'review') return runBrainReview(args.slice(1));
+  if (args[0] === 'final') return runBrainFinal(args.slice(1));
 
   if (args[0] !== 'init') {
     console.log(`ใช้:
@@ -3063,6 +3084,8 @@ async function runBrain(args: string[]): Promise<void> {
   sanook brain context --task "..."  ดู retrieval hits ต่อ task
   sanook brain eval          รัน second-brain benchmark sanity checks
   sanook brain review        curator review: inbox, packs, sessions, evals, note hygiene
+  sanook brain final --task "..." [--from-diff] [--lite]
+                            สร้าง final gate note ใน Sessions
 
   ไม่ใส่ path → wizard ถาม path + ตัวตน
   -y, --yes  ใช้ค่า default ทั้งหมด (ต้องระบุ path)`);
@@ -3557,7 +3580,7 @@ async function main(): Promise<void> {
     return runSkill(argv.slice(1));
   }
   if (argv[0] === 'models') return runModels(argv.slice(1));
-  if (argv[0] === 'brain' && ['init', 'doctor', 'context', 'eval', 'review', undefined].includes(argv[1])) return runBrain(argv.slice(1));
+  if (argv[0] === 'brain' && ['init', 'doctor', 'context', 'eval', 'review', 'final', undefined].includes(argv[1])) return runBrain(argv.slice(1));
   if (argv[0] === 'config' && ['get', 'set', 'list', undefined].includes(argv[1])) return runConfig(argv.slice(1));
   if (argv[0] === 'index' && (argv.length === 1 || argv[1].startsWith('--'))) return runIndex(argv.slice(1));
   if (argv[0] === 'search' && argv.length > 1) return runSearch(argv.slice(1));

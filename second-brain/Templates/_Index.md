@@ -22,7 +22,8 @@ template ไว้ instantiate (session/bug/handoff/project)
 - [[Templates/handoff]] — ส่งต่องานค้างให้ session/agent ถัดไป
 - [[Templates/project]] — project overview
 - [[Templates/bug]] — bug report
-- [[Templates/final]] — final gate ก่อนบอกว่าเสร็จแล้ว; checklist ต้องมี evidence
+- [[Templates/final]] — final gate เต็มก่อนบอกว่าเสร็จแล้ว; checklist ต้องมี evidence
+- [[Templates/final-lite]] — final gate แบบสั้นสำหรับงานเล็กถึงกลาง; ใช้เกณฑ์ evidence เดียวกัน
 
 ## AI Routing Contract
 

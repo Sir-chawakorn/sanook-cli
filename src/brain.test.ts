@@ -62,6 +62,7 @@ describe('scaffoldBrain', () => {
       'Shared/Operating-State/current-state.md',
       'Templates/session.md',
       'Templates/final.md',
+      'Templates/final-lite.md',
       '.obsidian/app.json',
     ]) {
       expect((await stat(join(target, f))).isFile()).toBe(true);
@@ -251,25 +252,27 @@ describe('scaffoldBrain', () => {
     }
   });
 
-  it('final gate template ครบ 8 logic หลักและผูกกับ evidence', async () => {
+  it('final gate templates ครบ 8 logic หลักและผูกกับ evidence', async () => {
     const templateRoot = join(process.cwd(), 'second-brain');
-    const final = await readFile(join(templateRoot, 'Templates', 'final.md'), 'utf8');
-    for (const heading of [
-      '## 1. Objective / DoD Lock',
-      '## 2. Evidence-Backed Checklist',
-      '## 3. Status Matrix',
-      '## 4. Evidence Matrix',
-      '## 5. Residual Risk',
-      '## 6. Change Summary Audit',
-      '## 7. Final Answer Draft',
-      '## 8. Second-Brain Routing / Memory Closeout',
-    ]) {
-      expect(final, `final.md missing ${heading}`).toContain(heading);
+    for (const file of ['final.md', 'final-lite.md']) {
+      const final = await readFile(join(templateRoot, 'Templates', file), 'utf8');
+      for (const heading of [
+        '## 1. Objective / DoD Lock',
+        '## 2. Evidence-Backed Checklist',
+        '## 3. Status Matrix',
+        '## 4. Evidence Matrix',
+        '## 5. Residual Risk',
+        '## 6. Change Summary Audit',
+        '## 7. Final Answer Draft',
+        '## 8. Second-Brain Routing / Memory Closeout',
+      ]) {
+        expect(final, `${file} missing ${heading}`).toContain(heading);
+      }
+      expect(final).toContain('If a row has no evidence');
+      expect(final).toContain('PASS');
+      expect(final).toContain('PARTIAL');
+      expect(final).toContain('BLOCKED');
     }
-    expect(final).toContain('If a row has no evidence');
-    expect(final).toContain('PASS');
-    expect(final).toContain('PARTIAL');
-    expect(final).toContain('BLOCKED');
   });
 
   it('ทุกโฟลเดอร์จาก manifest มี _Index.md ที่บอก role และ routing ครบ', async () => {

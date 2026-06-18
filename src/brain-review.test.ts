@@ -156,4 +156,46 @@ describe('reviewBrain', () => {
     expect(check?.findings?.map((finding) => finding.message).join('\n')).toContain('parent frontmatter');
     expect(check?.findings?.map((finding) => finding.message).join('\n')).toContain('up::');
   });
+
+  it('warns when a session final gate still has TODO or PASS without evidence', async () => {
+    await writeFile(
+      join(vault, 'Sessions', '2026-06-18-bad-final.md'),
+      [
+        '---',
+        'tags: [final-gate]',
+        'note_type: final-gate',
+        'parent: "[[Sessions/_Index]]"',
+        '---',
+        '',
+        '# Bad Final',
+        '',
+        '> incomplete final gate',
+        '',
+        '## 1. Objective / DoD Lock',
+        '## 2. Evidence-Backed Checklist',
+        '## 3. Status Matrix',
+        '## 4. Evidence Matrix',
+        '## 5. Residual Risk',
+        '## 6. Change Summary Audit',
+        '## 7. Final Answer Draft',
+        '## 8. Second-Brain Routing / Memory Closeout',
+        'If a row has no evidence, it cannot be `PASS`.',
+        '## Final Verdict',
+        '| Gate | Status | Evidence |',
+        '|---|---|---|',
+        '| Verification ran | PASS |  |',
+        '| Memory closeout | TODO |  |',
+        '',
+        'up:: [[Sessions/_Index]]',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const report = await reviewBrain({ brainPath: vault, indexPath, scanMarkdownHygiene: false });
+    const check = report.checks.find((item) => item.id === 'review.final-gates');
+
+    expect(check).toMatchObject({ status: 'warn' });
+    expect(check?.findings?.[0].details?.join('\n')).toContain('PASS row has no evidence');
+    expect(check?.findings?.[0].details?.join('\n')).toContain('TODO status remains');
+  });
 });

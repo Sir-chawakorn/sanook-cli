@@ -67,7 +67,7 @@ ai_surface: hot
 | scratch ระหว่างงานเดียว | `Shared/Working-Memory/<topic>.md` |
 | expected output fixture | [[Acceptance/golden-case-template]] |
 | pre/postflight gate | [[Checklists/preflight-postflight-template]] |
-| final phase / evidence-backed closeout | [[Templates/final]] |
+| final phase / evidence-backed closeout | [[Templates/final]] หรือ [[Templates/final-lite]]; CLI: `sanook brain final --task "..." [--from-diff] [--lite]` |
 | entity/person/org page | `Entities/<name>.md` |
 | อื่นๆ / ไม่แน่ใจว่าโฟลเดอร์ไหน | [[Vault Structure Map]] |
 
@@ -76,7 +76,7 @@ ai_surface: hot
 - **งานไม่ trivial ทุกงาน** → [[Runbooks/ai-second-brain-operating-sequence]] (Scientific Loop Sequence + roles)
 - **งานซ้ำ/task family ชัดเจน** → [[Shared/Context-Packs/_Index]] (ใช้ context pack แทน assemble ใหม่)
 - **ก่อน/หลังแก้ framework** → [[Evals/second-brain-benchmarks]] (วัดว่าดีขึ้นจริงไหม)
-- **ก่อนตอบว่าเสร็จแล้วในงานไม่ trivial** → [[Templates/final]] + [[Shared/Tech-Standards/verification-standard]]
+- **ก่อนตอบว่าเสร็จแล้วในงานไม่ trivial** → `sanook brain final --task "..." [--from-diff]` หรือ [[Templates/final]] / [[Templates/final-lite]] + [[Shared/Tech-Standards/verification-standard]]
 - **ก่อนประกอบ context เสมอ** → [[Shared/Rules/context-assembly-policy]] (head/tail + budget, กัน context-rot)
 - ingest ของนอก → [[Runbooks/ingest-quarantine]] · fact → [[Shared/Rules/frontmatter-standard]] (bi-temporal + `source::`)
 - script ทำซ้ำ → [[Shared/Rules/skills-admission]] (Skills/) · consolidate → [[Runbooks/sleep-time-consolidation]]

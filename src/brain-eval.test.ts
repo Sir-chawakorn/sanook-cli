@@ -42,6 +42,7 @@ describe('runBrainEval', () => {
     expect(report.ok).toBe(true);
     expect(report.score).toBe(report.maxScore);
     expect(report.cases.map((item) => item.id)).toContain('SB-09');
+    expect(report.cases.map((item) => item.id)).toContain('SB-FINAL');
     expect(formatBrainEvalReport(report)).toContain('Sanook brain eval');
   });
 

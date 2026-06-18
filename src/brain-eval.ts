@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FOLDERS } from './brain.js';
+import { validateFinalGateContent } from './brain-final.js';
 import { checkBrainFolders, checkSearchIndexFreshness, checkVaultStructureMap } from './brain-doctor.js';
 import { inspectBrainContext } from './brain-context.js';
 import { search, type SearchOptions, type SearchResult } from './search/engine.js';
@@ -145,6 +146,30 @@ async function requiredFilesCase(brainPath: string, id: string, title: string, r
   return caseResult(id, title, details.length === 0, evidence, details, evidence.length > 0 && missing.length < relPaths.length);
 }
 
+async function finalGateCase(brainPath: string): Promise<BrainEvalCase> {
+  const relPaths = ['Templates/final.md', 'Templates/final-lite.md', 'Shared/Tech-Standards/verification-standard.md'];
+  const evidence: string[] = [];
+  const details: string[] = [];
+  for (const rel of relPaths) {
+    const path = join(brainPath, rel);
+    const content = await readText(path);
+    if (!content) {
+      details.push(`missing ${rel}`);
+      continue;
+    }
+    evidence.push(path);
+    if (!content.includes('If a row has no evidence')) details.push(`${rel}: missing evidence rule`);
+  }
+  for (const rel of ['Templates/final.md', 'Templates/final-lite.md']) {
+    const content = await readText(join(brainPath, rel));
+    if (!content) continue;
+    const validation = validateFinalGateContent(content.replace('note_type: template', 'note_type: final-gate'));
+    const structuralWarnings = validation.warnings.filter((warning) => warning.startsWith('Missing'));
+    details.push(...structuralWarnings.map((warning) => `${rel}: ${warning}`));
+  }
+  return caseResult('SB-FINAL', 'Final gate templates and validator contract exist', details.length === 0, evidence, details, evidence.length > 0);
+}
+
 async function contextCase(brainPath: string, indexPath: string): Promise<BrainEvalCase> {
   const report = await inspectBrainContext({ brainPath, indexPath });
   const structuralWarnings = report.warnings.filter(
@@ -244,6 +269,7 @@ export async function runBrainEval(options: BrainEvalOptions = {}): Promise<Brai
       'Learning loop ledger and session index exist',
       ['Evals/quality-ledger.md', 'Sessions/_Index.md'],
     ),
+    await finalGateCase(brainPath),
     await indexCase(brainPath, indexPath),
   ];
 

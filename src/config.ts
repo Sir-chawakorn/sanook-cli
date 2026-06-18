@@ -76,6 +76,22 @@ function parseThinking(v: unknown): number | undefined {
   return undefined;
 }
 
+function trimmedString(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const clean = v.trim();
+  return clean ? clean : undefined;
+}
+
+function parseCacheTtl(v: unknown): '5m' | '1h' | undefined {
+  const clean = trimmedString(v);
+  return clean === '5m' || clean === '1h' ? clean : undefined;
+}
+
+function parseCompaction(v: unknown): 'truncate' | 'summarize' | undefined {
+  const clean = trimmedString(v);
+  return clean === 'truncate' || clean === 'summarize' ? clean : undefined;
+}
+
 export interface AgentTuning {
   cacheTtl: '5m' | '1h';
   thinkingBudget?: number;
@@ -90,12 +106,10 @@ export interface AgentTuning {
  */
 export async function agentTuning(): Promise<AgentTuning> {
   const raw = await readGlobalConfigRaw();
-  const envTtl = process.env.SANOOK_CACHE_TTL;
-  const cacheTtl: '5m' | '1h' = envTtl === '1h' || (envTtl !== '5m' && raw.cacheTtl === '1h') ? '1h' : '5m';
-  const thinkingBudget = parseThinking(process.env.SANOOK_THINKING ?? raw.thinking);
-  const compaction: 'truncate' | 'summarize' =
-    (process.env.SANOOK_COMPACTION ?? raw.compaction) === 'summarize' ? 'summarize' : 'truncate';
-  const summaryModel = process.env.SANOOK_SUMMARY_MODEL ?? (typeof raw.summaryModel === 'string' ? raw.summaryModel : undefined);
+  const cacheTtl = parseCacheTtl(process.env.SANOOK_CACHE_TTL) ?? parseCacheTtl(raw.cacheTtl) ?? '5m';
+  const thinkingBudget = parseThinking(trimmedString(process.env.SANOOK_THINKING) ?? raw.thinking);
+  const compaction = parseCompaction(process.env.SANOOK_COMPACTION) ?? parseCompaction(raw.compaction) ?? 'truncate';
+  const summaryModel = trimmedString(process.env.SANOOK_SUMMARY_MODEL) ?? trimmedString(raw.summaryModel);
   return { cacheTtl, thinkingBudget, compaction, summaryModel };
 }
 

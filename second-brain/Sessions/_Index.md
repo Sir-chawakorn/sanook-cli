@@ -36,5 +36,7 @@ code/config · subfolder (Sessions = flat เสมอ)
 - [[Sessions/2026-06-18-sanook-brain-cli-p0-implementation]] — implement `brain doctor`, `brain context`, `brain eval`, and `brain review`
 - [[Sessions/2026-06-18-final-gate-template]] — add evidence-backed [[Templates/final]] final gate
 - [[Sessions/2026-06-18-final-gate-template-final]] — evidence-backed closeout for the final gate template work
+- [[Sessions/2026-06-18-sanook-brain-final-cli]] — implement `sanook brain final`, final-lite, review validation, and eval coverage
+- [[Sessions/2026-06-18-sanook-brain-final-cli-final]] — evidence-backed closeout for the Sanook brain final CLI work
 
 up:: [[Home]]

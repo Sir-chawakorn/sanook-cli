@@ -21,12 +21,13 @@ ai_surface: starter
 - 2026-06-18: Sanook-native P0 implemented: `sanook brain doctor`, `sanook brain context`, `sanook brain eval`
 - 2026-06-18: เพิ่ม `sanook brain review` เป็น curator review แบบ read-only สำหรับ inbox/context-packs/sessions/evals/note hygiene
 - 2026-06-18: เพิ่ม [[Templates/final]] เป็น final gate / evidence matrix ก่อนปิดงาน non-trivial
+- 2026-06-18: เพิ่ม `sanook brain final`, [[Templates/final-lite]], final-gate validator ใน `brain review`, และ `SB-FINAL` ใน `brain eval` แล้ว
 
 ## Active Bets
 
 - Scientific Loop Sequence: single retrieval path + JIT task rules + explicit write routing + eval/consolidation loop
 - AI จะเก่งขึ้นแบบวัดได้เมื่อมี benchmark + taste examples + reusable context packs
-- Final gate ที่มี evidence จะลดการ claim done เกินจริงตอนปิดงาน
+- Final gate ที่มี evidence และ CLI scaffold จะลดการ claim done เกินจริงตอนปิดงาน
 
 ## Blockers
 
@@ -35,8 +36,8 @@ _(ติดอะไรอยู่)_
 ## Next Actions
 
 - [ ] Review remaining worktree diff before commit/release
-- [ ] Dogfood [[Templates/final]] ในงาน implementation ถัดไป
-- [ ] ถ้าจะต่อ second-brain CLI: ทำ `sanook brain pack list|show`, `sanook brain new <type>`, หรือ `sanook brain repair`
+- [ ] Dogfood `sanook brain final --task "..." --from-diff` ในงาน implementation ถัดไป
+- [ ] ถ้าจะต่อ second-brain CLI รอบถัดไป: ทำ `sanook brain pack list|show`, `sanook brain new <type>`, หรือ `sanook brain repair`
 - [ ] เพิ่ม good/bad examples ใหม่ใน [[Shared/User-Memory/response-examples]] เมื่อมี feedback จริงรอบถัดไป
 
 up:: [[Shared/Operating-State/_Index]]

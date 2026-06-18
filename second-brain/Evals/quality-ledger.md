@@ -26,4 +26,6 @@ parent: "[[Evals/_Index]]"
 
 ## [2026-06-18] cli-args-release-readiness | grounded:y retrieval_hit:y distractor:n | SB-05/SB-06/SB-10 pass; targeted/full tests, typecheck, build, diff check passed; evidence [[Sessions/2026-06-18-cli-args-release-readiness]]
 
+## [2026-06-18] sanook-brain-final-cli | grounded:y retrieval_hit:y distractor:n | Added `sanook brain final`, final-lite, review validator, and SB-FINAL eval; targeted/full tests, typecheck, build, diff check, and CLI smoke passed; evidence [[Sessions/2026-06-18-sanook-brain-final-cli-final]]
+
 up:: [[Evals/_Index]]

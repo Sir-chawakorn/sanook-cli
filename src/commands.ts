@@ -48,7 +48,7 @@ const HELP_TEXT = `คำสั่ง:
   /quit            ออก
 
 นอก REPL (พิมพ์ใน shell):
-  ${BRAND.cliName} search "<q>" · index · brain init · brain context · brain eval · brain review · serve · mcp serve · config set <k> <v>
+  ${BRAND.cliName} search "<q>" · index · brain init · brain context · brain eval · brain review · brain final · serve · mcp serve · config set <k> <v>
   ดูทั้งหมด: ${BRAND.cliName} --help
 
 custom commands:

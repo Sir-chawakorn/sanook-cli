@@ -60,7 +60,7 @@ evidence:: [[Research/2026-06-17-ai-second-brain-method-experiment]]
    - มี distractor หรือ stale note ไหม?
    - ก่อน/หลังแก้ framework ให้ใช้ [[Evals/second-brain-benchmarks]] เป็น regression check.
    - บันทึกผลใน [[Evals/quality-ledger]] เมื่อเป็นงาน framework/ระบบ/หลาย session.
-   - ก่อนตอบว่าเสร็จแล้วในงานไม่ trivial ให้ instantiate [[Templates/final]] เพื่อทำ final gate: objective/DoD, evidence matrix, residual risk, final-answer draft, และ memory closeout.
+   - ก่อนตอบว่าเสร็จแล้วในงานไม่ trivial ให้รัน `sanook brain final --task "..." --from-diff` หรือ instantiate [[Templates/final]] / [[Templates/final-lite]] เพื่อทำ final gate: objective/DoD, evidence matrix, residual risk, final-answer draft, และ memory closeout.
 
 8. **Consolidate**
    - อย่า consolidate กลางงานถ้าไม่จำเป็น.

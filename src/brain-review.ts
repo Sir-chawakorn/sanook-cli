@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { listFinalGateFiles, validateFinalGateContent } from './brain-final.js';
 import { normalize } from './memory-store.js';
 import { INDEX_PATH, sanitizeManifest, type Manifest } from './search/store.js';
 
@@ -357,6 +358,40 @@ async function checkEvalFreshness(brainPath: string, toleranceMs: number): Promi
   return result('review.eval-freshness', 'Eval freshness after framework changes', findings, 'Framework files and eval evidence compared.', false, join(brainPath, 'Evals'));
 }
 
+async function checkFinalGates(brainPath: string): Promise<BrainReviewCheck> {
+  const findings: BrainReviewFinding[] = [];
+  for (const rel of ['Templates/final.md', 'Templates/final-lite.md']) {
+    const content = await readText(join(brainPath, rel));
+    if (!content) {
+      findings.push({ message: `Missing final gate template: ${rel}`, path: join(brainPath, rel) });
+      continue;
+    }
+    const missing = ['## 1. Objective / DoD Lock', '## 4. Evidence Matrix', '## Final Verdict'].filter((section) => !content.includes(section));
+    if (missing.length) findings.push({ message: `${rel} is missing expected final gate section(s).`, path: join(brainPath, rel), details: missing });
+  }
+
+  const gates = await listFinalGateFiles(brainPath);
+  for (const gate of gates) {
+    const validation = validateFinalGateContent(gate.content);
+    if (!validation.ok) {
+      findings.push({
+        message: `${gate.relPath} has incomplete final gate evidence.`,
+        path: gate.path,
+        details: validation.warnings.slice(0, DETAIL_LIMIT),
+      });
+    }
+  }
+
+  return result(
+    'review.final-gates',
+    'Final gate evidence',
+    findings,
+    gates.length ? `${gates.length} final gate note(s) checked.` : 'Final gate templates checked; no session final gates found.',
+    false,
+    join(brainPath, 'Templates'),
+  );
+}
+
 async function checkMarkdownHygiene(brainPath: string): Promise<BrainReviewCheck> {
   const markdown = await listMarkdown(brainPath);
   const missingPurpose: string[] = [];
@@ -402,6 +437,7 @@ export async function reviewBrain(options: BrainReviewOptions = {}): Promise<Bra
     await checkContextPacks(brainPath, nowMs, options.contextPackMaxAgeDays ?? DEFAULT_CONTEXT_PACK_MAX_AGE_DAYS),
     await checkSessionIndexCoverage(brainPath, options.indexPath ?? INDEX_PATH),
     await checkEvalFreshness(brainPath, options.evalFreshnessToleranceMs ?? DEFAULT_EVAL_FRESHNESS_TOLERANCE_MS),
+    await checkFinalGates(brainPath),
   ];
   if (options.scanMarkdownHygiene !== false) checks.push(await checkMarkdownHygiene(brainPath));
 

@@ -39,6 +39,7 @@ Passing threshold:
 | SB-08 | Work across sessions/agents | Checks coordination/task-board when shared state is touched | NOW/task-board/handoff/session updated or consciously skipped |
 | SB-09 | Keep context small | Loads identifiers/headings first and expands only needed files | No whole-vault dump; mentions context pack/JIT choice when useful |
 | SB-10 | Close the learning loop | Writes quality-ledger/session/consolidation candidate for non-trivial work | [[Evals/quality-ledger]] or [[Sessions/_Index]] updated |
+| SB-FINAL | Close with evidence | Uses [[Templates/final]] or [[Templates/final-lite]] before final owner answer when work is non-trivial | Final gate has objective/DoD, evidence matrix, residual risk, final answer draft, and memory closeout |
 
 ## Quick Runner
 
