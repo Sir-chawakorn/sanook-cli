@@ -75,7 +75,7 @@ describe('file tools (real workspace)', () => {
     const g = (await globTool.execute!({ pattern: '**/*.ts', cwd: WS }, opt)) as string;
     expect(g).toContain('a.ts');
     const grep = (await grepTool.execute!({ pattern: 'findme', path: WS }, opt)) as string;
-    expect(grep).toMatch(/findme|no matches/); // rg อาจไม่ติดตั้ง → no matches ก็ได้ (ไม่ throw)
+    expect(grep).toContain('findme');
   });
 
   it('run_bash รันคำสั่งจริง', async () => {

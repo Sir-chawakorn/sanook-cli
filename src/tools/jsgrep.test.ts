@@ -111,6 +111,40 @@ describe('jsGrep (ripgrep-less fallback)', () => {
     expect(out).not.toContain('blob.dat'); // null byte → treated as binary, skipped
   });
 
+  it('skips ignored generated dirs regardless of directory casing', async () => {
+    await mkdir(join(dir, 'NODE_MODULES'), { recursive: true });
+    await writeFile(join(dir, 'NODE_MODULES', 'upper.ts'), 'needleHere should be ignored\n');
+    await mkdir(join(dir, 'DIST'), { recursive: true });
+    await writeFile(join(dir, 'DIST', 'bundle.ts'), 'needleHere should be ignored\n');
+
+    const out = await jsGrep('needleHere', dir, '.');
+
+    expect(out).not.toContain('NODE_MODULES');
+    expect(out).not.toContain('DIST');
+    expect(out).toContain('a.ts:2:');
+  });
+
+  it('skips OS metadata files during broad fallback searches', async () => {
+    await writeFile(join(dir, '.DS_Store'), 'needleHere should be ignored\n');
+    await writeFile(join(dir, '.localized'), 'needleHere should be ignored\n');
+    await writeFile(join(dir, '._a.ts'), 'needleHere should be ignored\n');
+    await writeFile(join(dir, 'Desktop.ini'), 'needleHere should be ignored\n');
+    await writeFile(join(dir, 'Thumbs.db'), 'needleHere should be ignored\n');
+    await writeFile(join(dir, 'thumbs.db'), 'needleHere should be ignored\n');
+    await writeFile(join(dir, 'THUMBS.DB'), 'needleHere should be ignored\n');
+
+    const out = await jsGrep('needleHere', dir, '.');
+
+    expect(out).not.toContain('.DS_Store');
+    expect(out).not.toContain('.localized');
+    expect(out).not.toContain('._a.ts');
+    expect(out).not.toContain('Desktop.ini');
+    expect(out).not.toContain('Thumbs.db');
+    expect(out).not.toContain('thumbs.db');
+    expect(out).not.toContain('THUMBS.DB');
+    expect(out).toContain('a.ts:2:');
+  });
+
   it('does not follow symlinked directories during broad fallback searches', async () => {
     const linkedTarget = await mkdtemp(join(tmpdir(), 'jsgrep-linked-'));
     try {

@@ -3,3 +3,8 @@ dist/
 .env
 *.local.json
 .DS_Store
+.localized
+._*
+Desktop.ini
+Thumbs.db
+thumbs.db

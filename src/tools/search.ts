@@ -10,8 +10,17 @@ import { agentCwd } from '../agentContext.js';
 
 // pure-JS grep fallback — ใช้เมื่อ ripgrep (rg) ไม่ได้ติดตั้ง (เช่น Windows สะอาด) → grep ใช้ได้ทุกแพลตฟอร์ม
 const FALLBACK_IGNORE = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.cache', '.turbo', '.vercel', 'vendor']);
+const FALLBACK_IGNORE_FILES = new Set(['.ds_store', '.localized', 'desktop.ini', 'thumbs.db']);
 const FALLBACK_MAX_FILE = 2 * 1024 * 1024; // ข้ามไฟล์ใหญ่ (กันช้า/binary)
 const PER_FILE_CAP = 50; // เหมือน rg --max-count 50
+
+function isFallbackIgnoredFile(name: string): boolean {
+  return FALLBACK_IGNORE_FILES.has(name.toLowerCase()) || name.startsWith('._');
+}
+
+function isFallbackIgnoredDir(name: string): boolean {
+  return FALLBACK_IGNORE.has(name.toLowerCase()) || name.startsWith('.');
+}
 
 function otherAsciiCase(ch: string): string | undefined {
   const code = ch.charCodeAt(0);
@@ -242,8 +251,8 @@ export async function jsGrep(pattern: string, base: string, target: string): Pro
       const guard = await checkReadPath(full);
       if (!guard.ok) continue;
       if (e.isDirectory()) {
-        if (!FALLBACK_IGNORE.has(e.name) && !e.name.startsWith('.')) await walk(full);
-      } else if (e.isFile()) {
+        if (!isFallbackIgnoredDir(e.name)) await walk(full);
+      } else if (e.isFile() && !isFallbackIgnoredFile(e.name)) {
         await scanFile(full);
       }
     }
