@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, it, expect, vi } from 'vitest';
@@ -56,10 +56,12 @@ describe('loadOrCreateToken', () => {
     const { loadOrCreateToken } = await importAuthWithHome(home);
 
     const tokens = await Promise.all(Array.from({ length: 12 }, () => loadOrCreateToken()));
-    const tokenPath = join(home, '.sanook', 'gateway', 'token');
+    const gatewayPath = join(home, '.sanook', 'gateway');
+    const tokenPath = join(gatewayPath, 'token');
 
     expect(new Set(tokens).size).toBe(1);
     expect(await readFile(tokenPath, 'utf8')).toBe(`${tokens[0]}\n`);
+    expect((await readdir(gatewayPath)).sort()).toEqual(['token']);
   });
 
   it('reuses an existing token while tightening loose permissions', async () => {
@@ -106,6 +108,20 @@ describe('loadOrCreateToken', () => {
 
     await expect(loadOrCreateToken()).rejects.toThrow(/ต้องเป็น hex 64 ตัวอักษร/);
     await expect(readFile(tokenPath, 'utf8')).resolves.toBe('short-token\n');
+  });
+
+  it('rejects token files with extra lines instead of silently accepting the first token', async () => {
+    const home = await tempHome();
+    const gatewayPath = join(home, '.sanook', 'gateway');
+    const tokenPath = join(gatewayPath, 'token');
+    const token = 'a'.repeat(64);
+    await mkdir(gatewayPath, { recursive: true });
+    await writeFile(tokenPath, `${token}\n${'b'.repeat(64)}\n`, { mode: 0o600 });
+
+    const { loadOrCreateToken } = await importAuthWithHome(home);
+
+    await expect(loadOrCreateToken()).rejects.toThrow(/ต้องเป็น hex 64 ตัวอักษร/);
+    await expect(readFile(tokenPath, 'utf8')).resolves.toBe(`${token}\n${'b'.repeat(64)}\n`);
   });
 
   it('rejects tokens with surrounding whitespace instead of silently trimming them', async () => {

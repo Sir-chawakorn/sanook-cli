@@ -42,6 +42,12 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     name: 'diagnostics',
     summary: 'LSP diagnostics',
   },
+  {
+    detail: 'Run optional Python or Rust snippets/files without shell strings for data analysis and native-helper prototypes.',
+    group: 'Polyglot',
+    name: 'python + rust runtime tools',
+    summary: 'run_python/run_rust',
+  },
 ];
 
 export function formatToolCatalog(tools: ToolCatalogEntry[] = TOOL_CATALOG): string {

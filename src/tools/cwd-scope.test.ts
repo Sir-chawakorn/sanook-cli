@@ -1,11 +1,13 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { mkdtemp, mkdir, rm, readFile, stat, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, readFile, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentContext } from '../agentContext.js';
 import { writeFileTool } from './write.js';
 import { readFileTool } from './read.js';
 import { listDirTool } from './list.js';
+import { editFileTool } from './edit.js';
+import { globTool, grepTool } from './search.js';
 
 // proves the isolation primitive: with a threaded cwd (as set for a worktree
 // sub-agent), a RELATIVE path resolves into THAT cwd — not process.cwd() — so
@@ -49,6 +51,57 @@ describe('agentCwd scoping of file tools', () => {
     expect(out).toContain('only.txt');
   });
 
+  it('list_dir omits symlinked directories that resolve outside the threaded cwd', async () => {
+    const cwd = await scopedDir();
+    const outside = await scopedDir();
+    await symlink(outside, join(cwd, 'outside-link'));
+
+    const out = await runScoped(cwd, () => listDirTool.execute!({ path: '.' }, {} as never));
+
+    expect(out).not.toContain('outside-link');
+  });
+
+  it('glob omits symlinked paths that resolve outside the threaded cwd', async () => {
+    const cwd = await scopedDir();
+    const outside = await scopedDir();
+    await writeFile(join(outside, 'secret.txt'), 'outside');
+    await symlink(outside, join(cwd, 'outside-link'));
+
+    const out = await runScoped(cwd, () => globTool.execute!({ pattern: '**/*.txt', cwd: '.' }, {} as never));
+
+    expect(out).not.toContain('outside-link');
+    expect(out).not.toContain('secret.txt');
+  });
+
+  it('grep blocks explicit reads through symlinks that resolve outside the threaded cwd', async () => {
+    const cwd = await scopedDir();
+    const outside = await scopedDir();
+    await writeFile(join(outside, 'secret.txt'), 'outside');
+    await symlink(outside, join(cwd, 'outside-link'));
+
+    const blocked = await runScoped(cwd, () =>
+      grepTool.execute!({ pattern: 'outside', path: 'outside-link/secret.txt' }, {} as never),
+    );
+
+    expect(blocked).toContain('BLOCKED');
+    expect(blocked).toContain('นอก workspace');
+  });
+
+  it('grep omits symlinked directories that resolve outside the threaded cwd during broad searches', async () => {
+    const cwd = await scopedDir();
+    const outside = await scopedDir();
+    await writeFile(join(cwd, 'inside.txt'), 'needle inside');
+    await writeFile(join(outside, 'secret.txt'), 'needle outside');
+    await symlink(outside, join(cwd, 'outside-link'));
+
+    const out = await runScoped(cwd, () => grepTool.execute!({ pattern: 'needle', path: '.' }, {} as never));
+
+    expect(out).toContain('inside.txt:1:needle inside');
+    expect(out).not.toContain('outside-link');
+    expect(out).not.toContain('secret.txt');
+    expect(out).not.toContain('needle outside');
+  });
+
   it('permission guard ALLOWS writes inside the threaded cwd (isolation root), not outside', async () => {
     const cwd = await scopedDir();
     const other = await scopedDir();
@@ -67,6 +120,35 @@ describe('agentCwd scoping of file tools', () => {
 
     const blocked = await runScoped(cwd, () =>
       writeFileTool.execute!({ path: 'outside-link/leak.txt', content: 'secret' }, {} as never),
+    );
+
+    expect(blocked).toContain('BLOCKED');
+    expect(blocked).toContain('นอก workspace');
+  });
+
+  it('permission guard blocks reads through symlinks that resolve outside the threaded cwd', async () => {
+    const cwd = await scopedDir();
+    const outside = await scopedDir();
+    await writeFile(join(outside, 'secret.txt'), 'outside');
+    await symlink(outside, join(cwd, 'outside-link'));
+
+    const blocked = await runScoped(cwd, () => readFileTool.execute!({ path: 'outside-link/secret.txt' }, {} as never));
+
+    expect(blocked).toContain('BLOCKED');
+    expect(blocked).toContain('นอก workspace');
+  });
+
+  it('permission guard blocks edits through symlinks that resolve outside the threaded cwd', async () => {
+    const cwd = await scopedDir();
+    const outside = await scopedDir();
+    await writeFile(join(outside, 'secret.txt'), 'outside');
+    await symlink(outside, join(cwd, 'outside-link'));
+
+    const blocked = await runScoped(cwd, () =>
+      editFileTool.execute!(
+        { path: 'outside-link/secret.txt', old_string: 'outside', new_string: 'leaked' },
+        {} as never,
+      ),
     );
 
     expect(blocked).toContain('BLOCKED');

@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, chmod, link, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { appHomePath } from '../brand.js';
@@ -21,13 +21,24 @@ export async function loadOrCreateToken(): Promise<string> {
     const token = randomBytes(32).toString('hex');
     await ensureGatewayDir();
     try {
-      await writeFile(TOKEN_FILE, `${token}\n`, { mode: 0o600, flag: 'wx' });
+      await createTokenFile(token);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'EEXIST') continue;
       throw new Error(`ไม่สามารถเขียน gateway token ที่ ${TOKEN_FILE}: ${(e as Error).message}`);
     }
-    await chmod(TOKEN_FILE, 0o600).catch(() => {});
     return token;
+  }
+}
+
+async function createTokenFile(token: string): Promise<void> {
+  const tempFile = join(GATEWAY_DIR, `.token-${process.pid}-${Date.now()}-${randomBytes(6).toString('hex')}.tmp`);
+  try {
+    await writeFile(tempFile, `${token}\n`, { mode: 0o600, flag: 'wx' });
+    await chmod(tempFile, 0o600).catch(() => {});
+    await link(tempFile, TOKEN_FILE);
+    await chmod(TOKEN_FILE, 0o600).catch(() => {});
+  } finally {
+    await unlink(tempFile).catch(() => {});
   }
 }
 

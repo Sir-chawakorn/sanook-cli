@@ -133,7 +133,8 @@ Microsoft Teams ตอนนี้รองรับ proactive delivery/cron ผ
 - **BYOK + 9 providers** — Anthropic, Google, OpenAI, xAI, Mistral, Groq, Ollama, LM Studio, Codex
 - **Familiar CLI** — `sanook setup`, `sanook model`, `sanook auth`, `sanook chat -q`, `sanook gateway`, `sanook status`, `sanook sessions`, `sanook dump`, `sanook tools`, `sanook send`
 - **Second brain** — `sanook brain init` สร้าง workspace Obsidian ให้ AI จำงานข้ามวัน
-- **Tools** — อ่าน/เขียน/แก้ไฟล์ · รัน bash · git · grep/glob พร้อม permission gate
+- **Tools** — อ่าน/เขียน/แก้ไฟล์ · รัน bash/Python/Rust แบบ approval-gated · git · grep/glob พร้อม permission gate
+- **Polyglot runtime** — TypeScript เป็น control plane หลัก; Python ใช้กับ data/document/ML helper ผ่าน `run_python`; Rust ใช้กับ helper ที่ต้องเร็ว/type-safe ผ่าน `run_rust`; ไม่มี runtime ก็ไม่ทำให้ Sanook install พัง
 - **Gateway + cron** — `sanook gateway run` (alias: `sanook serve`) รัน 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram/Discord/Slack/Mattermost/Home Assistant/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix/Google Chat/BlueBubbles/Teams/Webhooks; task ใช้ `--to` เพื่อส่งผลลัพธ์กลับไปยัง messaging target ได้
 - **Messaging setup/send** — `sanook gateway setup telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|googlechat|bluebubbles|teams|webhooks` บันทึก token/allowlist หรือ SMTP/IMAP/LINE/Twilio/ntfy/Mattermost/Home Assistant/Signal/WhatsApp/Matrix/Google Chat/BlueBubbles/Teams/Webhook config; `sanook gateway run` เริ่ม Telegram long-polling, Discord Gateway, Slack Socket Mode, Mattermost REST/WebSocket, Home Assistant state-change WebSocket, Email IMAP polling + SMTP threaded replies, LINE webhook, Twilio SMS webhook, ntfy topic stream, Signal ผ่าน `signal-cli` HTTP/SSE, WhatsApp Cloud webhook + Graph Messages API, Matrix Client-Server sync/send, Google Chat outbound ผ่าน incoming webhook/Chat REST API, BlueBubbles outbound ผ่าน REST API, Teams Incoming Webhook/Graph delivery และ generic webhooks เมื่อ config พร้อม; history ถูกเก็บต่อ platform/target และถ้าคำตอบสุดท้ายเป็น `[SILENT]`, `SILENT`, `NO_REPLY`, หรือ `NO REPLY` จะบันทึกไว้แต่ไม่ส่งกลับ; `sanook send --to telegram|discord|slack|mattermost|homeassistant|email|line|sms|ntfy|signal|whatsapp|matrix|googlechat|bluebubbles|teams "..."`, `sanook webhook subscribe` และ `sanook cron add --to ...` ใช้กฎส่งออกชุดเดียวกัน
 - **MCP + Skills** — ต่อ MCP server ได้ + มี built-in skills และติดตั้งเพิ่มได้
@@ -155,6 +156,8 @@ sanook sessions stats --all
 sanook sessions prune --keep 20 --yes
 sanook sessions rm <id>        # ลบ session
 sanook dump [--show-keys]      # support dump; key ยังถูก redact
+sanook prompt-size             # ดู context/prompt budget แบบ offline
+sanook runtimes                # ดู Python/Rust optional runtime ที่ Sanook ใช้ได้
 ```
 
 ตั้งค่า default model ได้ด้วย:

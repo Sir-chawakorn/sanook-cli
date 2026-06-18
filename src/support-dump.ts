@@ -126,6 +126,9 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
   const currentSessions = await listSessions({ cwd });
   const allSessions = await listSessions({ cwd: null });
   const { tools } = await import('./tools/index.js');
+  const polyglot = await import('./polyglot.js')
+    .then((m) => m.inspectPolyglotRuntimes({ cwd }))
+    .catch((e: unknown) => e as Error);
 
   lines.push(`${BRAND.productName} support dump`);
   lines.push(`version: ${options.version ?? '(dev)'}`);
@@ -209,6 +212,16 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
   lines.push(`  sessions all projects: ${allSessions.length}`);
   const latest = currentSessions[0] ?? allSessions[0];
   if (latest) lines.push(`  latest session: ${latest.id} updated ${latest.updated}`);
+  lines.push('');
+
+  lines.push('runtimes:');
+  if (polyglot instanceof Error) {
+    lines.push(`  load error: ${redactKey(polyglot.message)}`);
+  } else {
+    for (const runtime of polyglot.runtimes) {
+      lines.push(`  ${runtime.id}: ${runtime.status}${runtime.version ? ` (${runtime.version})` : ''}`);
+    }
+  }
   lines.push('');
 
   lines.push(options.showKeys ? 'secrets: redacted prefixes/suffixes shown; raw keys are never printed' : 'secrets: hidden; use --show-keys to show redacted key fingerprints');

@@ -51,6 +51,8 @@ describe('approval gate', () => {
 
   it('summarizeToolCall', () => {
     expect(summarizeToolCall('run_bash', { cmd: 'ls -la' })).toBe('$ ls -la');
+    expect(summarizeToolCall('run_python', { path: 'scripts/a.py' })).toBe('python scripts/a.py');
+    expect(summarizeToolCall('run_rust', { code: 'fn main(){}' })).toBe('rust snippet (11 chars)');
     expect(summarizeToolCall('git_commit', { message: 'fix bug' })).toContain('fix bug');
     expect(summarizeToolCall('write_file', { path: '/x.ts' })).toContain('/x.ts');
   });
@@ -60,6 +62,8 @@ describe('approval gate', () => {
       'write_file',
       'edit_file',
       'run_bash',
+      'run_python',
+      'run_rust',
       'git_commit',
       'schedule_task',
       'cancel_scheduled',

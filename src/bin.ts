@@ -131,6 +131,7 @@ usage:
   ${BRAND.cliName} insights             local usage/session insights
   ${BRAND.cliName} dump [--show-keys]   support snapshot (secrets redacted)
   ${BRAND.cliName} prompt-size [--json]  inspect prompt/context budget without calling a model
+  ${BRAND.cliName} runtimes [--json]     inspect optional Python/Rust runtime surface
   ${BRAND.cliName} update              update ${BRAND.cliName} to the latest npm release
   ${BRAND.cliName} doctor              ตรวจการติดตั้ง + วิธีแก้ PATH (เมื่อพิมพ์ "${BRAND.cliName}" แล้วไม่เจอ)
 
@@ -191,6 +192,7 @@ config & mcp:
   ${BRAND.cliName} insights [--days N] [--all]    ดู usage/session insights ในเครื่อง
   ${BRAND.cliName} dump [--show-keys]             diagnostic/support dump แบบไม่โชว์ raw secret
   ${BRAND.cliName} prompt-size [--json]            ดู system prompt / skills / brain / tools token budget แบบ offline
+  ${BRAND.cliName} runtimes [--json]               ดู Python/Rust optional runtime + บทบาทใน Sanook
   ${BRAND.cliName} tools                          ดู tool surface ที่ agent ใช้ได้
   ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/budgetUsd/permissionMode/cacheTtl/compaction/contextCompression/thinking/embeddingModel)
   ${BRAND.cliName} mcp [search|info|install|test|doctor|preset|list|add|remove]   จัดการ MCP servers
@@ -279,6 +281,20 @@ async function runPromptSize(args: string[] = []): Promise<void> {
   const report = await buildPromptSizeBreakdown();
   if (args.includes('--json')) console.log(JSON.stringify(report, null, 2));
   else process.stdout.write(renderPromptSizeBreakdown(report));
+}
+
+async function runRuntimes(args: string[] = []): Promise<void> {
+  const allowed = new Set(['--json']);
+  const unknown = args.find((arg) => !allowed.has(arg));
+  if (unknown) {
+    console.error(`ไม่รู้จัก option: ${unknown}`);
+    console.error(`ใช้: ${BRAND.cliName} runtimes [--json]`);
+    process.exit(1);
+  }
+  const { inspectPolyglotRuntimes, renderPolyglotReport } = await import('./polyglot.js');
+  const report = await inspectPolyglotRuntimes();
+  if (args.includes('--json')) console.log(JSON.stringify(report, null, 2));
+  else process.stdout.write(renderPolyglotReport(report));
 }
 
 async function runAgentSetupSummary(): Promise<void> {
@@ -3765,6 +3781,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'insights') return runInsights(argv.slice(1));
   if (argv[0] === 'dump') return runDump(argv.slice(1));
   if (argv[0] === 'prompt-size' && (argv.length === 1 || argv[1].startsWith('--'))) return runPromptSize(argv.slice(1));
+  if (argv[0] === 'runtimes' && (argv.length === 1 || argv[1].startsWith('--'))) return runRuntimes(argv.slice(1));
   if (argv[0] === 'tools' && (argv.length === 1 || argv[1].startsWith('--'))) return runTools(argv.slice(1));
   if (argv[0] === 'send') return runSend(argv.slice(1));
   if (argv[0] === 'webhook' || argv[0] === 'webhooks') return runWebhook(argv.slice(1));

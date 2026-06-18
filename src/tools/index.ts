@@ -12,6 +12,7 @@ import { taskTool, taskParallelTool, taskSpawnTool, taskCollectTool, taskCancelT
 import { diagnosticsTool } from './diagnostics.js';
 import { gitStatusTool, gitDiffTool, gitLogTool, gitCommitTool } from './git.js';
 import { haCallServiceTool, haGetStateTool, haListEntitiesTool, haListServicesTool } from './homeassistant.js';
+import { pythonTool, rustTool } from './polyglot.js';
 
 /** tool registry ที่ส่งให้ agent loop */
 export const tools = {
@@ -22,6 +23,8 @@ export const tools = {
   glob: globTool,
   grep: grepTool,
   run_bash: bashTool,
+  run_python: pythonTool,
+  run_rust: rustTool,
   remember: rememberTool,
   recall: recallTool,
   skill: skillTool,

@@ -100,7 +100,7 @@ sanook dump                     # support snapshot; raw secrets are never printe
 | Area | What you get |
 |---|---|
 | **Agent loop** | Built on the Vercel AI SDK 6 (`streamText` + `stopWhen` + `fullStream`), with streamed output, a cost meter, a budget cap, Anthropic **prompt caching** on the static preamble, and rate-limit-aware retry/backoff (distinct from auth failures) with model fallback. |
-| **Tools** | `read_file` · `write_file` · `edit_file` (multi-tier matcher) · `list_dir` · `glob` · `grep` · `run_bash`, plus git tools — gated by a permission layer that denies destructive commands, protected paths, and paths outside the workspace/brain by default. Non-bash tools are timeout-guarded so a runaway read/grep can't hang the loop. |
+| **Tools** | `read_file` · `write_file` · `edit_file` (multi-tier matcher) · `list_dir` · `glob` · `grep` · `run_bash` · `run_python` · `run_rust`, plus git tools — gated by a permission layer that denies destructive commands, protected paths, and paths outside the workspace/brain by default. Non-bash tools are timeout-guarded so a runaway read/grep can't hang the loop. |
 | **Sandbox** | `run_bash` is confined by an OS sandbox — **Seatbelt** on macOS, **bubblewrap** on Linux — so shell writes stay inside the workspace/brain/tmp (reads + network unaffected). Opt out with `SANOOK_NO_SANDBOX=1`. |
 | **Approval** | `ask` mode is the default and prompts `y/n` before any file write or shell command. `--yes` for auto-approve; headless ask-mode safely denies mutations when no approval UI exists. |
 | **Input** | Multiline editing, `↑`/`↓` persisted prompt history, readline keys (Ctrl-A/E/U/K/W), and `@file` mentions that inline a file's contents (or attach an **image** for vision-capable models). |
@@ -119,6 +119,7 @@ sanook dump                     # support snapshot; raw secrets are never printe
 | **Plan mode** | `--plan` restricts the agent to read-only tools and asks it to produce a plan before touching anything. |
 | **Auto-compaction** | A token-aware sliding window keeps long sessions under the context limit with zero extra LLM cost. |
 | **Prompt budget inspectability** | `sanook prompt-size [--json]` reports the offline size of Sanook's system prompt, personality overlay, auto-memory, skills index, second-brain context, project memory, repo map, git context, and built-in tool schemas. |
+| **Polyglot runtime surface** | `sanook runtimes [--json]` shows optional Python/Rust readiness. The agent gets `run_python` for data/document/ML-style helper scripts and `run_rust` for small performance/safety-critical helpers, both approval-gated and no-shell. |
 | **Second brain** | `sanook brain init` scaffolds a structured Obsidian "second-brain" workspace (folders + `_Index` + a portable AI operating constitution) for organising work and giving the agent durable, cross-session memory. |
 
 ## Providers
@@ -167,6 +168,7 @@ sanook sessions prune --keep N [--all] [--yes]
 sanook sessions rm <id>
 sanook dump [--show-keys] support dump (keys are still redacted)
 sanook prompt-size [--json] inspect system/brain/skill/tool context budget
+sanook runtimes [--json]   inspect optional Python/Rust runtime surface
 sanook -c "<task>"       resume the latest session for this project
 sanook --resume <id>     resume a specific saved session
 sanook --continue-any    resume the newest session across all projects

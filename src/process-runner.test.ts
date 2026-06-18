@@ -1,0 +1,31 @@
+import { describe, expect, it } from 'vitest';
+import { formatProcessResult, runProcess, safeProcessEnv } from './process-runner.js';
+
+describe('process runner', () => {
+  it('runs a process without shell expansion and captures output', async () => {
+    const result = await runProcess(process.execPath, ['-e', 'process.stdout.write(process.argv[1])', 'ok'], {
+      timeoutMs: 5_000,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(formatProcessResult(result)).toBe('ok');
+  });
+
+  it('returns a structured error for non-zero exit', async () => {
+    const result = await runProcess(process.execPath, ['-e', 'console.error("bad"); process.exit(7)'], {
+      timeoutMs: 5_000,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(formatProcessResult(result)).toContain('exit 7');
+    expect(formatProcessResult(result)).toContain('bad');
+  });
+
+  it('keeps only safe environment keys', () => {
+    expect(safeProcessEnv({ PATH: '/bin', SECRET_TOKEN: 'nope', HOME: '/home/me' })).toEqual({
+      PATH: '/bin',
+      HOME: '/home/me',
+    });
+  });
+});
+

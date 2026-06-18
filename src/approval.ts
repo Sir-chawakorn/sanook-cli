@@ -18,6 +18,8 @@ export const MUTATE_TOOLS = new Set([
   'write_file',
   'edit_file',
   'run_bash',
+  'run_python',
+  'run_rust',
   'git_commit',
   'schedule_task',
   'cancel_scheduled',
@@ -59,6 +61,10 @@ export function summarizeToolCall(tool: string, input: unknown): string {
   switch (tool) {
     case 'run_bash':
       return `$ ${String(i.cmd ?? '')}`;
+    case 'run_python':
+      return i.path ? `python ${String(i.path)}` : `python snippet (${String(i.code ?? '').length} chars)`;
+    case 'run_rust':
+      return i.path ? `rustc ${String(i.path)} && run` : `rust snippet (${String(i.code ?? '').length} chars)`;
     case 'write_file':
       return `เขียนไฟล์ ${String(i.path ?? '')}`;
     case 'edit_file':
