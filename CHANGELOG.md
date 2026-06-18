@@ -44,6 +44,7 @@ A multi-agent review of the first-run + setup + REPL flow surfaced (and independ
 
 - **`--continue-any` actually works as a resume flag now.** The headless arg parser forgot to consume it, so `sanook --continue-any` became a literal prompt instead of opening the REPL with the latest cross-project session. The parser is now split into a tested module and consumes all resume/headless aliases.
 - **Search flags are validated.** `sanook search q --mode nope` used to silently fall back to FTS, and `--limit -5` could produce odd slice behavior. Search args now reject invalid modes, sources, missing queries, and non-positive limits with a clear usage line.
+- **`sanook serve --port` missing values now report a human-readable error.** Empty or missing port values now surface `ต้องระบุค่า` instead of leaking `"undefined"` into the validation message.
 - **`SANOOK_DISABLE_PERSISTENCE=1` now includes second-brain worklogs.** Sessions, auto-memory, prompt history, and worklogs all honor the global persistence kill switch; `SANOOK_DISABLE_WORKLOG=1` remains available for worklog-only opt-out.
 - **First-run Codex readiness is real.** `sanook -m codex` no longer skips setup just because Codex does not use an API key; it only skips when the official `codex` CLI is installed and logged in.
 - **Existing broken model config now reopens setup instead of entering a dead REPL.** If `~/.sanook/config.json` points at OpenAI without a usable key (or Codex without a logged-in CLI), interactive `sanook` brings back the setup wizard so the recovery hint is actually actionable.

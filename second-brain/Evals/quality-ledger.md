@@ -24,4 +24,6 @@ parent: "[[Evals/_Index]]"
 
 ## [2026-06-18] framework-dogfood-permission-and-memory | grounded:y retrieval_hit:y distractor:n | SB-01/SB-03/SB-05/SB-09/SB-10 pass; targeted test `npm test -- src/tools/tools.test.ts` passed; evidence [[Sessions/2026-06-18-framework-dogfood-permission-and-memory]]
 
+## [2026-06-18] cli-args-release-readiness | grounded:y retrieval_hit:y distractor:n | SB-05/SB-06/SB-10 pass; targeted/full tests, typecheck, build, diff check passed; evidence [[Sessions/2026-06-18-cli-args-release-readiness]]
+
 up:: [[Evals/_Index]]

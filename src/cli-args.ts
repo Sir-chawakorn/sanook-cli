@@ -1,3 +1,5 @@
+import { inlineValue, takeValue } from './cli-option-values.js';
+
 export interface Args {
   model?: string;
   budget?: number;
@@ -17,7 +19,6 @@ export interface ParsedServeArgs {
 
 const DECIMAL_BUDGET_RE = /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
 const POSITIVE_INTEGER_RE = /^\d+$/;
-const isFlagLike = (value: string): boolean => value.startsWith('--') || /^-[A-Za-z]/.test(value);
 
 export function parseBudgetUsd(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
@@ -72,23 +73,14 @@ export function hasServeCommandRequest(argv: string[]): boolean {
   return true;
 }
 
-function inlineValue(flag: string, value: string): string | undefined {
-  const prefix = `${flag}=`;
-  if (!value.startsWith(prefix)) return undefined;
-  const parsed = value.slice(prefix.length);
-  return parsed === '' ? undefined : parsed;
-}
-
-function takeValue(argv: string[], index: number): { value?: string; nextIndex: number } {
-  const value = argv[index + 1];
-  if (value === undefined || isFlagLike(value)) return { nextIndex: index };
-  return { value, nextIndex: index + 1 };
-}
-
 function parsePortValue(raw: string | undefined): number | undefined {
   if (raw === undefined || !/^\d+$/.test(raw)) return undefined;
   const port = Number(raw);
   return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : undefined;
+}
+
+function portErrorValue(raw: string | undefined): string {
+  return raw === undefined || raw === '' ? 'ต้องระบุค่า' : raw;
 }
 
 export function parseServeArgs(argv: string[]): ParsedServeArgs {
@@ -103,7 +95,7 @@ export function parseServeArgs(argv: string[]): ParsedServeArgs {
       const raw = next ? next.value : inlineValue('--port', a);
       if (next) i = next.nextIndex;
       const parsed = parsePortValue(raw);
-      if (parsed === undefined) portError = raw ?? 'undefined';
+      if (parsed === undefined) portError = portErrorValue(raw);
       else port = parsed;
     } else if (a === '--model' || a === '-m' || a.startsWith('--model=')) {
       if (a.startsWith('--model=')) {

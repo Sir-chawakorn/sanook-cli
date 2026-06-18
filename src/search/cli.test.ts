@@ -30,6 +30,19 @@ describe('parseSearchArgs', () => {
     expect(parseSearchArgs(['deploy', '--sources=']).ok).toBe(false);
   });
 
+  it('rejects missing split option values without consuming the next flag', () => {
+    const mode = parseSearchArgs(['deploy', '--mode', '--limit', '5']);
+    const limit = parseSearchArgs(['deploy', '--limit', '--source', 'vault']);
+    const source = parseSearchArgs(['deploy', '--source', '--mode', 'fts']);
+
+    expect(mode.ok).toBe(false);
+    if (!mode.ok) expect(mode.message).toContain('--mode ต้องระบุค่า');
+    expect(limit.ok).toBe(false);
+    if (!limit.ok) expect(limit.message).toContain('--limit ต้องระบุค่า');
+    expect(source.ok).toBe(false);
+    if (!source.ok) expect(source.message).toContain('--source ต้องระบุค่า');
+  });
+
   it('treats arguments after -- as literal query text', () => {
     expect(parseSearchArgs(['--', '--mode', 'hybrid'])).toEqual({
       ok: true,

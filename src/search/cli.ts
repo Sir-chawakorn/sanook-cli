@@ -1,3 +1,4 @@
+import { inlineValue, takeValue } from '../cli-option-values.js';
 import type { SearchMode } from './engine.js';
 import { SEARCH_SOURCES, type SearchSource } from './index-core.js';
 
@@ -26,13 +27,6 @@ function parsePositiveInteger(raw: string | undefined): number | undefined {
   return Number.isSafeInteger(n) ? n : undefined;
 }
 
-function inlineValue(flag: string, value: string): string | undefined {
-  const prefix = `${flag}=`;
-  if (!value.startsWith(prefix)) return undefined;
-  const parsed = value.slice(prefix.length);
-  return parsed === '' ? undefined : parsed;
-}
-
 function inlineSourceValue(value: string): string | undefined {
   return inlineValue('--source', value) ?? inlineValue('--sources', value);
 }
@@ -49,21 +43,30 @@ export function parseSearchArgs(args: string[]): SearchArgsResult {
       queryParts.push(...args.slice(i + 1));
       break;
     } else if (a === '--mode' || a.startsWith('--mode=')) {
-      const v = a === '--mode' ? args[++i] : inlineValue('--mode', a);
-      if (!v || !isSearchMode(v)) return { ok: false, message: `--mode ต้องเป็น ${SEARCH_MODES.join('|')}` };
+      const next = a === '--mode' ? takeValue(args, i) : undefined;
+      const v = next ? next.value : inlineValue('--mode', a);
+      if (next) i = next.nextIndex;
+      if (!v) return { ok: false, message: `--mode ต้องระบุค่าเป็น ${SEARCH_MODES.join('|')}` };
+      if (!isSearchMode(v)) return { ok: false, message: `--mode ต้องเป็น ${SEARCH_MODES.join('|')}` };
       mode = v;
     } else if (a === '--limit' || a.startsWith('--limit=')) {
-      const raw = a === '--limit' ? args[++i] : inlineValue('--limit', a);
+      const next = a === '--limit' ? takeValue(args, i) : undefined;
+      const raw = next ? next.value : inlineValue('--limit', a);
+      if (next) i = next.nextIndex;
+      if (!raw) return { ok: false, message: '--limit ต้องระบุค่าเป็น integer บวก เช่น 8' };
       const n = parsePositiveInteger(raw);
       if (n === undefined) return { ok: false, message: '--limit ต้องเป็น integer บวก เช่น 8' };
       limit = n;
     } else if (a === '--source' || a === '--sources' || a.startsWith('--source=') || a.startsWith('--sources=')) {
-      const raw = a === '--source' || a === '--sources' ? args[++i] : inlineSourceValue(a);
+      const next = a === '--source' || a === '--sources' ? takeValue(args, i) : undefined;
+      const raw = next ? next.value : inlineSourceValue(a);
+      if (next) i = next.nextIndex;
       const requested = (raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
       const bad = requested.filter((s) => !isSearchSource(s));
-      if (!requested.length || bad.length) {
-        return { ok: false, message: `--source ต้องเป็น ${SEARCH_SOURCES.join(',')} (คั่นหลายค่าได้ด้วย comma)` };
+      if (!requested.length) {
+        return { ok: false, message: `--source ต้องระบุค่าเป็น ${SEARCH_SOURCES.join(',')} (คั่นหลายค่าได้ด้วย comma)` };
       }
+      if (bad.length) return { ok: false, message: `--source ต้องเป็น ${SEARCH_SOURCES.join(',')} (คั่นหลายค่าได้ด้วย comma)` };
       sources = [...new Set(requested)] as SearchSource[];
     } else {
       queryParts.push(a);

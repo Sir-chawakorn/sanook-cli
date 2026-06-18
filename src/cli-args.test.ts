@@ -253,9 +253,12 @@ describe('parseServeArgs', () => {
     expect(parseServeArgs(['--port=0']).portError).toBe('0');
     expect(parseServeArgs(['--port=65536']).portError).toBe('65536');
     expect(parseServeArgs(['--port=1.5']).portError).toBe('1.5');
-    expect(parseServeArgs(['--port=']).portError).toBe('undefined');
+    expect(parseServeArgs(['--port=']).portError).toBe('ต้องระบุค่า');
     expect(parseServeArgs(['--port', '-1']).portError).toBe('-1');
-    expect(parseServeArgs(['--port'])).toMatchObject({ portError: 'undefined' });
-    expect(parseServeArgs(['--port', '--model', 'sonnet'])).toMatchObject({ portError: 'undefined' });
+    expect(parseServeArgs(['--port'])).toMatchObject({ portError: 'ต้องระบุค่า' });
+    expect(parseServeArgs(['--port', '--model', 'sonnet'])).toMatchObject({
+      model: 'sonnet',
+      portError: 'ต้องระบุค่า',
+    });
   });
 });
