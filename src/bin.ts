@@ -172,6 +172,7 @@ skills (built-in + ติดตั้งเพิ่มได้):
 
 second brain (Obsidian workspace สำหรับจัดเก็บงาน + ความจำ AI):
   ${BRAND.cliName} brain init [path]              สร้างโครงสร้าง second-brain ที่ path (ไม่ใส่ = ถาม)
+  ${BRAND.cliName} brain doctor                   ตรวจ health ของ second-brain ที่ config.brainPath
 
 search (BM25 + optional BYOK semantic เหนือ vault + memory + sessions + skills):
   ${BRAND.cliName} index                          (re)index vault+memory แบบ incremental (O(delta))
@@ -2969,10 +2970,35 @@ async function runModels(args: string[]): Promise<void> {
   else console.log('\n✓ ทุก curated id มีใน provider');
 }
 
+function brainDoctorStatusLabel(status: 'pass' | 'warn' | 'fail'): string {
+  return status.toUpperCase().padEnd(4);
+}
+
+/** sanook brain doctor — check configured second-brain health without modifying it */
+async function runBrainDoctor(): Promise<void> {
+  const cfg = await loadConfig({});
+  const { checkBrain } = await import('./brain-doctor.js');
+  const report = await checkBrain({ brainPath: cfg.brainPath });
+
+  console.log(`${BRAND.productName} brain doctor`);
+  for (const check of report.checks) {
+    console.log(`[${brainDoctorStatusLabel(check.status)}] ${check.id} — ${check.message}`);
+    if (check.path) console.log(`       ${check.path}`);
+    for (const detail of check.details ?? []) console.log(`       - ${detail}`);
+  }
+
+  if (!report.ok) process.exit(1);
+}
+
 /** sanook brain init [path] — scaffold second-brain workspace (interactive ถ้าไม่ใส่ path) */
 async function runBrain(args: string[]): Promise<void> {
+  if (args[0] === 'doctor') return runBrainDoctor();
+
   if (args[0] !== 'init') {
-    console.log(`ใช้: sanook brain init [path]   สร้างโครงสร้าง second-brain (Obsidian vault)
+    console.log(`ใช้:
+  sanook brain init [path]   สร้างโครงสร้าง second-brain (Obsidian vault)
+  sanook brain doctor        ตรวจ health ของ second-brain ที่ config.brainPath
+
   ไม่ใส่ path → wizard ถาม path + ตัวตน
   -y, --yes  ใช้ค่า default ทั้งหมด (ต้องระบุ path)`);
     return;
@@ -3466,7 +3492,7 @@ async function main(): Promise<void> {
     return runSkill(argv.slice(1));
   }
   if (argv[0] === 'models') return runModels(argv.slice(1));
-  if (argv[0] === 'brain' && ['init', undefined].includes(argv[1])) return runBrain(argv.slice(1));
+  if (argv[0] === 'brain' && ['init', 'doctor', undefined].includes(argv[1])) return runBrain(argv.slice(1));
   if (argv[0] === 'config' && ['get', 'set', 'list', undefined].includes(argv[1])) return runConfig(argv.slice(1));
   if (argv[0] === 'index' && (argv.length === 1 || argv[1].startsWith('--'))) return runIndex(argv.slice(1));
   if (argv[0] === 'search' && argv.length > 1) return runSearch(argv.slice(1));

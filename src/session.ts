@@ -17,6 +17,34 @@ export interface Session {
   messages: ModelMessage[];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isModelMessage(value: unknown): value is ModelMessage {
+  if (!isRecord(value)) return false;
+  if (value.role === 'system') return typeof value.content === 'string';
+  if (value.role === 'tool') return Array.isArray(value.content);
+  if (value.role === 'user' || value.role === 'assistant') {
+    return typeof value.content === 'string' || Array.isArray(value.content);
+  }
+  return false;
+}
+
+function isSession(value: unknown): value is Session {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    (value.title === undefined || typeof value.title === 'string') &&
+    typeof value.created === 'string' &&
+    typeof value.updated === 'string' &&
+    typeof value.model === 'string' &&
+    typeof value.cwd === 'string' &&
+    Array.isArray(value.messages) &&
+    value.messages.every(isModelMessage)
+  );
+}
+
 export function newSessionId(): string {
   // CLI runtime — ใช้ Date/random ได้ (ไม่ใช่ workflow context)
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -73,7 +101,8 @@ export async function saveSession(s: Session): Promise<void> {
 
 export async function loadSession(id: string): Promise<Session | null> {
   try {
-    return JSON.parse(await readFile(sessionFilePath(id), 'utf8')) as Session;
+    const parsed: unknown = JSON.parse(await readFile(sessionFilePath(id), 'utf8'));
+    return isSession(parsed) && parsed.id === id ? parsed : null;
   } catch {
     return null;
   }

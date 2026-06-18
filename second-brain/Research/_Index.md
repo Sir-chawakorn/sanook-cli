@@ -28,5 +28,6 @@ parent: "[[Home]]"
 ## Research Notes
 
 - [[Research/2026-06-17-ai-second-brain-method-experiment]] — ทดลองเปรียบเทียบวิธีใช้ second-brain ร่วมกับ AI และเลือก Scientific Loop Sequence
+- [[Research/2026-06-18-hermes-cli-second-brain-expansion-research]] — research ว่าควรเพิ่มอะไรใน second-brain เพื่อให้ Hermes CLI ใช้ vault ได้ดีขึ้น
 
 up:: [[Home]]

@@ -17,6 +17,8 @@ ai_surface: starter
 - 2026-06-17: เพิ่ม [[Evals/second-brain-benchmarks]], [[Shared/User-Memory/response-examples]], และ context packs ใน [[Shared/Context-Packs/_Index]]
 - 2026-06-18: dogfood context packs กับงานจริง 3 task-family แล้ว: coding-release, second-brain-maintenance, research-to-framework
 - 2026-06-18: ตรวจ cli-args serve port UX change แล้ว; targeted/full tests, typecheck, build, diff check ผ่าน
+- 2026-06-18: วิจัย Hermes CLI second-brain expansion ไว้เป็น reference; เจ้าของ clarify ว่าเป้าจริงคือทำใน Sanook CLI
+- 2026-06-18: Sanook-native next slice คือ `sanook brain doctor` → `sanook brain context` → `sanook brain eval`
 
 ## Active Bets
 

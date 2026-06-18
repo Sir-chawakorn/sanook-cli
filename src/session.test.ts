@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -89,5 +89,78 @@ describe('session store management', () => {
     const pruned = await pruneSessions({ cwd: null, keep: 1 });
     expect(pruned.map((s) => s.id)).toEqual(['other-project']);
     expect((await listSessions({ cwd: null })).map((s) => s.id)).toEqual(['new-project']);
+  });
+
+  it('skips malformed session files when listing sessions for a cwd', async () => {
+    const { listSessions, loadSession, saveSession, sessionStorePath } = await import('./session.js');
+    const project = join(home, 'project');
+
+    await saveSession({
+      id: 'valid-project',
+      created: '2026-06-14T00:00:00.000Z',
+      updated: '2026-06-14T00:00:01.000Z',
+      model: 'sonnet',
+      cwd: project,
+      messages: [{ role: 'user', content: 'valid' }],
+    });
+    await writeFile(
+      join(sessionStorePath(), 'malformed.json'),
+      JSON.stringify({
+        id: 'malformed',
+        updated: '2026-06-14T00:00:02.000Z',
+        messages: [],
+      }),
+    );
+    await writeFile(
+      join(sessionStorePath(), 'mismatched.json'),
+      JSON.stringify({
+        id: 'other-id',
+        created: '2026-06-14T00:00:00.000Z',
+        updated: '2026-06-14T00:00:02.000Z',
+        model: 'sonnet',
+        cwd: project,
+        messages: [{ role: 'user', content: 'wrong file' }],
+      }),
+    );
+    await writeFile(
+      join(sessionStorePath(), 'bad-messages.json'),
+      JSON.stringify({
+        id: 'bad-messages',
+        created: '2026-06-14T00:00:00.000Z',
+        updated: '2026-06-14T00:00:03.000Z',
+        model: 'sonnet',
+        cwd: project,
+        messages: ['not a model message'],
+      }),
+    );
+    await writeFile(
+      join(sessionStorePath(), 'bad-content.json'),
+      JSON.stringify({
+        id: 'bad-content',
+        created: '2026-06-14T00:00:00.000Z',
+        updated: '2026-06-14T00:00:04.000Z',
+        model: 'sonnet',
+        cwd: project,
+        messages: [{ role: 'user', content: null }],
+      }),
+    );
+    await writeFile(
+      join(sessionStorePath(), 'bad-tool-content.json'),
+      JSON.stringify({
+        id: 'bad-tool-content',
+        created: '2026-06-14T00:00:00.000Z',
+        updated: '2026-06-14T00:00:05.000Z',
+        model: 'sonnet',
+        cwd: project,
+        messages: [{ role: 'tool', content: 'not tool parts' }],
+      }),
+    );
+
+    expect((await loadSession('valid-project'))?.id).toBe('valid-project');
+    expect(await loadSession('mismatched')).toBeNull();
+    expect(await loadSession('bad-messages')).toBeNull();
+    expect(await loadSession('bad-content')).toBeNull();
+    expect(await loadSession('bad-tool-content')).toBeNull();
+    expect((await listSessions({ cwd: project })).map((s) => s.id)).toEqual(['valid-project']);
   });
 });

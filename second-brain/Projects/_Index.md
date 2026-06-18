@@ -25,6 +25,8 @@ deliverable + overview/context/current-state ของ project
 
 > รายละเอียดทุกโฟลเดอร์ + decision rules → [[Vault Structure Map]]
 
-_(ยังว่าง — โน้ตในโฟลเดอร์นี้จะถูกลิงก์ที่นี่)_
+## Projects
+
+- [[Projects/sanook-cli/_Index]] — project workspace สำหรับ Sanook CLI
 
 up:: [[Home]]
