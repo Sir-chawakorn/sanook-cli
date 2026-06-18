@@ -231,6 +231,13 @@ describe('parseServeArgs', () => {
     expect(hasServeCommandRequest(['serve', ...['--unknown']])).toBe(false);
   });
 
+  it('routes serve commands with missing split values to serve validation', () => {
+    expect(hasServeCommandRequest(['serve', '--port'])).toBe(true);
+    expect(hasServeCommandRequest(['serve', '--model'])).toBe(true);
+    expect(hasServeCommandRequest(['serve', '-m'])).toBe(true);
+    expect(hasServeCommandRequest(['serve', '--port', '--model', 'sonnet'])).toBe(true);
+  });
+
   it('defaults serve port and accepts split value flags', () => {
     expect(parseServeArgs([])).toEqual({ port: 8787, model: undefined, portError: undefined });
     expect(parseServeArgs(['--port', '9000', '--model', 'openai:gpt-5.5'])).toEqual({

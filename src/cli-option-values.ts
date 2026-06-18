@@ -16,6 +16,6 @@ export function inlineValue(flag: string, value: string): string | undefined {
 
 export function takeValue(argv: readonly string[], index: number): OptionValueResult {
   const value = argv[index + 1];
-  if (value === undefined || isFlagLike(value)) return { nextIndex: index };
+  if (value === undefined || value === '' || isFlagLike(value)) return { nextIndex: index };
   return { value, nextIndex: index + 1 };
 }

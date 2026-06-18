@@ -5,6 +5,7 @@ import { findBinary } from './lsp/servers.js';
 import { safeProcessEnv } from './process-runner.js';
 
 const execFileAsync = promisify(execFile);
+const MAX_VERSION_TEXT = 160;
 
 export type RuntimeStatus = 'ready' | 'missing' | 'core';
 
@@ -84,7 +85,13 @@ const RUNTIME_SPECS = [
 
 async function defaultVersion(command: string, args: string[], cwd: string): Promise<string> {
   const { stdout, stderr } = await execFileAsync(command, args, { cwd, env: safeProcessEnv(), timeout: 5_000, maxBuffer: 256 * 1024 });
-  return (stdout || stderr).trim().split(/\r?\n/)[0] || '(version unavailable)';
+  return stdout.trim() ? stdout : stderr;
+}
+
+function normalizeVersionText(version: string): string {
+  const firstLine = version.trim().split(/\r?\n/)[0]?.trim() || '(version unavailable)';
+  if (firstLine.length <= MAX_VERSION_TEXT) return firstLine;
+  return `${firstLine.slice(0, MAX_VERSION_TEXT - '... [truncated]'.length)}... [truncated]`;
 }
 
 async function detectSpec(
@@ -98,7 +105,7 @@ async function detectSpec(
     if (!command) continue;
     let version: string | undefined;
     try {
-      version = await versionImpl(command, [...spec.versionArgs], cwd);
+      version = normalizeVersionText(await versionImpl(command, [...spec.versionArgs], cwd));
     } catch {
       version = '(installed; version probe failed)';
     }
@@ -160,6 +167,7 @@ function fmtStatus(status: RuntimeStatus): string {
 }
 
 export function renderPolyglotReport(report: PolyglotReport): string {
+  const missingRuntimes = report.runtimes.filter((runtime) => runtime.status === 'missing');
   const lines = [
     `${BRAND.productName} runtimes`,
     `cwd: ${report.cwd}`,
@@ -178,7 +186,7 @@ export function renderPolyglotReport(report: PolyglotReport): string {
     ...report.strategy.map((item) => `  - ${item}`),
     '',
     'Missing install hints:',
-    ...report.runtimes.filter((runtime) => runtime.status === 'missing').map((runtime) => `  - ${runtime.label}: ${runtime.install}`),
+    ...(missingRuntimes.length > 0 ? missingRuntimes.map((runtime) => `  - ${runtime.label}: ${runtime.install}`) : ['  - None']),
     '',
     'Notes:',
     ...report.notes.map((note) => `  - ${note}`),

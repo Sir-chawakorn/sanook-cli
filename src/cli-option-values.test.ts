@@ -13,6 +13,7 @@ describe('cli option value helpers', () => {
       value: 'openai:gpt-5.5',
       nextIndex: 1,
     });
+    expect(takeValue(['--model', ''], 0)).toEqual({ nextIndex: 0 });
     expect(takeValue(['--model', '--json'], 0)).toEqual({ nextIndex: 0 });
     expect(takeValue(['--model', '-q'], 0)).toEqual({ nextIndex: 0 });
   });

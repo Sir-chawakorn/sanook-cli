@@ -47,6 +47,22 @@ describe('parseBrainContextArgs', () => {
     expect(parseBrainContextArgs(['--limit', '9007199254740992']).ok).toBe(false);
     expect(parseBrainContextArgs(['--source', 'vault,nope']).ok).toBe(false);
   });
+
+  it('rejects missing split option values without consuming the next flag', () => {
+    const task = parseBrainContextArgs(['--task', '--no-content', 'ship']);
+    const mode = parseBrainContextArgs(['ship', '--mode', '--limit', '3']);
+    const limit = parseBrainContextArgs(['ship', '--limit', '--source', 'vault']);
+    const source = parseBrainContextArgs(['ship', '--source', '--mode', 'fts']);
+
+    expect(task.ok).toBe(false);
+    if (!task.ok) expect(task.message).toContain('--task');
+    expect(mode.ok).toBe(false);
+    if (!mode.ok) expect(mode.message).toContain('--mode');
+    expect(limit.ok).toBe(false);
+    if (!limit.ok) expect(limit.message).toContain('--limit');
+    expect(source.ok).toBe(false);
+    if (!source.ok) expect(source.message).toContain('--source');
+  });
 });
 
 describe('inspectBrainContext', () => {

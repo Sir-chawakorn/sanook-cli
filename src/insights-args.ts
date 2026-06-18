@@ -1,3 +1,5 @@
+import { inlineValue, takeValue } from './cli-option-values.js';
+
 export interface ParsedInsightsArgs {
   days: number;
   all: boolean;
@@ -28,8 +30,28 @@ export function parseInsightsDays(args: string | readonly string[]): number | nu
 
 export function parseInsightsArgs(args: string | readonly string[]): ParsedInsightsArgs | null {
   const parts = typeof args === 'string' ? args.trim().split(/\s+/).filter(Boolean) : [...args];
-  const all = parts.includes('--all') || parts.includes('-a');
-  const dayParts = parts.filter((arg) => arg !== '--all' && arg !== '-a');
-  const days = parseInsightsDays(dayParts);
-  return days === null ? null : { days, all };
+  let days = 30;
+  let all = false;
+  let sawDays = false;
+
+  for (let i = 0; i < parts.length; i++) {
+    const arg = parts[i];
+    if (arg === '--all' || arg === '-a') {
+      all = true;
+      continue;
+    }
+
+    const inlineDays = inlineValue('--days', arg) ?? inlineValue('-d', arg);
+    const next = arg === '--days' || arg === '-d' ? takeValue(parts, i) : undefined;
+    const raw = next ? next.value : inlineDays ?? arg;
+    if (sawDays) return null;
+
+    const parsed = parsePositiveInteger(raw);
+    if (parsed === null) return null;
+    days = parsed;
+    sawDays = true;
+    if (next) i = next.nextIndex;
+  }
+
+  return { days, all };
 }
