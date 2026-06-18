@@ -24,7 +24,7 @@ ai_surface: history
 ## Errors
 
 - ไม่มี command error ระหว่างรัน experiment
-- ข้อจำกัดที่พบ: winner ใช้ avg context ~2859 tokens สูงกว่า target ~2k จึงต้องใช้ JIT expansion ไม่ใช่ preload ทุก rule
+- ข้อจำกัดที่พบ: winner ใช้ avg context ~2890 tokens สูงกว่า target ~2k จึงต้องใช้ JIT expansion ไม่ใช่ preload ทุก rule
 
 ## Solutions
 

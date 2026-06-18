@@ -22,4 +22,6 @@ parent: "[[Evals/_Index]]"
 
 ## [2026-06-17] ai-framework-additional-zones | grounded:y retrieval_hit:y distractor:n | เพิ่ม benchmark, taste examples, และ context packs ตาม framework; evidence [[Sessions/2026-06-17-ai-framework-additional-zones]]
 
+## [2026-06-18] framework-dogfood-permission-and-memory | grounded:y retrieval_hit:y distractor:n | SB-01/SB-03/SB-05/SB-09/SB-10 pass; targeted test `npm test -- src/tools/tools.test.ts` passed; evidence [[Sessions/2026-06-18-framework-dogfood-permission-and-memory]]
+
 up:: [[Evals/_Index]]

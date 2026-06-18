@@ -15,6 +15,7 @@ ai_surface: starter
 
 - 2026-06-17: ปรับ second-brain ให้ใช้ [[Runbooks/ai-second-brain-operating-sequence]] เป็น default AI operating sequence หลังทดลองเทียบ methods แล้ว
 - 2026-06-17: เพิ่ม [[Evals/second-brain-benchmarks]], [[Shared/User-Memory/response-examples]], และ context packs ใน [[Shared/Context-Packs/_Index]]
+- 2026-06-18: dogfood context packs กับงานจริง 3 task-family แล้ว: coding-release, second-brain-maintenance, research-to-framework
 
 ## Active Bets
 
@@ -27,7 +28,7 @@ _(ติดอะไรอยู่)_
 
 ## Next Actions
 
-- [ ] ใช้ sequence/context packs ใหม่นี้กับ session จริง 3 ครั้ง แล้วทบทวนผลใน [[Evals/quality-ledger]]
-- [ ] หลังใช้งานจริง ให้เพิ่ม good/bad examples ใน [[Shared/User-Memory/response-examples]]
+- [ ] รัน full test/typecheck ก่อน finalize permission gate change
+- [ ] เพิ่ม good/bad examples ใหม่ใน [[Shared/User-Memory/response-examples]] เมื่อมี feedback จริงรอบถัดไป
 
 up:: [[Shared/Operating-State/_Index]]

@@ -64,6 +64,18 @@ Why good:
 - Protects the framework from unnecessary complexity.
 - Offers concrete implementation path.
 
+## Good Pattern: Act On All Clear Recommendations
+
+```text
+รับครับ ผมจะทำครบตาม 4 ข้อที่แนะนำไว้: ตรวจ worktree, รัน tests, ใช้ benchmark/framework จริง, แล้วอัปเดต memory/session evidence ให้ครบ
+```
+
+Why good:
+
+- Mirrors the requested scope.
+- Commits to action when the work is safe and clear.
+- Keeps the owner looped in without asking for unnecessary confirmation.
+
 ## Good Pattern: Uncertainty
 
 ```text

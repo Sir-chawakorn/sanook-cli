@@ -29,5 +29,6 @@ code/config · subfolder (Sessions = flat เสมอ)
 
 - [[Sessions/2026-06-17-ai-second-brain-sequence-experiment]] — ทดลองและปรับ AI operating sequence ของ second-brain
 - [[Sessions/2026-06-17-ai-framework-additional-zones]] — เพิ่ม benchmark, response examples, และ context packs เข้า framework
+- [[Sessions/2026-06-18-framework-dogfood-permission-and-memory]] — ใช้ context packs ใหม่กับ permission/tools + memory update + benchmark dogfood
 
 up:: [[Home]]

@@ -43,6 +43,66 @@ const GIT_OPTIONS_WITH_VALUE = new Set([
 ]);
 const SHELL_OPTIONS_WITH_VALUE = new Set(['--init-file', '--rcfile']);
 const SEARCH_COMMANDS_WITH_LITERAL_PATTERN = new Set(['grep', 'rg']);
+const SEARCH_SHORT_OPTIONS_WITHOUT_VALUE = new Map([
+  ['grep', new Set(['E', 'F', 'G', 'P', 'R', 'r', 'I', 'i', 'v', 'w', 'x', 'c', 'l', 'L', 'n', 'H', 'h', 'o', 'q', 's', 'a', 'b', 'U', 'Z', 'z'])],
+  ['rg', new Set(['F', 'H', 'I', 'L', 'N', 'P', 'S', 'T', 'U', 'V', 'a', 'b', 'c', 'h', 'i', 'l', 'n', 'p', 'q', 's', 'u', 'v', 'w', 'x', 'z'])],
+]);
+const SEARCH_OPTIONS_WITH_VALUE = new Map([
+  [
+    'grep',
+    new Set([
+      '-A',
+      '-B',
+      '-C',
+      '-D',
+      '-d',
+      '-m',
+      '--after-context',
+      '--before-context',
+      '--binary-files',
+      '--context',
+      '--devices',
+      '--directories',
+      '--exclude',
+      '--exclude-dir',
+      '--include',
+      '--label',
+      '--max-count',
+    ]),
+  ],
+  [
+    'rg',
+    new Set([
+      '-A',
+      '-B',
+      '-C',
+      '-E',
+      '-M',
+      '-g',
+      '-m',
+      '-t',
+      '-T',
+      '--after-context',
+      '--before-context',
+      '--context',
+      '--encoding',
+      '--engine',
+      '--glob',
+      '--iglob',
+      '--max-columns',
+      '--max-count',
+      '--max-depth',
+      '--path-separator',
+      '--pre',
+      '--pre-glob',
+      '--regex-size-limit',
+      '--sort',
+      '--sortr',
+      '--type',
+      '--type-not',
+    ]),
+  ],
+]);
 const SHELL_COMMAND_PREFIXES = new Set(['if', 'then', 'elif', 'while', 'until', 'do', 'time', 'command', 'builtin', 'exec']);
 
 export type GateResult = { ok: true } | { ok: false; reason: string };
@@ -57,6 +117,16 @@ function hasRmRecursiveForce(cmd: string): boolean {
     const recursive = /r/i.test(shortFlags) || parts.includes('--recursive') || parts.includes('--dir');
     const force = /f/i.test(shortFlags) || parts.includes('--force');
     if (recursive && force) return true;
+  }
+  return false;
+}
+
+function hasDestructiveCommand(cmd: string): boolean {
+  const literalPatternRanges = literalSearchPatternRanges(cmd);
+  const destructive = new RegExp(DESTRUCTIVE_CMD.source, 'gi');
+  for (const match of cmd.matchAll(destructive)) {
+    if (match.index !== undefined && inRanges(match.index, literalPatternRanges)) continue;
+    return true;
   }
   return false;
 }
@@ -85,21 +155,44 @@ function literalSearchPatternRanges(cmd: string): Array<{ start: number; end: nu
     const command = cleanShellToken(entries[commandIndex].raw).toLowerCase();
     if (!SEARCH_COMMANDS_WITH_LITERAL_PATTERN.has(command)) continue;
 
+    let patternSourceSeen = false;
+    let optionsDone = false;
     for (let j = commandIndex + 1; j < entries.length; j += 1) {
       const clean = cleanShellToken(entries[j].raw);
-      if (clean === '--') continue;
-      if (clean === '-e' || clean === '--regexp') {
-        const value = entries[j + 1];
-        if (value && isLiteralSingleQuotedToken(value.raw)) ranges.push({ start: value.start, end: value.end });
-        j += 1;
-        continue;
+      if (!optionsDone) {
+        if (clean === '--') {
+          optionsDone = true;
+          continue;
+        }
+        if (searchPatternOptionConsumesNext(clean)) {
+          const value = entries[j + 1];
+          if (value && isLiteralSingleQuotedToken(value.raw)) ranges.push({ start: value.start, end: value.end });
+          patternSourceSeen = true;
+          j += 1;
+          continue;
+        }
+        const attachedPattern = attachedLiteralSearchPatternOption(command, entries[j].raw);
+        if (attachedPattern !== undefined) {
+          if (attachedPattern) ranges.push({ start: entries[j].start, end: entries[j].end });
+          patternSourceSeen = true;
+          continue;
+        }
+        if (searchPatternFileOptionConsumesNext(clean)) {
+          patternSourceSeen = true;
+          j += 1;
+          continue;
+        }
+        if (attachedSearchPatternFileOption(clean)) {
+          patternSourceSeen = true;
+          continue;
+        }
+        if (searchOptionConsumesNext(command, clean)) {
+          j += 1;
+          continue;
+        }
+        if (clean.startsWith('-')) continue;
       }
-      const attachedPattern = attachedLiteralSearchPatternOption(entries[j].raw);
-      if (attachedPattern) {
-        ranges.push({ start: entries[j].start, end: entries[j].end });
-        continue;
-      }
-      if (clean.startsWith('-')) continue;
+      if (patternSourceSeen) break;
       if (isLiteralSingleQuotedToken(entries[j].raw)) ranges.push({ start: entries[j].start, end: entries[j].end });
       break;
     }
@@ -108,11 +201,38 @@ function literalSearchPatternRanges(cmd: string): Array<{ start: number; end: nu
   return ranges;
 }
 
-function attachedLiteralSearchPatternOption(raw: string): boolean {
+function searchPatternOptionConsumesNext(clean: string): boolean {
+  return clean === '-e' || clean === '--regexp';
+}
+
+function searchPatternFileOptionConsumesNext(clean: string): boolean {
+  return clean === '-f' || clean === '--file';
+}
+
+function attachedLiteralSearchPatternOption(command: string, raw: string): boolean | undefined {
   const token = raw.trim();
-  if (token.startsWith('-e')) return isLiteralSingleQuotedToken(token.slice(2));
-  const longRegexp = token.match(/^--regexp=(.+)$/);
-  return longRegexp ? isLiteralSingleQuotedToken(longRegexp[1]) : false;
+  if (token.startsWith('-e') && token.length > 2) return isLiteralSingleQuotedToken(token.slice(2));
+  const longRegexp = token.match(/^--regexp=(.*)$/);
+  if (longRegexp) return isLiteralSingleQuotedToken(longRegexp[1]);
+  return attachedShortLiteralSearchPatternOption(command, token);
+}
+
+function attachedShortLiteralSearchPatternOption(command: string, token: string): boolean | undefined {
+  if (!token.startsWith('-') || token.startsWith('--')) return undefined;
+  const patternOptionIndex = token.indexOf('e', 1);
+  if (patternOptionIndex <= 1 || patternOptionIndex === token.length - 1) return undefined;
+  const prefix = token.slice(1, patternOptionIndex);
+  const optionsWithoutValue = SEARCH_SHORT_OPTIONS_WITHOUT_VALUE.get(command);
+  if (!optionsWithoutValue || [...prefix].some((option) => !optionsWithoutValue.has(option))) return undefined;
+  return isLiteralSingleQuotedToken(token.slice(patternOptionIndex + 1));
+}
+
+function attachedSearchPatternFileOption(clean: string): boolean {
+  return /^-f.+/.test(clean) || clean.startsWith('--file=');
+}
+
+function searchOptionConsumesNext(command: string, clean: string): boolean {
+  return SEARCH_OPTIONS_WITH_VALUE.get(command)?.has(clean) ?? false;
 }
 
 function shellSegmentCommandIndex(entries: ShellTokenEntry[]): number {
@@ -152,7 +272,9 @@ function shellSegmentCommandIndex(entries: ShellTokenEntry[]): number {
 }
 
 function hasDangerousGitOperation(cmd: string): boolean {
+  const literalPatternRanges = literalSearchPatternRanges(cmd);
   for (const match of cmd.matchAll(/\bgit\b/gi)) {
+    if (match.index !== undefined && inRanges(match.index, literalPatternRanges)) continue;
     const args = shellishArgsAfter(cmd, match.index + match[0].length).map(cleanShellToken);
     const envAssignments = shellEnvAssignmentsBeforeCommand(cmd, match.index);
     const { aliases, unknownAliases } = gitAliasesFromEnvConfig(envAssignments);
@@ -281,7 +403,7 @@ function gitAliasHasDeniedOperation(command: string, remainingArgs: string[]): b
   if (aliasArgs.length === 0) return false;
   if (aliasArgs[0].startsWith('!')) {
     const shellCommand = [aliasArgs[0].slice(1), ...aliasArgs.slice(1), ...remainingArgs].join(' ');
-    return hasRmRecursiveForce(shellCommand) || hasDangerousGitOperation(shellCommand) || DESTRUCTIVE_CMD.test(shellCommand);
+    return hasRmRecursiveForce(shellCommand) || hasDangerousGitOperation(shellCommand) || hasDestructiveCommand(shellCommand);
   }
   return gitExpandedArgsHaveDeniedOperation([...aliasArgs, ...remainingArgs]);
 }
@@ -802,7 +924,7 @@ function readsProtectedEnvFile(cmd: string): boolean {
 }
 
 export function checkBash(cmd: string, depth = 0): GateResult {
-  if (hasRmRecursiveForce(cmd) || hasDangerousGitOperation(cmd) || DESTRUCTIVE_CMD.test(cmd)) {
+  if (hasRmRecursiveForce(cmd) || hasDangerousGitOperation(cmd) || hasDestructiveCommand(cmd)) {
     return { ok: false, reason: `คำสั่งทำลายล้าง/irreversible ถูกปฏิเสธ: "${cmd}"` };
   }
   if (PROTECTED_CMD_PATH.test(cmd) || mentionsProtectedEnvPath(cmd) || readsProtectedEnvFile(cmd)) {
