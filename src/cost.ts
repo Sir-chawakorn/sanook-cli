@@ -75,6 +75,11 @@ export interface Usage {
   cachedInputTokens?: number;
 }
 
+function safeTokenCount(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 0;
+  return value;
+}
+
 export class SharedBudget {
   private spent = 0;
 
@@ -112,15 +117,16 @@ export class CostMeter {
    * ไม่งั้น double-count cacheRead (cache hit จะกลายเป็นแพงกว่า no-cache)
    */
   add(usage: Usage, cacheWriteTokens = 0): void {
-    const totalInput = usage.inputTokens ?? 0;
-    const output = usage.outputTokens ?? 0;
-    const cacheRead = usage.cachedInputTokens ?? 0;
-    const noCacheInput = Math.max(0, totalInput - cacheRead - cacheWriteTokens);
+    const totalInput = safeTokenCount(usage.inputTokens);
+    const output = safeTokenCount(usage.outputTokens);
+    const cacheRead = safeTokenCount(usage.cachedInputTokens);
+    const cacheWrite = safeTokenCount(cacheWriteTokens);
+    const noCacheInput = Math.max(0, totalInput - cacheRead - cacheWrite);
 
     this.inTok += noCacheInput;
     this.outTok += output;
     this.cacheReadTok += cacheRead;
-    this.cacheWriteTok += cacheWriteTokens;
+    this.cacheWriteTok += cacheWrite;
 
     const p = PRICING[this.specKey];
     if (p) {
@@ -128,7 +134,7 @@ export class CostMeter {
         (noCacheInput / 1e6) * p.input +
         (output / 1e6) * p.output +
         (cacheRead / 1e6) * p.cacheRead +
-        (cacheWriteTokens / 1e6) * p.cacheWrite;
+        (cacheWrite / 1e6) * p.cacheWrite;
       this.spent += delta;
       this.sharedBudget?.add(delta);
     }
@@ -141,6 +147,7 @@ export class CostMeter {
     this.cacheReadTok += other.cacheReadTok;
     this.cacheWriteTok += other.cacheWriteTok;
     this.spent += other.spent;
+    if (this.sharedBudget && this.sharedBudget !== other.sharedBudget) this.sharedBudget.add(other.spent);
   }
 
   get totalUsd(): number {
