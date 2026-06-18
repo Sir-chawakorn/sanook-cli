@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ModelMessage } from 'ai';
-import { Box, Text, Static, useApp, useInput } from 'ink';
+import { Box, Text, Static, useApp, useInput, useStdout } from 'ink';
 import {
   BUILTIN_COMMANDS,
   expandCustomCommand,
@@ -23,6 +23,10 @@ import { loadHistory, appendHistory } from './history.js';
 import { expandMentions } from './mentions.js';
 import { BRAND } from '../brand.js';
 import { Banner } from './banner.js';
+import { FloatingOverlay, type OverlayState } from './overlay.js';
+import { compactPreview, getQueueWindow } from './queue.js';
+import { SessionPanel } from './session-panel.js';
+import { footerStatus } from './status.js';
 
 const execFileP = promisify(execFile);
 const PRE_TURN_COMPACT_TOKENS = 100_000; // session ยาวมากเท่านั้นถึง summarize ก่อน turn (mode summarize)
@@ -58,6 +62,7 @@ export interface AppProps {
 
 export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = 'ask', initialHistory, initialNote }: AppProps) {
   const { exit } = useApp();
+  const { stdout } = useStdout();
   const [history, setHistory] = useState<Turn[]>(() => {
     const seed: Turn[] = [];
     if (initialNote) seed.push({ id: -2, role: 'system', text: initialNote });
@@ -68,6 +73,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const [busy, setBusy] = useState(false);
   const [model, setModel] = useState(initialModel);
   const [approvalReq, setApprovalReq] = useState<{ tool: string; summary: string } | null>(null);
+  const [overlay, setOverlay] = useState<OverlayState | null>(null);
   const idRef = useRef(0);
   const lastCost = useRef<string>('');
   const msgsRef = useRef<ModelMessage[]>(initialHistory ?? []); // conversation จริงสำหรับ LLM (สะสมข้ามรอบ)
@@ -117,6 +123,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     });
 
   useInput((input, key) => {
+    if (overlay) {
+      if (key.escape || key.return || input === 'q' || input === 'Q') setOverlay(null);
+      return;
+    }
     // มี approval ค้าง → จับ y/n ก่อน (แม้ agent กำลังรัน/busy)
     if (approvalReq) {
       if (input === 'y' || input === 'Y' || key.return) {
@@ -284,6 +294,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         );
         return;
       }
+      if (cmd.action === 'hotkeys') {
+        setOverlay({ kind: 'hotkeys' });
+        return;
+      }
       if (cmd.modelChange) setModel(cmd.modelChange);
       if (cmd.message) addTurn('system', cmd.message);
       return;
@@ -389,23 +403,34 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   }
 
   const costHint = lastCost.current.includes('cost ') ? lastCost.current.split('cost ')[1] : '';
+  const columns = Math.max(20, stdout?.columns ?? 80);
+  const queueWindow = getQueueWindow(queued.length);
 
   return (
     <Box flexDirection="column">
-      {history.length === 0 ? <Banner model={model} /> : null}
+      {history.length === 0 ? (
+        <>
+          <Banner columns={columns} model={model} mode={permissionMode === 'ask' ? 'ask' : 'auto'} />
+          <SessionPanel columns={columns} model={model} mode={permissionMode === 'ask' ? 'ask' : 'auto'} />
+        </>
+      ) : null}
       <Static items={history}>{(turn) => <TurnView key={turn.id} turn={turn} />}</Static>
       {streaming ? (
         <Box marginTop={1}>
           <Text>{streaming}</Text>
         </Box>
       ) : null}
+      <FloatingOverlay columns={columns} overlay={overlay} />
       {queued.length ? (
         <Box flexDirection="column" marginTop={1}>
-          {queued.map((q, i) => (
-            <Text key={i} dimColor>
-              ⏳ คิว {i + 1}: {q.length > 64 ? `${q.slice(0, 64)}…` : q}
+          <Text dimColor>queued ({queued.length}) · Esc clears</Text>
+          {queueWindow.showLead ? <Text dimColor> …</Text> : null}
+          {queued.slice(queueWindow.start, queueWindow.end).map((q, i) => (
+            <Text key={`${queueWindow.start + i}-${q.slice(0, 16)}`} dimColor>
+              {' '} {queueWindow.start + i + 1}. {compactPreview(q, Math.max(16, columns - 10))}
             </Text>
           ))}
+          {queueWindow.showTail ? <Text dimColor>  …and {queued.length - queueWindow.end} more</Text> : null}
         </Box>
       ) : null}
       {approvalReq ? (
@@ -420,11 +445,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
           <InputView value={editor.value} cursor={editor.cursor} busy={busy} />
         </Box>
       )}
-      <Text dimColor>
-        {'  '}
-        {model} · {permissionMode === 'ask' ? 'ask-mode' : 'auto'} · /help · @file · ↑ history
-        {costHint ? ` · ${costHint}` : ''}
-      </Text>
+      <Text dimColor>{footerStatus({ columns, costHint, model, mode: permissionMode === 'ask' ? 'ask' : 'auto' })}</Text>
     </Box>
   );
 }

@@ -2,6 +2,14 @@
 
 ## 0.5.2
 
+### TUI startup polish — SANOOK AI Launchpad
+
+- **Big `SANOOK AI` startup banner** — the REPL now opens with a large gradient wordmark plus a compact launchpad for version, account mode, live model, automation mode, cwd, and high-signal slash-command hints. The banner now carries the Sanook identity directly (`สนุกกับงานหนัก · local-first BYOK · second-brain + MCP workflows`), a signature workflow (`plan -> patch -> prove -> remember`), and a service promise (`readable · recoverable · remembered`). It gives users three starter lanes: code (`@file`, tools, diff), brain (`brain context`, compression), and ship (`cost`, undo, MCP search). Hermes-style responsive tiers keep it usable across terminal widths: wide wordmark, compact panel, and tiny text-only fallback. It still renders only before conversation history exists, so command turns do not redraw it into terminal scrollback.
+- **Startup service panel** — the empty REPL now also shows a Hermes-style Sanook services panel with Tools, Brain, Skills, MCP, System, and Runtime lanes. It tells new users what the CLI can do immediately: edit/run/read tools, second-brain context and worklogs, reusable skills, MCP registry/install/doctor/serve, ask-mode approvals, queued follow-ups, and `/hotkeys`. The panel has compact copy for medium terminals and hides on tiny terminals so the prompt stays usable.
+- **Floating overlay foundation** — `/hotkeys` now opens a dismissible TUI overlay (`Esc`, `Enter`, or `q`) instead of dumping the shortcut reference into scrollback. This is the first reusable Sanook overlay path for the remaining Hermes-style model/session/skills hubs.
+- **Hermes-inspired REPL affordances** — added `/hotkeys`, a bounded queued-message window (`queued (n)` + `…and N more`), and a responsive footer/status line that sheds lower-priority hints on narrow terminals.
+- **Hermes TUI parity map** — added `second-brain/Research/2026-06-18-hermes-tui-parity-map.md` so the remaining rebrand/port work is explicit: overlays, model/session/skills hubs, status rule, virtual transcript, terminal clipboard/mouse support, streaming markdown/tool trails, and skin/theme parity.
+
 ### Token reduction — selective context compression for stale tool output
 
 - **`contextCompression: "selective" | "headroom" | "off"`** (env `SANOOK_CONTEXT_COMPRESSION`) — default `"selective"` is a zero-LLM, per-step compressor inspired by Selective Context, LongLLMLingua-style query awareness, and Headroom-style context pruning. It keeps the latest tool results full, but compresses older huge tool outputs with recency-aware budgets and preserves anchors plus high-information lines (current-query matches, errors, paths, diffs, code structure, rare terms) before the next model request. `"headroom"` optionally wraps the Vercel AI SDK model with the `headroom-ai` GitHub/npm framework when a Headroom proxy/cloud setup is available; `"off"` disables compression.

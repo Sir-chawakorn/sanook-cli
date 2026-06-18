@@ -52,12 +52,12 @@ describe('real-time steering', () => {
     expect(h.opts!.signal).toBeInstanceOf(AbortSignal);
     expect(h.opts!.signal!.aborted).toBe(false);
 
-    // type a follow-up WHILE busy → it should queue, not run ('⏳' marks the queue line)
+    // type a follow-up WHILE busy → it should queue, not run
     stdin.write('queued follow up');
     await tick();
     stdin.write('\r');
     await waitFor(() => (lastFrame() ?? '').includes('queued follow up'));
-    expect(lastFrame()).toContain('⏳'); // queue indicator
+    expect(lastFrame()).toContain('queued (1)'); // queue indicator
     expect(lastFrame()).toContain('queued follow up');
 
     // Esc → abort the running turn (signal flips) AND clear the queue
@@ -67,7 +67,7 @@ describe('real-time steering', () => {
 
     // queue clears after the abort (poll the rendered frame to avoid a render-timing race)
     let cleared = false;
-    await waitFor(() => (cleared = !(lastFrame() ?? '').includes('⏳')));
+    await waitFor(() => (cleared = !(lastFrame() ?? '').includes('queued (')));
     expect(cleared).toBe(true);
     expect(lastFrame()).not.toContain('queued follow up');
 
@@ -90,7 +90,7 @@ describe('real-time steering', () => {
     await waitFor(() => h.opts!.signal!.aborted === true);
 
     expect(h.opts!.signal!.aborted).toBe(true);
-    expect(lastFrame()).not.toContain('⏳');
+    expect(lastFrame()).not.toContain('queued (');
 
     unmount();
   });

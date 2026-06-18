@@ -6,11 +6,25 @@ import { parseFrontmatter } from './skills.js';
 import { projectConfigPathIfTrusted } from './trust.js';
 import { normalizePersonalityName, personalityListText } from './personality.js';
 import { parseInsightsArgs } from './insights-args.js';
+import { formatHotkeys } from './hotkeys.js';
 
 export interface CommandResult {
   /** true = เป็น slash command (ไม่ส่งเข้า agent) */
   handled: boolean;
-  action?: 'clear' | 'compact' | 'quit' | 'help' | 'diff' | 'undo' | 'rewind' | 'retry' | 'stop' | 'personality' | 'insights';
+  action?:
+    | 'clear'
+    | 'compact'
+    | 'quit'
+    | 'help'
+    | 'diff'
+    | 'undo'
+    | 'rewind'
+    | 'retry'
+    | 'stop'
+    | 'personality'
+    | 'insights'
+    | 'hotkeys'
+    | 'modelPicker';
   /** ข้อความแสดงกลับ (help / cost / model / unknown) */
   message?: string;
   /** /model <spec> — เปลี่ยน model */
@@ -41,6 +55,7 @@ const HELP_TEXT = `คำสั่ง:
   /cost, /usage     ดู token + cost รอบล่าสุด
   /insights [--days N] [--all]
                    ดู usage/session insights ในเครื่อง
+  /hotkeys         เปิด overlay คีย์ลัดใน REPL
   ↑/↓ ประวัติ · @ไฟล์ แนบ context/รูป · \\ ลงท้าย = บรรทัดใหม่
   /clear           ล้าง conversation (เริ่มใหม่)
   /compact, /compress
@@ -199,6 +214,8 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
       return { handled: true, action: 'clear', message: 'ล้าง conversation แล้ว' };
     case 'status':
       return { handled: true, message: statusMenu(ctx) };
+    case 'hotkeys':
+      return { handled: true, action: 'hotkeys', message: formatHotkeys() };
     case 'compact':
     case 'compress':
       return { handled: true, action: 'compact', message: 'บีบ context แล้ว' };
@@ -206,7 +223,7 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
     case 'exit':
       return { handled: true, action: 'quit' };
     case 'model':
-      if (!args[0]) return { handled: true, message: modelMenu(ctx.model) };
+      if (!args[0]) return { handled: true, action: 'modelPicker', message: modelMenu(ctx.model) };
       return modelChange(args[0]);
     case 'personality': {
       const raw = args.join(' ').trim();
@@ -259,6 +276,7 @@ export const BUILTIN_COMMANDS = new Set([
   'new',
   'reset',
   'status',
+  'hotkeys',
   'compact',
   'compress',
   'quit',

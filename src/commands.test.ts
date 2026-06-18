@@ -48,6 +48,14 @@ describe('parseCommand', () => {
     expect(msg).toContain('usage: tokens: 100');
     expect(msg).toContain('/platforms');
   });
+  it('/hotkeys → แสดง REPL keyboard shortcut reference', () => {
+    const msg = parseCommand('/hotkeys', ctx).message ?? '';
+    expect(msg).toContain('hotkeys:');
+    expect(msg).toContain('Ctrl+C');
+    expect(msg).toContain('Alt+Enter');
+    expect(msg).toContain('@file');
+    expect(msg).toContain('/diff /undo /rewind');
+  });
   it('/diff + /undo → action diff/undo (git-backed)', () => {
     expect(parseCommand('/diff', ctx).action).toBe('diff');
     expect(parseCommand('/undo', ctx).action).toBe('undo');

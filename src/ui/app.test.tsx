@@ -29,7 +29,56 @@ describe('App (Ink REPL)', () => {
     expect(frame).toContain('openai:gpt-5.5 · ask-mode');
     expect(frame).toContain('/model codex');
     expect(frame).not.toContain('gpt · ask-mode');
-    expect(frame).not.toContain('terminal coding agent');
+    expect(frame).not.toContain('terminal AI agent');
+    expect(frame).not.toContain('Sanook AI services');
+    unmount();
+  });
+
+  it('/hotkeys opens a floating overlay that Esc closes', async () => {
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" />);
+
+    stdin.write('/hotkeys');
+    await tick();
+    stdin.write('\r');
+    await tick();
+
+    expect(lastFrame()).toContain('Sanook hotkeys');
+    expect(lastFrame()).toContain('Esc / Enter / q');
+
+    stdin.write('\x1B');
+    await tick();
+
+    expect(lastFrame()).not.toContain('Sanook hotkeys');
+    expect(lastFrame()).toContain('/hotkeys');
+    unmount();
+  });
+
+  it('/hotkeys overlay consumes q and Enter as close commands', async () => {
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" />);
+
+    stdin.write('/hotkeys');
+    await tick();
+    stdin.write('\r');
+    await tick();
+
+    expect(lastFrame()).toContain('Sanook hotkeys');
+
+    stdin.write('q');
+    await tick();
+
+    expect(lastFrame()).not.toContain('Sanook hotkeys');
+
+    stdin.write('/hotkeys');
+    await tick();
+    stdin.write('\r');
+    await tick();
+
+    expect(lastFrame()).toContain('Sanook hotkeys');
+
+    stdin.write('\r');
+    await tick();
+
+    expect(lastFrame()).not.toContain('Sanook hotkeys');
     unmount();
   });
 });

@@ -1,6 +1,7 @@
 import { readFile, realpath } from 'node:fs/promises';
-import { resolve, extname } from 'node:path';
+import { extname } from 'node:path';
 import { checkReadPath } from '../tools/permission.js';
+import { resolveAgentPath } from '../tools/util.js';
 
 // @-file mentions: "@path" ใน prompt → inline เนื้อหาไฟล์ (text) หรือแนบเป็น image (รูป)
 // ลด tool round-trip (agent ไม่ต้อง read_file เอง) + เปิดทาง vision input
@@ -27,7 +28,7 @@ export async function expandMentions(input: string): Promise<ExpandedInput> {
   const inlined: string[] = [];
 
   for (const rel of [...new Set(mentions)]) {
-    const abs = resolve(rel);
+    const abs = resolveAgentPath(rel);
     // canonicalize ก่อนเช็ก extension → symlink ที่ชื่อไม่มีนามสกุลแต่ชี้ไปรูป ก็จับเป็น image ถูก
     const real = await realpath(abs).catch(() => abs);
     if (IMAGE_EXT.has(extname(real).toLowerCase())) {

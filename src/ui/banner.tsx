@@ -1,4 +1,5 @@
-import { Box, Text } from 'ink';
+import { Box, Text, useStdout } from 'ink';
+import BigText from 'ink-big-text';
 import Gradient from 'ink-gradient';
 import { homedir } from 'node:os';
 import { readFileSync } from 'node:fs';
@@ -6,6 +7,20 @@ import { BRAND } from '../brand.js';
 
 // gradient ของ Sanook: เขียว → ส้ม → ฟ้า (สนุก = สดใส)
 const SANOOK_GRADIENT = ['#22C55E', '#F97316', '#38BDF8'];
+const BANNER_TITLE = BRAND.bannerWide.toUpperCase();
+const COMMAND_HINTS = ['/help', '/model', '/tools', '/status'];
+const BRAND_LINE = 'สนุกกับงานหนัก · local-first BYOK · second-brain + MCP workflows';
+const WORKFLOW = ['plan', 'patch', 'prove', 'remember'] as const;
+const PROMISE = ['readable', 'recoverable', 'remembered'] as const;
+const LAUNCHPAD = [
+  ['code', '@file · /tools · /diff'],
+  ['brain', 'sanook brain context · /compress'],
+  ['ship', '/cost · /undo · sanook mcp search'],
+] as const;
+const WIDE_WORDMARK_MIN_COLUMNS = 96;
+const COMPACT_PANEL_COLUMNS = 76;
+const TINY_PANEL_COLUMNS = 44;
+const MAX_PANEL_COLUMNS = 100;
 
 // version จาก package.json (single source of truth) — กัน default drift เหมือน bin.ts
 const VERSION = (
@@ -17,22 +32,76 @@ export interface BannerProps {
   version?: string;
   account?: string;
   cwd?: string;
+  mode?: string;
+  columns?: number;
 }
 
-/** welcome banner — minimal: gradient wordmark + meta บรรทัดเดียว (terminal-first, ไม่รก) */
-export function Banner({ model, version = VERSION, account = 'BYOK', cwd }: BannerProps) {
+const clip = (text: string, width: number): string => {
+  if (width <= 0) return '';
+  return text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text;
+};
+
+function bannerLines({ account, dir, model, mode, version }: { account: string; dir: string; model: string; mode: string; version: string }, columns: number): string[] {
+  const title = `${BANNER_TITLE} v${version} · terminal AI agent · ${account}`;
+  const status = `● model ${model} · mode ${mode} · cwd ${dir}`;
+  const flow = `Flow ${WORKFLOW.join(' -> ')} · Promise ${PROMISE.join(' · ')}`;
+  const launch = `Launchpad ${COMMAND_HINTS.join(' · ')}`;
+
+  if (columns < TINY_PANEL_COLUMNS) {
+    return [
+      title,
+      `● ${model} · ${mode}`,
+      '› /help · @file · /status',
+    ];
+  }
+
+  if (columns < COMPACT_PANEL_COLUMNS) {
+    return [
+      title,
+      status,
+      `◆ ${BRAND_LINE}`,
+      `Flow ${WORKFLOW.join(' -> ')}`,
+      '› code: @file · /tools · /diff',
+      '› brain: sanook brain context',
+      '› ship: /cost · /undo',
+    ];
+  }
+
+  return [
+    title,
+    status,
+    `◆ ${BRAND_LINE}`,
+    flow,
+    launch,
+    ...LAUNCHPAD.map(([label, hint]) => `› ${label}: ${hint}`),
+  ];
+}
+
+/** welcome banner — Hermes-style responsive wordmark + compact Sanook launchpad. */
+export function Banner({ model, version = VERSION, account = 'BYOK', cwd, mode = 'auto', columns }: BannerProps) {
+  const { stdout } = useStdout();
   const dir = (cwd ?? process.cwd()).replace(homedir(), '~');
+  const terminalColumns = Math.max(1, Math.floor(columns ?? stdout?.columns ?? MAX_PANEL_COLUMNS));
+  const showWordmark = terminalColumns >= WIDE_WORDMARK_MIN_COLUMNS;
+  const panelWidth = Math.max(28, Math.min(terminalColumns, MAX_PANEL_COLUMNS));
+  const innerWidth = Math.max(1, panelWidth - 4);
+  const lines = bannerLines({ account, dir, model, mode, version }, terminalColumns);
+
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Box>
+      {showWordmark ? (
         <Gradient colors={SANOOK_GRADIENT}>
-          <Text bold>{BRAND.cliName}</Text>
+          <BigText text={BANNER_TITLE} font="block" align="left" />
         </Gradient>
-        <Text dimColor> v{version} · terminal coding agent · {account}</Text>
+      ) : null}
+
+      <Box borderStyle="round" borderColor="cyan" flexDirection="column" paddingX={1} width={panelWidth}>
+        {lines.map((line, index) => (
+          <Text color={index === 0 ? 'cyan' : undefined} dimColor={index > 0} key={`${index}-${line}`} wrap="truncate-end">
+            {clip(line, innerWidth)}
+          </Text>
+        ))}
       </Box>
-      <Text dimColor>
-        <Text color="green">●</Text> {model} · {dir}
-      </Text>
     </Box>
   );
 }
