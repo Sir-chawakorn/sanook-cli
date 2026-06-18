@@ -27,7 +27,7 @@ import { chmod, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { appHomePath, BRAND, BRAND_ENV, envFlag } from './brand.js';
 import type { UpdateCache } from './update.js';
-import { hasContinueAnyRequest, hasContinueRequest, hasResumeRequest, parseArgs, parseBudgetUsd } from './cli-args.js';
+import { hasContinueAnyRequest, hasContinueRequest, hasResumeRequest, hasServeCommandRequest, parseArgs, parseBudgetUsd, parseServeArgs } from './cli-args.js';
 
 // สี: เคารพ NO_COLOR + auto-plain เมื่อ pipe/redirect (legacy Windows cmd ก็ไม่เห็น garbage ANSI); FORCE_COLOR บังคับได้
 const useColor = !process.env.NO_COLOR && (Boolean(process.env.FORCE_COLOR) || process.stdout.isTTY === true);
@@ -141,7 +141,7 @@ gateway (อยู่ยาว 24/7 — HTTP loopback + cron):
   ${BRAND.cliName} gateway setup bluebubbles       ตั้งค่า BlueBubbles/iMessage send
   ${BRAND.cliName} gateway setup teams             ตั้งค่า Microsoft Teams delivery
   ${BRAND.cliName} gateway setup webhooks          เปิด generic webhook routes + HMAC
-  ${BRAND.cliName} gateway run [--port 8787]       เปิด gateway (เหมือน serve)
+  ${BRAND.cliName} gateway run [--port 8787] [--model spec]  เปิด gateway (เหมือน serve)
   ${BRAND.cliName} gateway start [--port 8787]     เปิด gateway เป็น background process
   ${BRAND.cliName} gateway stop|restart|install    จัดการ gateway service
   ${BRAND.cliName} gateway status                  ดู config/status gateway
@@ -149,7 +149,7 @@ gateway (อยู่ยาว 24/7 — HTTP loopback + cron):
   ${BRAND.cliName} webhook subscribe <route> [--prompt "..."] [--to telegram|slack|mattermost|homeassistant|sms|ntfy|signal|whatsapp|matrix|googlechat|bluebubbles|teams]
                                            รับ event จาก GitHub/GitLab/Jira/Stripe แล้ว trigger agent/delivery
   ${BRAND.cliName} send --list [platform]          ดู messaging targets ที่ตั้งค่าไว้
-  ${BRAND.cliName} serve [--port 8787]            เปิด gateway (OpenAI-compat /v1/chat/completions + scheduler)
+  ${BRAND.cliName} serve [--port 8787] [--model spec]        เปิด gateway (OpenAI-compat /v1/chat/completions + scheduler)
   ${BRAND.cliName} cron add "<when>" "<task>" [--to <target>] [--model <model>]
                                            ตั้งงานล่วงหน้า + ส่งผลลัพธ์กลับ messaging target ได้
   ${BRAND.cliName} cron list                      ดู task ทั้งหมด
@@ -200,18 +200,16 @@ env (BYOK — direct API key only):
 
 /** sanook serve [--port N] [--model spec] — เปิด gateway (HTTP loopback + cron scheduler) อยู่ยาว */
 async function runServe(args: string[]): Promise<void> {
-  const portIdx = args.indexOf('--port');
-  const port = portIdx !== -1 ? Number(args[portIdx + 1]) : 8787;
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    console.error(`port ไม่ถูกต้อง: ${args[portIdx + 1]}`);
+  const parsed = parseServeArgs(args);
+  if (parsed.portError) {
+    console.error(`port ไม่ถูกต้อง: ${parsed.portError}`);
     process.exit(1);
   }
-  const mIdx = args.findIndex((a) => a === '--model' || a === '-m');
-  const config = await loadConfig({ model: mIdx !== -1 ? args[mIdx + 1] : undefined });
+  const config = await loadConfig({ model: parsed.model });
   const { startGateway } = await import('./gateway/serve.js');
   process.stdout.write(`${DIM}${BRAND.productName} gateway — model: ${config.model}${RESET}\n`);
   const stop = await startGateway({
-    port,
+    port: parsed.port,
     model: config.model,
     budgetUsd: config.budgetUsd,
     permissionMode: envFlag(BRAND_ENV.gatewayAllowWrite) ? 'auto' : config.permissionMode,
@@ -1720,7 +1718,13 @@ async function runGateway(args: string[]): Promise<void> {
   const [action, ...rest] = args;
   if (!action || action === 'status' || action === 'list') return runGatewayStatus();
   if (action === 'setup') return runGatewaySetup(rest);
-  if (action === 'run') return runServe(rest);
+  if (action === 'run') {
+    if (!hasServeCommandRequest(['serve', ...rest])) {
+      console.error(`ไม่รู้จัก: gateway run ${rest.join(' ')} — ใช้ gateway run [--port N] [--model spec]`);
+      process.exit(1);
+    }
+    return runServe(rest);
+  }
   if (action === 'start') {
     const { startGatewayService } = await import('./gateway/service.js');
     const res = await startGatewayService({ entrypoint: resolve(process.argv[1]), gatewayArgs: rest });
@@ -3450,7 +3454,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'webhook' || argv[0] === 'webhooks') return runWebhook(argv.slice(1));
 
   // subcommands: serve · cron — match เฉพาะรูปแบบที่ถูกต้อง กัน prompt unquoted ("serve coffee") misfire
-  if (argv[0] === 'serve' && (argv.length === 1 || argv[1].startsWith('--'))) return runServe(argv.slice(1));
+  if (hasServeCommandRequest(argv)) return runServe(argv.slice(1));
   if (argv[0] === 'cron' && ['add', 'list', 'rm', 'remove', undefined].includes(argv[1])) {
     return runCron(argv.slice(1));
   }

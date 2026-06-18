@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { hasContinueAnyRequest, hasContinueRequest, hasResumeRequest, parseArgs, parseBudgetUsd } from './cli-args.js';
+import {
+  hasContinueAnyRequest,
+  hasContinueRequest,
+  hasResumeRequest,
+  hasServeCommandRequest,
+  parseArgs,
+  parseBudgetUsd,
+  parseServeArgs,
+} from './cli-args.js';
 
 describe('parseArgs', () => {
   it('parses headless prompt flags', () => {
@@ -179,5 +187,55 @@ describe('parseBudgetUsd', () => {
     for (const value of ['0', '-0.25', '0x10', '0b10', '1abc', 'Infinity', '1e', '.']) {
       expect(parseBudgetUsd(value)).toBeUndefined();
     }
+  });
+});
+
+describe('parseServeArgs', () => {
+  it('detects valid serve command shapes without consuming prompt text', () => {
+    expect(hasServeCommandRequest(['serve'])).toBe(true);
+    expect(hasServeCommandRequest(['serve', '--port', '9000'])).toBe(true);
+    expect(hasServeCommandRequest(['serve', '--port=9000'])).toBe(true);
+    expect(hasServeCommandRequest(['serve', '--model=sonnet'])).toBe(true);
+    expect(hasServeCommandRequest(['serve', '-m', 'sonnet'])).toBe(true);
+    expect(hasServeCommandRequest(['serve', 'coffee'])).toBe(false);
+    expect(hasServeCommandRequest(['serve', '--port', '9000', 'coffee'])).toBe(false);
+    expect(hasServeCommandRequest(['serve', '--model=sonnet', 'coffee'])).toBe(false);
+    expect(hasServeCommandRequest(['serve', '--', 'coffee'])).toBe(false);
+    expect(hasServeCommandRequest(['serve', '--unknown'])).toBe(false);
+    expect(hasServeCommandRequest(['serve', '-x'])).toBe(false);
+  });
+
+  it('can validate gateway run arguments before delegating to serve', () => {
+    expect(hasServeCommandRequest(['serve', ...['--port', '9000', '--model', 'sonnet']])).toBe(true);
+    expect(hasServeCommandRequest(['serve', ...['--port', '9000', 'coffee']])).toBe(false);
+    expect(hasServeCommandRequest(['serve', ...['--unknown']])).toBe(false);
+  });
+
+  it('defaults serve port and accepts split value flags', () => {
+    expect(parseServeArgs([])).toEqual({ port: 8787, model: undefined, portError: undefined });
+    expect(parseServeArgs(['--port', '9000', '--model', 'openai:gpt-5.5'])).toEqual({
+      port: 9000,
+      model: 'openai:gpt-5.5',
+      portError: undefined,
+    });
+    expect(parseServeArgs(['-m', 'sonnet'])).toEqual({ port: 8787, model: 'sonnet', portError: undefined });
+  });
+
+  it('accepts inline serve port and model values', () => {
+    expect(parseServeArgs(['--port=9001', '--model=openai:gpt-5.5'])).toEqual({
+      port: 9001,
+      model: 'openai:gpt-5.5',
+      portError: undefined,
+    });
+  });
+
+  it('rejects malformed or missing serve ports', () => {
+    expect(parseServeArgs(['--port=0']).portError).toBe('0');
+    expect(parseServeArgs(['--port=65536']).portError).toBe('65536');
+    expect(parseServeArgs(['--port=1.5']).portError).toBe('1.5');
+    expect(parseServeArgs(['--port=']).portError).toBe('undefined');
+    expect(parseServeArgs(['--port', '-1']).portError).toBe('-1');
+    expect(parseServeArgs(['--port'])).toMatchObject({ portError: 'undefined' });
+    expect(parseServeArgs(['--port', '--model', 'sonnet'])).toMatchObject({ portError: 'undefined' });
   });
 });

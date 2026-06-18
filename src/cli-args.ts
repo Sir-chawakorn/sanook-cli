@@ -9,7 +9,14 @@ export interface Args {
   resume?: string;
 }
 
+export interface ParsedServeArgs {
+  port: number;
+  model?: string;
+  portError?: string;
+}
+
 const DECIMAL_BUDGET_RE = /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+const isFlagLike = (value: string): boolean => value.startsWith('--') || /^-[A-Za-z]/.test(value);
 
 export function parseBudgetUsd(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
@@ -36,6 +43,70 @@ export function hasContinueAnyRequest(argv: string[]): boolean {
   return optionArgs(argv).includes('--continue-any');
 }
 
+export function hasServeCommandRequest(argv: string[]): boolean {
+  if (argv[0] !== 'serve') return false;
+
+  for (let i = 1; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--') return false;
+    if (arg === '--port' || arg === '--model' || arg === '-m') {
+      i = takeValue(argv, i).nextIndex;
+      continue;
+    }
+    if (arg.startsWith('--port=') || arg.startsWith('--model=')) continue;
+    return false;
+  }
+
+  return true;
+}
+
+function inlineValue(flag: string, value: string): string | undefined {
+  const prefix = `${flag}=`;
+  if (!value.startsWith(prefix)) return undefined;
+  const parsed = value.slice(prefix.length);
+  return parsed === '' ? undefined : parsed;
+}
+
+function takeValue(argv: string[], index: number): { value?: string; nextIndex: number } {
+  const value = argv[index + 1];
+  if (value === undefined || isFlagLike(value)) return { nextIndex: index };
+  return { value, nextIndex: index + 1 };
+}
+
+function parsePortValue(raw: string | undefined): number | undefined {
+  if (raw === undefined || !/^\d+$/.test(raw)) return undefined;
+  const port = Number(raw);
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : undefined;
+}
+
+export function parseServeArgs(argv: string[]): ParsedServeArgs {
+  let port = 8787;
+  let model: string | undefined;
+  let portError: string | undefined;
+
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--port' || a.startsWith('--port=')) {
+      const next = a === '--port' ? takeValue(argv, i) : undefined;
+      const raw = next ? next.value : inlineValue('--port', a);
+      if (next) i = next.nextIndex;
+      const parsed = parsePortValue(raw);
+      if (parsed === undefined) portError = raw ?? 'undefined';
+      else port = parsed;
+    } else if (a === '--model' || a === '-m' || a.startsWith('--model=')) {
+      if (a.startsWith('--model=')) {
+        model = inlineValue('--model', a);
+      } else {
+        const next = takeValue(argv, i);
+        model = next.value;
+        i = next.nextIndex;
+      }
+    }
+  }
+
+  return { port, model, portError };
+}
+
 export function parseArgs(argv: string[]): Args {
   let model: string | undefined;
   let budget: number | undefined;
@@ -46,18 +117,10 @@ export function parseArgs(argv: string[]): Args {
   let resume: string | undefined;
   const rest: string[] = [];
   let i = 0;
-  const isFlagLike = (value: string): boolean => value.startsWith('--') || /^-[A-Za-z]/.test(value);
-  const inlineValue = (flag: string, value: string): string | undefined => {
-    const prefix = `${flag}=`;
-    if (!value.startsWith(prefix)) return undefined;
-    const parsed = value.slice(prefix.length);
-    return parsed === '' ? undefined : parsed;
-  };
-  const takeValue = (index: number): string | undefined => {
-    const value = argv[index + 1];
-    if (value === undefined || isFlagLike(value)) return undefined;
-    i = index + 1;
-    return value;
+  const takeArgValue = (index: number): string | undefined => {
+    const next = takeValue(argv, index);
+    i = next.nextIndex;
+    return next.value;
   };
   for (; i < argv.length; i++) {
     const a = argv[i];
@@ -66,23 +129,23 @@ export function parseArgs(argv: string[]): Args {
       break;
     }
     if (a.startsWith('--model=')) model = inlineValue('--model', a);
-    else if (a === '--model' || a === '-m') model = takeValue(i);
+    else if (a === '--model' || a === '-m') model = takeArgValue(i);
     else if (a.startsWith('--budget=')) {
       budget = parseBudgetUsd(inlineValue('--budget', a));
     } else if (a === '--budget' || a === '-b') {
-      budget = parseBudgetUsd(takeValue(i));
+      budget = parseBudgetUsd(takeArgValue(i));
     }
     else if (a === '--json') json = true;
     else if (a === '-q' || a === '--quiet') quiet = true;
     else if (a.startsWith('--output-format=') || a === '--output-format') {
-      const v = a.startsWith('--output-format=') ? inlineValue('--output-format', a) : takeValue(i);
+      const v = a.startsWith('--output-format=') ? inlineValue('--output-format', a) : takeArgValue(i);
       if (v === 'json') json = true;
       else if (v === 'final' || v === 'quiet') quiet = true;
       /* 'text' = default */
     } else if (a === '--plan') planMode = true;
     else if (a === '--yes' || a === '-y' || a === '--yolo' || a === '--dangerously-skip-permissions') yes = true;
     else if (a.startsWith('--resume=')) resume = inlineValue('--resume', a);
-    else if (a === '--resume' || a === '-r') resume = takeValue(i);
+    else if (a === '--resume' || a === '-r') resume = takeArgValue(i);
     else if (a === '-p' || a === '--print' || a === '-c' || a === '--continue' || a === '--continue-any') {
       /* -p headless flag · -c/--continue/--continue-any resume (handled in main) */
     } else rest.push(a);
