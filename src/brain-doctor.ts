@@ -1,5 +1,5 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import { appHomePath } from './brand.js';
 import { FOLDERS } from './brain.js';
 import { INDEX_PATH } from './search/store.js';
@@ -41,17 +41,73 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+interface NormalizedFolderManifest {
+  folders: string[];
+  invalid: string[];
+}
+
+function normalizeSlashes(path: string): string {
+  return path.trim().replace(/\\/g, '/');
+}
+
 function normalizeFolderReference(path: string): string {
-  return path.replace(/\/+$/, '');
+  const normalized = posix
+    .normalize(normalizeSlashes(path))
+    .replace(/^\/+/, '')
+    .replace(/\/+$/, '');
+  return normalized === '.' ? '' : normalized;
+}
+
+function isVaultRelativeFolderReference(path: string): boolean {
+  const trimmed = path.trim();
+  const slashed = normalizeSlashes(trimmed);
+  const hasWindowsDriveSpecifier = /^[A-Za-z]:/.test(trimmed);
+  return (
+    !posix.isAbsolute(slashed) &&
+    !win32.isAbsolute(trimmed) &&
+    !hasWindowsDriveSpecifier &&
+    !slashed.split('/').includes('..')
+  );
+}
+
+function normalizeExpectedFolders(expectedFolders: readonly string[]): NormalizedFolderManifest {
+  const folders = new Set<string>();
+  const invalid = new Set<string>();
+  for (const dir of expectedFolders) {
+    const slashed = normalizeSlashes(dir);
+    if (!slashed) continue;
+    const folder = normalizeFolderReference(dir);
+    if (!isVaultRelativeFolderReference(dir)) {
+      invalid.add(slashed.replace(/\/+$/, ''));
+      continue;
+    }
+    if (!folder) continue;
+    folders.add(folder);
+  }
+  return { folders: [...folders], invalid: [...invalid] };
 }
 
 function extractFolderReferences(map: string): Set<string> {
-  return new Set([...map.matchAll(/`([^`]+)`/g)].map((match) => normalizeFolderReference(match[1])));
+  const references = new Set<string>();
+  for (const match of map.matchAll(/`([^`]+)`/g)) {
+    if (!isVaultRelativeFolderReference(match[1])) continue;
+    const normalized = normalizeFolderReference(match[1]);
+    if (normalized) references.add(normalized);
+  }
+  return references;
 }
 
 async function fileExists(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function directoryExists(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
   } catch {
     return false;
   }
@@ -110,6 +166,44 @@ export async function checkBrainHotFiles(brainPath: string): Promise<BrainDoctor
   };
 }
 
+export async function checkBrainFolders(
+  brainPath: string,
+  expectedFolders: readonly string[] = FOLDERS.map((f) => f.dir),
+): Promise<BrainDoctorCheck> {
+  const expected = normalizeExpectedFolders(expectedFolders);
+  if (expected.invalid.length) {
+    return {
+      id: 'brain.folders',
+      status: 'fail',
+      message: `Invalid expected second-brain folder reference${expected.invalid.length === 1 ? '' : 's'}.`,
+      path: brainPath,
+      details: expected.invalid,
+    };
+  }
+
+  const missing: string[] = [];
+  for (const dir of expected.folders) {
+    if (!(await directoryExists(join(brainPath, dir)))) missing.push(dir);
+  }
+
+  if (missing.length) {
+    return {
+      id: 'brain.folders',
+      status: 'fail',
+      message: `Missing ${missing.length} expected second-brain folder${missing.length === 1 ? '' : 's'}.`,
+      path: brainPath,
+      details: missing,
+    };
+  }
+
+  return {
+    id: 'brain.folders',
+    status: 'pass',
+    message: 'Expected second-brain folders are present.',
+    path: brainPath,
+  };
+}
+
 export async function checkVaultStructureMap(
   brainPath: string,
   expectedFolders: readonly string[] = FOLDERS.map((f) => f.dir),
@@ -127,8 +221,19 @@ export async function checkVaultStructureMap(
     };
   }
 
+  const expected = normalizeExpectedFolders(expectedFolders);
+  if (expected.invalid.length) {
+    return {
+      id: 'brain.structure-map',
+      status: 'fail',
+      message: `Invalid expected second-brain folder reference${expected.invalid.length === 1 ? '' : 's'}.`,
+      path: mapPath,
+      details: expected.invalid,
+    };
+  }
+
   const folderReferences = extractFolderReferences(map);
-  const missing = expectedFolders.filter((dir) => !folderReferences.has(normalizeFolderReference(dir)));
+  const missing = expected.folders.filter((dir) => !folderReferences.has(dir));
   if (missing.length) {
     return {
       id: 'brain.structure-map',
@@ -266,6 +371,7 @@ export async function checkBrain(options: BrainDoctorOptions = {}): Promise<Brai
     message: 'Configured second-brain path exists.',
     path: brainPath,
   });
+  checks.push(await checkBrainFolders(brainPath, options.expectedFolders));
   checks.push(await checkBrainHotFiles(brainPath));
   checks.push(await checkVaultStructureMap(brainPath, options.expectedFolders));
   checks.push(

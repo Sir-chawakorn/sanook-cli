@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import {
   BRAIN_HOT_FILES,
   checkBrain,
+  checkBrainFolders,
   checkBrainHotFiles,
   checkSearchIndexFreshness,
   checkVaultStructureMap,
@@ -36,6 +37,7 @@ describe('brain doctor checks', () => {
 
   async function writeHealthyVault(expectedFolders: readonly string[] = ['Projects', 'Sessions']): Promise<void> {
     for (const rel of BRAIN_HOT_FILES) await writeVaultFile(rel);
+    for (const dir of expectedFolders) await mkdir(join(vault, dir), { recursive: true });
     await writeVaultFile('Vault Structure Map.md', expectedFolders.map((f) => `| \`${f}\` | role | put | avoid |`).join('\n'));
     await mkdir(dirname(indexPath), { recursive: true });
     await writeFile(indexPath, '{}\n', 'utf8');
@@ -72,6 +74,48 @@ describe('brain doctor checks', () => {
     ]);
   });
 
+  it('fails when expected scaffold folders are missing from disk', async () => {
+    await mkdir(join(vault, 'Projects'), { recursive: true });
+
+    const check = await checkBrainFolders(vault, ['Projects', 'Sessions', 'Shared/Rules']);
+
+    expect(check.status).toBe('fail');
+    expect(check.details).toEqual(['Sessions', 'Shared/Rules']);
+  });
+
+  it('normalizes duplicate expected folder references before checking disk', async () => {
+    const check = await checkBrainFolders(vault, ['Projects', 'Projects/', 'Sessions/', './Sessions', '']);
+
+    expect(check.status).toBe('fail');
+    expect(check.details).toEqual(['Projects', 'Sessions']);
+  });
+
+  it('canonicalizes slash variants before checking disk folders', async () => {
+    await mkdir(join(vault, 'Shared', 'Rules'), { recursive: true });
+
+    const check = await checkBrainFolders(vault, ['Shared//Rules/', '.\\Shared\\Rules']);
+
+    expect(check.status).toBe('pass');
+  });
+
+  it('rejects parent-directory expected folders before checking disk', async () => {
+    await mkdir(join(dir, 'outside'), { recursive: true });
+
+    const check = await checkBrainFolders(vault, ['../outside']);
+
+    expect(check.status).toBe('fail');
+    expect(check.details).toEqual(['../outside']);
+  });
+
+  it('rejects absolute and nested parent expected folders before checking disk', async () => {
+    await mkdir(join(vault, 'Sessions'), { recursive: true });
+
+    const check = await checkBrainFolders(vault, ['/outside', 'C:\\outside', 'C:outside', 'Projects/../Sessions']);
+
+    expect(check.status).toBe('fail');
+    expect(check.details).toEqual(['/outside', 'C:/outside', 'C:outside', 'Projects/../Sessions']);
+  });
+
   it('detects Vault Structure Map drift from the expected folder manifest', async () => {
     await writeVaultFile('Vault Structure Map.md', '| `Projects` | role | put | avoid |\n');
 
@@ -88,6 +132,58 @@ describe('brain doctor checks', () => {
 
     expect(check.status).toBe('fail');
     expect(check.details).toEqual(['Projects']);
+  });
+
+  it('does not treat unsafe structure-map folder references as coverage', async () => {
+    await writeVaultFile(
+      'Vault Structure Map.md',
+      [
+        '| `Projects/../Sessions` | role | put | avoid |',
+        '| `/Projects` | role | put | avoid |',
+        '| `C:\\Shared\\Rules` | role | put | avoid |',
+        '| `C:Shared\\Rules` | role | put | avoid |',
+      ].join('\n'),
+    );
+
+    const check = await checkVaultStructureMap(vault, ['Sessions', 'Projects', 'Shared/Rules']);
+
+    expect(check.status).toBe('fail');
+    expect(check.details).toEqual(['Sessions', 'Projects', 'Shared/Rules']);
+  });
+
+  it('normalizes duplicate expected folder references before checking the structure map', async () => {
+    await writeVaultFile('Vault Structure Map.md', '| `Projects/` | role | put | avoid |\n');
+
+    const check = await checkVaultStructureMap(vault, ['Projects', 'Projects/', 'Sessions/', './Sessions', '']);
+
+    expect(check.status).toBe('fail');
+    expect(check.details).toEqual(['Sessions']);
+  });
+
+  it('canonicalizes slash variants before comparing structure-map folders', async () => {
+    await writeVaultFile('Vault Structure Map.md', '| `Shared//Rules/` | role | put | avoid |\n');
+
+    const check = await checkVaultStructureMap(vault, ['.\\Shared\\Rules']);
+
+    expect(check.status).toBe('pass');
+  });
+
+  it('rejects parent-directory expected folders before comparing the structure map', async () => {
+    await writeVaultFile('Vault Structure Map.md', '| `../outside` | role | put | avoid |\n');
+
+    const check = await checkVaultStructureMap(vault, ['../outside']);
+
+    expect(check.status).toBe('fail');
+    expect(check.details).toEqual(['../outside']);
+  });
+
+  it('rejects absolute and nested parent expected folders before comparing the structure map', async () => {
+    await writeVaultFile('Vault Structure Map.md', '| `Sessions` | role | put | avoid |\n');
+
+    const check = await checkVaultStructureMap(vault, ['/outside', 'C:\\outside', 'C:outside', 'Projects/../Sessions']);
+
+    expect(check.status).toBe('fail');
+    expect(check.details).toEqual(['/outside', 'C:/outside', 'C:outside', 'Projects/../Sessions']);
   });
 
   it('warns when the search index is older than the vault markdown', async () => {
@@ -117,10 +213,25 @@ describe('brain doctor checks', () => {
     expect(report.ok).toBe(true);
     expect(report.checks.map((check) => [check.id, check.status])).toEqual([
       ['brain.path', 'pass'],
+      ['brain.folders', 'pass'],
       ['brain.hot-files', 'pass'],
       ['brain.structure-map', 'pass'],
       ['brain.search-index', 'pass'],
       ['brain.mcp', 'pass'],
     ]);
+  });
+
+  it('fails the full report when an expected scaffold folder is missing from disk', async () => {
+    const expectedFolders = ['Projects', 'Sessions'];
+    await writeHealthyVault(expectedFolders);
+    await rm(join(vault, 'Sessions'), { recursive: true, force: true });
+
+    const report = await checkBrain({ brainPath: vault, indexPath, mcpConfigPath, expectedFolders });
+
+    expect(report.ok).toBe(false);
+    expect(report.checks.find((check) => check.id === 'brain.folders')).toMatchObject({
+      status: 'fail',
+      details: ['Sessions'],
+    });
   });
 });
