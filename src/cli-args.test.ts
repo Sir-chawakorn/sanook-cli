@@ -7,6 +7,7 @@ import {
   parseArgs,
   parseBudgetUsd,
   parseServeArgs,
+  parseThinkingConfigValue,
 } from './cli-args.js';
 
 describe('parseArgs', () => {
@@ -186,6 +187,25 @@ describe('parseBudgetUsd', () => {
 
     for (const value of ['0', '-0.25', '0x10', '0b10', '1abc', 'Infinity', '1e', '.']) {
       expect(parseBudgetUsd(value)).toBeUndefined();
+    }
+  });
+});
+
+describe('parseThinkingConfigValue', () => {
+  it('parses on/off flags and positive safe integer budgets', () => {
+    expect(parseThinkingConfigValue('on')).toBe(true);
+    expect(parseThinkingConfigValue(' ON ')).toBe(true);
+    expect(parseThinkingConfigValue(' true ')).toBe(true);
+    expect(parseThinkingConfigValue('off')).toBe(false);
+    expect(parseThinkingConfigValue(' OFF ')).toBe(false);
+    expect(parseThinkingConfigValue(' false ')).toBe(false);
+    expect(parseThinkingConfigValue('4000')).toBe(4000);
+    expect(parseThinkingConfigValue(' 4000 ')).toBe(4000);
+  });
+
+  it('rejects invalid, non-positive, and unsafe budgets', () => {
+    for (const value of ['0', '-1', '0.5', '1e3', '0x10', 'Infinity', 'abc', '9'.repeat(400), '9007199254740993']) {
+      expect(parseThinkingConfigValue(value)).toBeUndefined();
     }
   });
 });

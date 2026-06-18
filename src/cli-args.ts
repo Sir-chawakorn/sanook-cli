@@ -16,6 +16,7 @@ export interface ParsedServeArgs {
 }
 
 const DECIMAL_BUDGET_RE = /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
+const POSITIVE_INTEGER_RE = /^\d+$/;
 const isFlagLike = (value: string): boolean => value.startsWith('--') || /^-[A-Za-z]/.test(value);
 
 export function parseBudgetUsd(value: string | undefined): number | undefined {
@@ -24,6 +25,17 @@ export function parseBudgetUsd(value: string | undefined): number | undefined {
   if (!DECIMAL_BUDGET_RE.test(normalized)) return undefined;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+export function parseThinkingConfigValue(value: string): boolean | number | undefined {
+  const normalized = value.trim();
+  const flag = normalized.toLowerCase();
+  if (flag === 'on' || flag === 'true') return true;
+  if (flag === 'off' || flag === 'false') return false;
+  if (!POSITIVE_INTEGER_RE.test(normalized)) return undefined;
+
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function optionArgs(argv: string[]): string[] {

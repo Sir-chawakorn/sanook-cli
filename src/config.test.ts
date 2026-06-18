@@ -150,4 +150,21 @@ describe('agentTuning (env overrides)', () => {
     process.env.SANOOK_THINKING = 'on';
     expect((await agentTuning()).thinkingBudget).toBe(4096);
   });
+  it('trims SANOOK_THINKING before parsing flags and budgets', async () => {
+    process.env.SANOOK_THINKING = '  yes  ';
+    expect((await agentTuning()).thinkingBudget).toBe(4096);
+
+    process.env.SANOOK_THINKING = '  3000  ';
+    expect((await agentTuning()).thinkingBudget).toBe(3000);
+  });
+  it('ignores non-positive and unsafe thinking budgets from env', async () => {
+    process.env.SANOOK_THINKING = '0';
+    expect((await agentTuning()).thinkingBudget).toBeUndefined();
+
+    process.env.SANOOK_THINKING = '0.5';
+    expect((await agentTuning()).thinkingBudget).toBeUndefined();
+
+    process.env.SANOOK_THINKING = '9'.repeat(400);
+    expect((await agentTuning()).thinkingBudget).toBeUndefined();
+  });
 });

@@ -59,13 +59,19 @@ export type Config = z.infer<typeof ConfigSchema>;
 
 const DEFAULT_THINKING_BUDGET = 4096;
 
+function normalizeThinkingBudget(value: number): number | undefined {
+  const budget = Math.floor(value);
+  return Number.isSafeInteger(budget) && budget > 0 ? budget : undefined;
+}
+
 /** parse thinking config (config field หรือ env) → budget tokens (undefined = ปิด) */
 function parseThinking(v: unknown): number | undefined {
-  if (typeof v === 'number' && v > 0) return Math.floor(v);
+  if (typeof v === 'number' && Number.isFinite(v)) return normalizeThinkingBudget(v);
   if (v === true) return DEFAULT_THINKING_BUDGET;
   if (typeof v === 'string') {
-    if (/^\d+$/.test(v)) return Number.parseInt(v, 10);
-    if (['on', 'true', '1', 'yes'].includes(v.toLowerCase())) return DEFAULT_THINKING_BUDGET;
+    const clean = v.trim();
+    if (/^\d+$/.test(clean)) return normalizeThinkingBudget(Number(clean));
+    if (['on', 'true', '1', 'yes'].includes(clean.toLowerCase())) return DEFAULT_THINKING_BUDGET;
   }
   return undefined;
 }

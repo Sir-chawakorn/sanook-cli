@@ -118,6 +118,26 @@ describe('global subagent concurrency gate', () => {
 
     expect(globalSubagentRunningCount()).toBe(0);
   });
+
+  it('ignores malformed global concurrency env values instead of accepting numeric prefixes', async () => {
+    vi.stubEnv('SANOOK_SUBAGENT_CONCURRENCY', '2abc');
+    let inFlight = 0;
+    let peak = 0;
+
+    await Promise.all(
+      Array.from({ length: 6 }, () =>
+        withGlobalSubagentSlot(async () => {
+          inFlight++;
+          peak = Math.max(peak, inFlight);
+          await new Promise((r) => setTimeout(r, 5));
+          inFlight--;
+        }),
+      ),
+    );
+
+    expect(peak).toBe(6);
+    expect(globalSubagentRunningCount()).toBe(0);
+  });
 });
 
 describe('TaskRegistry — background subagents', () => {

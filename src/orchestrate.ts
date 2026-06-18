@@ -61,8 +61,10 @@ let globalInFlight = 0;
 const globalWaiters: (() => void)[] = [];
 
 function globalSubagentLimit(): number {
-  const raw = Number.parseInt(process.env.SANOOK_SUBAGENT_CONCURRENCY ?? '', 10);
-  return Number.isInteger(raw) && raw > 0 ? Math.min(raw, 64) : DEFAULT_GLOBAL_SUBAGENT_CONCURRENCY;
+  const raw = process.env.SANOOK_SUBAGENT_CONCURRENCY?.trim();
+  if (!raw || !/^\d+$/.test(raw)) return DEFAULT_GLOBAL_SUBAGENT_CONCURRENCY;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? Math.min(parsed, 64) : DEFAULT_GLOBAL_SUBAGENT_CONCURRENCY;
 }
 
 export function globalSubagentRunningCount(): number {

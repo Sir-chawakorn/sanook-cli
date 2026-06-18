@@ -27,7 +27,16 @@ import { chmod, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
 import { appHomePath, BRAND, BRAND_ENV, envFlag } from './brand.js';
 import type { UpdateCache } from './update.js';
-import { hasContinueAnyRequest, hasContinueRequest, hasResumeRequest, hasServeCommandRequest, parseArgs, parseBudgetUsd, parseServeArgs } from './cli-args.js';
+import {
+  hasContinueAnyRequest,
+  hasContinueRequest,
+  hasResumeRequest,
+  hasServeCommandRequest,
+  parseArgs,
+  parseBudgetUsd,
+  parseServeArgs,
+  parseThinkingConfigValue,
+} from './cli-args.js';
 
 // สี: เคารพ NO_COLOR + auto-plain เมื่อ pipe/redirect (legacy Windows cmd ก็ไม่เห็น garbage ANSI); FORCE_COLOR บังคับได้
 const useColor = !process.env.NO_COLOR && (Boolean(process.env.FORCE_COLOR) || process.stdout.isTTY === true);
@@ -3059,15 +3068,10 @@ async function runConfig(args: string[]): Promise<void> {
       process.exit(1);
     } else if (key === 'thinking') {
       // เก็บเป็น number (budget) หรือ boolean ให้ตรง ConfigSchema (ไม่เก็บ string)
-      if (raw === 'on' || raw === 'true') value = true;
-      else if (raw === 'off' || raw === 'false') value = false;
-      else {
-        const n = Number(raw);
-        if (!Number.isInteger(n) || n <= 0) {
-          console.error('thinking ต้องเป็น on/off หรือ budget tokens (integer บวก เช่น 4000)');
-          process.exit(1);
-        }
-        value = n;
+      value = parseThinkingConfigValue(raw);
+      if (value === undefined) {
+        console.error('thinking ต้องเป็น on/off หรือ budget tokens (integer บวก เช่น 4000)');
+        process.exit(1);
       }
     } else if (key === 'personality') {
       const { normalizePersonalityName, personalityListText } = await import('./personality.js');
