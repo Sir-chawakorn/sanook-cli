@@ -1897,10 +1897,11 @@ resume:
 }
 
 function parseLimit(args: string[], fallback: number): number {
+  const provided = args.some((a) => a === '--limit' || a === '-n' || a.startsWith('--limit=') || a.startsWith('-n='));
   const raw = argValue(args, '--limit', '-n');
-  if (!raw) return fallback;
+  if (!provided) return fallback;
   const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0) {
+  if (!raw || !Number.isInteger(n) || n <= 0) {
     console.error('--limit ต้องเป็น integer บวก');
     process.exit(2);
   }

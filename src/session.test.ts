@@ -1,7 +1,52 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { spawn } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const bin = fileURLToPath(new URL('./bin.ts', import.meta.url));
+
+async function runCli(args: string[], home: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const child = spawn(process.execPath, ['--import', 'tsx', bin, ...args], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      CI: '1',
+      HOME: home,
+      SANOOK_DISABLE_UPDATE_CHECK: '1',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => {
+    stdout += chunk;
+  });
+  child.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
+  });
+
+  const code = await new Promise<number | null>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error(`CLI timed out: ${args.join(' ')}`));
+    }, 12_000);
+    child.on('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on('close', (exitCode) => {
+      clearTimeout(timeout);
+      resolve(exitCode);
+    });
+  });
+
+  return { code, stdout, stderr };
+}
 
 describe('session store management', () => {
   let home: string;
@@ -162,5 +207,18 @@ describe('session store management', () => {
     expect(await loadSession('bad-content')).toBeNull();
     expect(await loadSession('bad-tool-content')).toBeNull();
     expect((await listSessions({ cwd: project })).map((s) => s.id)).toEqual(['valid-project']);
+  });
+
+  it('rejects missing or empty CLI session limits', async () => {
+    await expect(runCli(['sessions', 'list', '--limit', '--all'], home)).resolves.toMatchObject({
+      code: 2,
+      stdout: '',
+      stderr: expect.stringContaining('--limit ต้องเป็น integer บวก'),
+    });
+    await expect(runCli(['sessions', 'list', '--limit='], home)).resolves.toMatchObject({
+      code: 2,
+      stdout: '',
+      stderr: expect.stringContaining('--limit ต้องเป็น integer บวก'),
+    });
   });
 });
