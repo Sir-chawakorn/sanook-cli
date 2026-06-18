@@ -3,6 +3,12 @@ import { render } from 'ink-testing-library';
 import { App } from './app.js';
 
 const tick = (ms = 40): Promise<void> => new Promise((r) => setTimeout(r, ms));
+async function waitFor(cond: () => boolean, tries = 30): Promise<void> {
+  for (let i = 0; i < tries; i++) {
+    if (cond()) return;
+    await tick();
+  }
+}
 
 describe('App (Ink REPL)', () => {
   afterEach(() => {
@@ -79,6 +85,144 @@ describe('App (Ink REPL)', () => {
     await tick();
 
     expect(lastFrame()).not.toContain('Sanook hotkeys');
+    unmount();
+  });
+
+  it('/help opens a paged overlay that can page forward and close', async () => {
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" />);
+
+    stdin.write('/help');
+    await tick();
+    stdin.write('\r');
+    await tick();
+
+    expect(lastFrame()).toContain('Sanook help');
+    expect(lastFrame()).toContain('/model');
+    expect(lastFrame()).toContain('Enter/Space/PgDn');
+
+    stdin.write('\r');
+    await tick();
+
+    expect(lastFrame()).toContain('นอก REPL');
+
+    stdin.write('q');
+    await tick();
+
+    expect(lastFrame()).not.toContain('Sanook help');
+    expect(lastFrame()).toContain('/help');
+    unmount();
+  });
+
+  it('shows slash completion suggestions and Enter fills the selected command first', async () => {
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" />);
+
+    stdin.write('/se');
+    await tick();
+
+    expect(lastFrame()).toContain('/sessions');
+    expect(lastFrame()).toContain('Tab/Enter complete');
+
+    stdin.write('\r');
+    await tick();
+
+    expect(lastFrame()).toContain('/sessions');
+    expect(lastFrame()).not.toContain('Sanook sessions');
+
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('Sanook sessions'));
+
+    expect(lastFrame()).toContain('Sanook sessions');
+    unmount();
+  });
+
+  it('shows @file path completion and Enter fills the path before submit', async () => {
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" />);
+
+    stdin.write('@src/hotk');
+    await tick();
+
+    expect(lastFrame()).toContain('@src/hotkeys.ts');
+    expect(lastFrame()).toContain('Tab/Enter complete');
+
+    stdin.write('\r');
+    await tick();
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('@src/hotkeys.ts');
+    expect(frame).not.toContain('ERROR:');
+    unmount();
+  });
+
+  it('/model without args opens a picker overlay and Enter selects the highlighted model', async () => {
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" />);
+
+    stdin.write('/model');
+    await tick();
+    stdin.write('\r');
+    await tick();
+
+    expect(lastFrame()).toContain('Sanook model picker');
+    expect(lastFrame()).toContain('anthropic:sonnet');
+
+    stdin.write('\r');
+    await tick();
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('เปลี่ยน model → anthropic:claude-sonnet-4-6');
+    expect(frame).toContain('anthropic:claude-sonnet-4-6 · ask-mode');
+    expect(frame).not.toContain('Sanook model picker');
+    unmount();
+  });
+
+  it('/model picker supports j/k style navigation before selecting', async () => {
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" />);
+
+    stdin.write('/model');
+    await tick();
+    stdin.write('\r');
+    await tick();
+
+    stdin.write('j');
+    await tick();
+    stdin.write('\r');
+    await tick();
+
+    expect(lastFrame()).toContain('เปลี่ยน model → anthropic:claude-haiku-4-5');
+    unmount();
+  });
+
+  it('/skills opens a Skills Hub overlay and Enter inspects the highlighted skill', async () => {
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" />);
+
+    stdin.write('/skills');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('Sanook skills hub'));
+
+    expect(lastFrame()).toContain('Enter inspect');
+
+    stdin.write('\r');
+    await tick();
+
+    expect(lastFrame()).toContain('path:');
+
+    stdin.write('\x1B');
+    await tick();
+
+    expect(lastFrame()).toContain('Enter inspect');
+    unmount();
+  });
+
+  it('/sessions opens a Session Switcher overlay', async () => {
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" />);
+
+    stdin.write('/sessions');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('Sanook sessions'));
+
+    expect(lastFrame()).toContain('Sanook sessions');
+    expect(lastFrame()).not.toContain('saved sessions — จัดการ');
     unmount();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compactPreview, getQueueWindow } from './queue.js';
+import { clampQueueActiveIndex, compactPreview, getQueueWindow, queueActiveIndexAfterDelete } from './queue.js';
 
 describe('queue window', () => {
   it('shows the first window and tail count for long queues', () => {
@@ -12,5 +12,17 @@ describe('queue window', () => {
 
   it('compacts previews with an ellipsis', () => {
     expect(compactPreview('abcdefghijklmnopqrstuvwxyz', 10)).toBe('abcdefghi…');
+  });
+
+  it('clamps active queue indexes', () => {
+    expect(clampQueueActiveIndex(null, 3)).toBe(0);
+    expect(clampQueueActiveIndex(9, 3)).toBe(2);
+    expect(clampQueueActiveIndex(0, 0)).toBeNull();
+  });
+
+  it('keeps the active queue index valid after deleting a row', () => {
+    expect(queueActiveIndexAfterDelete(0, 3)).toBe(0);
+    expect(queueActiveIndexAfterDelete(2, 3)).toBe(1);
+    expect(queueActiveIndexAfterDelete(0, 1)).toBeNull();
   });
 });

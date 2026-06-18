@@ -75,7 +75,9 @@ describe('parseCommand', () => {
     expect(parseCommand('/compress', ctx).action).toBe('compact');
   });
   it('/model ไม่มี arg → แสดง model ปัจจุบัน', () => {
-    expect(parseCommand('/model', ctx).message).toContain('sonnet');
+    const result = parseCommand('/model', ctx);
+    expect(result.action).toBe('modelPicker');
+    expect(result.message).toContain('sonnet');
   });
   it('/model opus → modelChange', () => {
     const r = parseCommand('/model opus', ctx);
@@ -117,6 +119,21 @@ describe('parseCommand', () => {
       personalityChange: '',
     });
     expect(parseCommand('/personality mystery', ctx).message).toContain('ไม่รู้จัก');
+  });
+  it('/skills → เปิด Skills Hub overlay พร้อม fallback text', () => {
+    const result = parseCommand('/skills', ctx);
+    expect(result.action).toBe('skillsHub');
+    expect(result.message).toContain('skill list/add/remove');
+  });
+  it('/mcp → เปิด MCP Hub overlay พร้อม fallback text', () => {
+    const result = parseCommand('/mcp', ctx);
+    expect(result.action).toBe('mcpHub');
+    expect(result.message).toContain('mcp list/search/install/doctor');
+  });
+  it('/sessions → เปิด Session Switcher overlay พร้อม fallback text', () => {
+    const result = parseCommand('/sessions', ctx);
+    expect(result.action).toBe('sessionsHub');
+    expect(result.message).toContain('saved sessions');
   });
   it('/cost → คืน cost summary จาก ctx', () => {
     expect(parseCommand('/cost', { model: 'sonnet', costSummary: 'tokens: 100' }).message).toBe('tokens: 100');

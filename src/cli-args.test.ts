@@ -261,4 +261,18 @@ describe('parseServeArgs', () => {
       portError: 'ต้องระบุค่า',
     });
   });
+
+  it('rejects missing serve model values instead of silently using the default model', () => {
+    expect(parseServeArgs(['--model'])).toMatchObject({ model: undefined, modelError: 'ต้องระบุค่า' });
+    expect(parseServeArgs(['-m', '--port', '9000'])).toMatchObject({
+      port: 9000,
+      model: undefined,
+      modelError: 'ต้องระบุค่า',
+    });
+    expect(parseServeArgs(['--model='])).toMatchObject({ model: undefined, modelError: 'ต้องระบุค่า' });
+    expect(parseServeArgs(['--model', 'openai:gpt-5.5'])).toMatchObject({
+      model: 'openai:gpt-5.5',
+      modelError: undefined,
+    });
+  });
 });

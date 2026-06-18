@@ -22,7 +22,7 @@ Source inspected: `nousresearch/hermes-agent` at commit `646cd1b` (shallow clone
 
 ## Answer
 
-ยังไม่ได้เอา Hermes TUI มาทั้งหมด. Sanook ตอนนี้เอาแนวคิด startup banner/status launchpad, startup service panel, และ floating overlay path สำหรับ `/hotkeys` มาแล้ว แต่ Hermes TUI เป็นระบบใหญ่กว่า banner มาก: มี custom Ink runtime, gateway RPC, fullscreen alternate screen, virtual transcript, overlays, model/session/skills/plugins hubs, terminal selection/clipboard, mouse wheel acceleration, status rule, tool trail, todo panel, markdown streaming, voice hooks, and skin/theme live repaint.
+ยังไม่ได้เอา Hermes TUI มาทั้งหมด. Sanook ตอนนี้เอาแนวคิด startup banner/status launchpad, startup service panel, slash/path completion float box, compact transcript tool trail, และ floating overlay path สำหรับ `/help` pager, `/hotkeys`, `/model` picker, `/mcp` hub พร้อม lazy server test, `/skills` hub, กับ `/sessions` switcher มาแล้ว แต่ Hermes TUI เป็นระบบใหญ่กว่า banner มาก: มี custom Ink runtime, gateway RPC, fullscreen alternate screen, virtual transcript, overlays, model/session/skills/plugins hubs, terminal selection/clipboard, mouse wheel acceleration, status rule, collapsible reasoning/tool trail, todo panel, markdown streaming, voice hooks, and skin/theme live repaint.
 
 ## Hermes TUI Inventory
 
@@ -45,17 +45,24 @@ Source inspected: `nousresearch/hermes-agent` at commit `646cd1b` (shallow clone
 - Done: responsive banner tiers inspired by Hermes: wide wordmark, compact panel, tiny text-only panel.
 - Done: startup service panel with Tools, Brain, Skills, MCP, System, and Runtime lanes in `src/ui/session-panel.tsx`.
 - Done: `/hotkeys` command adapted from Hermes hotkey discovery.
+- Done: `/help` pager overlay in `src/ui/overlay.tsx`; supports line/page navigation, top/bottom jumps, and close on `Esc/q`.
+- Done: slash-command and path completion float box in `src/ui/overlay.tsx` + `src/slash-completion.ts`; supports prefix filtering, `@file`/relative/home/absolute path tokens, row navigation, and Tab/Enter-to-complete before submit.
+- Done: `/mcp` MCP Hub overlay in `src/ui/overlay.tsx` + `src/mcp-hub.ts`; maps Hermes plugins hub to Sanook's extension model by listing configured MCP servers, transport, target, secret summary, and lazy selected-server testing with `t` for PASS/FAIL plus advertised tool names.
 - Done: floating `/hotkeys` overlay foundation in `src/ui/overlay.tsx`; closes with `Esc`, `Enter`, or `q`.
-- Done: bounded queued-message window inspired by Hermes `QueuedMessages`.
-- Done: responsive footer/status helper that sheds low-priority hints on narrow terminals.
+- Done: `/model` picker overlay in `src/ui/overlay.tsx` using Sanook provider registry; supports ↑/↓ or j/k and Enter-to-switch.
+- Done: `/skills` read-only Skills Hub overlay in `src/ui/overlay.tsx` using Sanook's bundled/global/project skill loader; supports list navigation and inspect view.
+- Done: `/sessions` Session Switcher overlay in `src/ui/overlay.tsx` using Sanook's saved session store; supports list navigation and Enter-to-resume for current-project sessions.
+- Done: bounded queued-message window inspired by Hermes `QueuedMessages`, with active row selection and `Ctrl+X` deletion while busy.
+- Done: Hermes-like Sanook status rule in `src/ui/status.ts` + cached git branch lookup in `src/ui/useGitBranch.ts` + busy elapsed timer in `src/ui/useBusyElapsed.ts`; prioritizes state/model/mode/context/queue, sheds lower-priority hints on narrow terminals, shows elapsed/cost/cwd/branch when space allows, and makes cwd/branch yield before wrapping.
+- Done: compact transcript tool trail in `src/ui/tool-trail.ts` + `src/ui/app.tsx`; `tool-call` events render as running rows, `tool-result` events mark rows done, errors mark the latest running tool, completed trails are snapshotted into the assistant turn, and assistant streaming text no longer gets polluted by raw tool-call markers.
 - Done: REPL banner only renders before conversation history exists, preserving scrollback.
-- Done: simple approval prompt, prompt history, basic queue, slash commands, `@file` mention expansion, model footer.
+- Done: simple approval prompt, prompt history, slash commands, `@file` mention expansion, model footer.
 - Missing: fullscreen alternate screen and virtual transcript.
-- Missing: full overlay system for model/session/skills/plugins and paged help.
-- Missing: rich status rule with context/cost/cwd/branch progressive disclosure.
+- Missing: richer plugin/MCP actions such as enable/disable and install from registry inside the TUI, plus richer session actions/live session state.
+- Missing: richer background-task/voice/compression segments in the status rule.
 - Missing: custom grapheme-safe TextInput and mouse selection/OSC52 clipboard.
 - Missing: collapsible/interactive startup session sections for tools/skills/MCP/system.
-- Missing: streaming markdown/tool trail/todo panel parity.
+- Missing: streaming markdown, collapsible reasoning+tool trail controls with richer grouping, and live todo panel parity.
 - Missing: live theme/skin engine with user-defined banner art/colors.
 
 ## Port Plan
@@ -65,19 +72,24 @@ P0 completed:
 
 P1 next, low-risk/high-value:
 - Upgrade startup service panel into collapsible/interactive sections using Sanook's existing `/tools`, skill loader, and MCP config.
-- Expand the new floating overlay foundation into model picker, sessions switcher, skills hub, and paged help.
-- Add queue editing/deletion hotkeys (`Ctrl+X`, active row) once Sanook's composer state can track queue edit index.
-- Expand the footer/status helper into a Hermes-like status rule with context/cost/cwd/branch segments.
+- Expand the new floating overlay foundation into richer MCP/plugin actions, richer skill actions, and richer session actions.
+- Expand status with background-task/voice/compression segments.
 
-P2 next:
+P2 completed:
+- Paged `/help` overlay using Sanook command help text.
 - Model picker overlay using Sanook provider registry.
 - Session switcher overlay using Sanook saved sessions.
-- Skills hub overlay using Sanook skill list/add/remove surfaces.
-- Completion float box for slash commands and paths.
+- Skills hub overlay using Sanook skill list/read surfaces.
+- Compact transcript tool trail for `tool-call`/`tool-result`/`error` agent events.
+
+P2 next:
+- Add richer skill actions once Sanook has stable install/remove/open/edit surfaces.
+- Add richer session actions: delete, rename/title edit, cross-project switch, and live-session metadata.
+- Custom command completion and richer path edge cases (quoted paths, hidden files toggle, Windows drive polish).
 
 P3 larger:
 - Virtual transcript/scrollbar/sticky prompt.
-- Rich message rendering with markdown, tool trail, thinking, and todo panel.
+- Rich message rendering with markdown, collapsible reasoning/tool trail controls, thinking, and todo panel.
 - Custom text input with grapheme-safe cursor, paste collapse, and image/path drop detection.
 
 P4 only if needed:

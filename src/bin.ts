@@ -219,6 +219,10 @@ async function runServe(args: string[]): Promise<void> {
     console.error(`port ไม่ถูกต้อง: ${parsed.portError}`);
     process.exit(1);
   }
+  if (parsed.modelError) {
+    console.error(`model ไม่ถูกต้อง: ${parsed.modelError}`);
+    process.exit(1);
+  }
   const config = await loadConfig({ model: parsed.model });
   const { startGateway } = await import('./gateway/serve.js');
   process.stdout.write(`${DIM}${BRAND.productName} gateway — model: ${config.model}${RESET}\n`);

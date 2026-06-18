@@ -8,6 +8,7 @@ export const HOTKEYS: [string, string][] = [
   ['Alt+Enter', 'insert newline'],
   ['\\+Enter', 'multi-line continuation fallback'],
   ['type while busy + Enter', 'queue the next prompt'],
+  ['busy ↑/↓ + Ctrl+X', 'select and delete queued prompts'],
   ['@file', 'inline a file or attach an image'],
   ['/model <spec>', 'switch model'],
   ['/diff /undo /rewind', 'inspect, stash, or rewind file changes'],

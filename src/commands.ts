@@ -24,7 +24,10 @@ export interface CommandResult {
     | 'personality'
     | 'insights'
     | 'hotkeys'
-    | 'modelPicker';
+    | 'mcpHub'
+    | 'modelPicker'
+    | 'skillsHub'
+    | 'sessionsHub';
   /** ข้อความแสดงกลับ (help / cost / model / unknown) */
   message?: string;
   /** /model <spec> — เปลี่ยน model */
@@ -37,7 +40,7 @@ export interface CommandResult {
   insightsAll?: boolean;
 }
 
-const HELP_TEXT = `คำสั่ง:
+export const HELP_TEXT = `คำสั่ง:
   /help            แสดงคำสั่งทั้งหมด
   /new, /reset      เริ่มบทสนทนาใหม่
   /status          ดูสถานะ session ปัจจุบัน
@@ -46,7 +49,9 @@ const HELP_TEXT = `คำสั่ง:
                    ดู/ตั้ง personality overlay
   /platforms       ดู providers + messaging platforms ที่รองรับ
   /tools           ดู tools ที่ agent ใช้ได้
-  /skills          ดูจำนวน skills (จัดการ: ${BRAND.cliName} skill list)
+  /mcp             เปิด MCP Hub overlay
+  /skills          เปิด Skills Hub overlay (จัดการ: ${BRAND.cliName} skill list)
+  /sessions        เปิด Session Switcher overlay
   /diff            ดู git diff (สิ่งที่ agent แก้ในรอบนี้)
   /retry           รัน prompt ล่าสุดอีกครั้ง
   /stop            หยุด turn ที่กำลังรัน
@@ -241,8 +246,20 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
       return { handled: true, message: `tools ที่ agent ใช้ได้ (+ MCP ที่ตั้งไว้):\n  ${TOOLS_LIST}` };
     case 'platforms':
       return { handled: true, message: platformMenu() };
+    case 'mcp':
+      return {
+        handled: true,
+        action: 'mcpHub',
+        message: `MCP servers — จัดการด้วย "${BRAND.cliName} mcp list/search/install/doctor"`,
+      };
     case 'skills':
-      return { handled: true, message: `skills โหลดจาก built-in + ${appHomePath('skills')} — จัดการด้วย "${BRAND.cliName} skill list/add/remove"` };
+      return {
+        handled: true,
+        action: 'skillsHub',
+        message: `skills โหลดจาก built-in + ${appHomePath('skills')} — จัดการด้วย "${BRAND.cliName} skill list/add/remove"`,
+      };
+    case 'sessions':
+      return { handled: true, action: 'sessionsHub', message: `saved sessions — จัดการด้วย "${BRAND.cliName} sessions"` };
     case 'diff':
       return { handled: true, action: 'diff' };
     case 'retry':
@@ -285,7 +302,9 @@ export const BUILTIN_COMMANDS = new Set([
   'personality',
   'platforms',
   'tools',
+  'mcp',
   'skills',
+  'sessions',
   'diff',
   'retry',
   'stop',

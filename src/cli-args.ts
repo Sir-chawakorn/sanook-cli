@@ -15,6 +15,7 @@ export interface ParsedServeArgs {
   port: number;
   model?: string;
   portError?: string;
+  modelError?: string;
 }
 
 const DECIMAL_BUDGET_RE = /^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
@@ -83,10 +84,15 @@ function portErrorValue(raw: string | undefined): string {
   return raw === undefined || raw === '' ? 'ต้องระบุค่า' : raw;
 }
 
+function modelErrorValue(raw: string | undefined): string | undefined {
+  return raw === undefined || raw.trim() === '' ? 'ต้องระบุค่า' : undefined;
+}
+
 export function parseServeArgs(argv: string[]): ParsedServeArgs {
   let port = 8787;
   let model: string | undefined;
   let portError: string | undefined;
+  let modelError: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -99,16 +105,21 @@ export function parseServeArgs(argv: string[]): ParsedServeArgs {
       else port = parsed;
     } else if (a === '--model' || a === '-m' || a.startsWith('--model=')) {
       if (a.startsWith('--model=')) {
-        model = inlineValue('--model', a);
+        const raw = inlineValue('--model', a);
+        const error = modelErrorValue(raw);
+        if (error) modelError = error;
+        else model = raw;
       } else {
         const next = takeValue(argv, i);
-        model = next.value;
+        const error = modelErrorValue(next.value);
+        if (error) modelError = error;
+        else model = next.value;
         i = next.nextIndex;
       }
     }
   }
 
-  return { port, model, portError };
+  return { port, model, portError, modelError };
 }
 
 export function parseArgs(argv: string[]): Args {

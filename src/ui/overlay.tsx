@@ -1,9 +1,13 @@
 import { Box, Text } from 'ink';
 import type { ReactNode } from 'react';
 import { HOTKEYS } from '../hotkeys.js';
+import type { McpHubState } from '../mcp-hub.js';
 import type { ModelPickerOption } from '../model-picker.js';
+import type { Session } from '../session.js';
+import type { CompletionItem } from '../slash-completion.js';
+import type { Skill } from '../skills.js';
 
-export type OverlayKind = 'hotkeys' | 'model';
+export type OverlayKind = 'hotkeys' | 'mcp' | 'model' | 'pager' | 'skills' | 'sessions';
 
 export interface HotkeysOverlayState {
   kind: 'hotkeys';
@@ -15,7 +19,50 @@ export interface ModelOverlayState {
   selected: number;
 }
 
-export type OverlayState = HotkeysOverlayState | ModelOverlayState;
+export interface McpOverlayState {
+  detail: boolean;
+  kind: 'mcp';
+  notes: string[];
+  probe?: McpOverlayProbe;
+  selected: number;
+  servers: McpHubState['entries'];
+}
+
+export interface McpOverlayProbe {
+  error?: string;
+  serverName: string;
+  status: 'fail' | 'pass' | 'running';
+  tools?: { name: string; description?: string }[];
+  transport?: 'http' | 'stdio';
+}
+
+export interface PagerOverlayState {
+  kind: 'pager';
+  lines: string[];
+  offset: number;
+  title?: string;
+}
+
+export interface SkillsOverlayState {
+  detail: boolean;
+  kind: 'skills';
+  selected: number;
+  skills: Skill[];
+}
+
+export interface SessionsOverlayState {
+  kind: 'sessions';
+  selected: number;
+  sessions: Session[];
+}
+
+export type OverlayState =
+  | HotkeysOverlayState
+  | McpOverlayState
+  | ModelOverlayState
+  | PagerOverlayState
+  | SkillsOverlayState
+  | SessionsOverlayState;
 
 export interface OverlayNavigation {
   next?: () => void;
@@ -26,6 +73,13 @@ export interface OverlayNavigation {
 export interface FloatingOverlayProps {
   columns: number;
   overlay: OverlayState | null;
+  pageSize?: number;
+}
+
+export interface CompletionOverlayProps {
+  columns: number;
+  items: CompletionItem[];
+  selected: number;
 }
 
 interface OverlayBoxProps {
@@ -36,6 +90,11 @@ interface OverlayBoxProps {
 const MIN_OVERLAY_COLUMNS = 42;
 const MAX_OVERLAY_COLUMNS = 96;
 const MODEL_WINDOW = 10;
+const MCP_WINDOW = 10;
+const SKILL_WINDOW = 10;
+const SESSION_WINDOW = 10;
+const DEFAULT_PAGER_PAGE_SIZE = 12;
+const COMPLETION_WINDOW = 8;
 
 function OverlayBox({ children, columns }: OverlayBoxProps) {
   const width = overlayWidth(columns);
@@ -53,6 +112,49 @@ function overlayWidth(columns: number): number {
 function clip(text: string, width: number): string {
   if (width <= 0) return '';
   return text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text;
+}
+
+export function completionOverlayLines(items: CompletionItem[], selected: number, columns: number): string[] {
+  if (!items.length) return [];
+  const width = Math.max(28, Math.min(Math.max(34, columns - 6), MAX_OVERLAY_COLUMNS));
+  const viewport = Math.min(COMPLETION_WINDOW, items.length);
+  const safeSelected = Math.max(0, Math.min(selected, items.length - 1));
+  const start = Math.max(0, Math.min(safeSelected - Math.floor(COMPLETION_WINDOW / 2), items.length - viewport));
+  const visible = items.slice(start, start + viewport);
+  const commandWidth = Math.max(10, Math.min(22, Math.floor(width * 0.34)));
+  const metaWidth = Math.max(8, width - commandWidth - 7);
+  const lines = visible.map((item, offset) => {
+    const index = start + offset;
+    const cursor = index === safeSelected ? '>' : ' ';
+    return `${cursor} ${clip(item.display, commandWidth).padEnd(commandWidth)} ${clip(item.meta, metaWidth)}`;
+  });
+  lines.push('↑↓ select · Tab/Enter complete');
+  return lines;
+}
+
+export function CompletionOverlay({ columns, items, selected }: CompletionOverlayProps) {
+  const width = Math.max(28, Math.min(Math.max(34, columns - 6), MAX_OVERLAY_COLUMNS));
+  const innerWidth = Math.max(1, width - 4);
+  const lines = completionOverlayLines(items, selected, columns);
+  if (!lines.length) return null;
+  return (
+    <Box borderStyle="round" borderColor="cyan" flexDirection="column" marginBottom={1} paddingX={1} width={width}>
+      {lines.map((line, index) => {
+        const isActive = line.startsWith('>');
+        return (
+          <Text
+            key={`${index}-${line}`}
+            color={isActive ? 'green' : undefined}
+            dimColor={!isActive}
+            inverse={isActive}
+            wrap="truncate-end"
+          >
+            {clip(line, innerWidth)}
+          </Text>
+        );
+      })}
+    </Box>
+  );
 }
 
 export function hotkeyOverlayLines(columns: number): string[] {
@@ -84,6 +186,18 @@ function modelWindow(options: ModelPickerOption[], selected: number): { end: num
   const safeSelected = Math.max(0, Math.min(selected, Math.max(0, options.length - 1)));
   const start = Math.max(0, Math.min(safeSelected - Math.floor(MODEL_WINDOW / 2), Math.max(0, options.length - MODEL_WINDOW)));
   return { end: Math.min(options.length, start + MODEL_WINDOW), start };
+}
+
+function listWindow(count: number, selected: number, size: number): { end: number; start: number } {
+  const safeSelected = Math.max(0, Math.min(selected, Math.max(0, count - 1)));
+  const start = Math.max(0, Math.min(safeSelected - Math.floor(size / 2), Math.max(0, count - size)));
+  return { end: Math.min(count, start + size), start };
+}
+
+function shortDate(iso: string): string {
+  const parsed = Date.parse(iso);
+  if (!Number.isFinite(parsed)) return iso.slice(0, 16);
+  return new Date(parsed).toISOString().slice(0, 16).replace('T', ' ');
 }
 
 export function modelOverlayLines(overlay: ModelOverlayState, columns: number): string[] {
@@ -131,10 +245,264 @@ function ModelPickerOverlay({ columns, overlay }: { columns: number; overlay: Mo
   );
 }
 
+export function mcpOverlayLines(overlay: McpOverlayState, columns: number): string[] {
+  const width = overlayWidth(columns);
+  const innerWidth = Math.max(1, width - 4);
+  const selected = overlay.servers[overlay.selected];
+
+  if (!overlay.servers.length) {
+    return [
+      'Sanook MCP hub',
+      'No MCP servers configured',
+      'add: sanook mcp search github · sanook mcp install <server>',
+      ...overlay.notes.slice(0, 2).map((note) => `note: ${clip(note, Math.max(1, innerWidth - 6))}`),
+      'Esc/q close',
+    ];
+  }
+
+  if (overlay.detail && selected) {
+    const probe = overlay.probe?.serverName === selected.name ? overlay.probe : undefined;
+    const probeLines = mcpProbeLines(probe, innerWidth);
+    return [
+      'Sanook MCP hub',
+      `${selected.name} (${selected.transport})`,
+      clip(selected.target, innerWidth),
+      `secrets: ${selected.secretSummary}`,
+      `doctor: t test selected · sanook mcp test ${selected.name}`,
+      ...probeLines,
+      't test · Enter/Esc back · q close',
+    ];
+  }
+
+  const nameWidth = Math.max(10, Math.min(22, Math.floor(innerWidth * 0.28)));
+  const targetWidth = Math.max(10, innerWidth - nameWidth - 19);
+  const window = listWindow(overlay.servers.length, overlay.selected, MCP_WINDOW);
+  const visible = overlay.servers.slice(window.start, window.end);
+  const lines = ['Sanook MCP hub', `${overlay.servers.length} servers · Enter inspect · t test`];
+
+  if (overlay.notes.length) lines.push(`note: ${clip(overlay.notes[0], Math.max(1, innerWidth - 6))}`);
+  if (window.start > 0) lines.push(`... ${window.start} above`);
+  for (const [offset, server] of visible.entries()) {
+    const index = window.start + offset;
+    const cursor = index === overlay.selected ? '>' : ' ';
+    lines.push(
+      `${cursor} ${clip(server.name, nameWidth).padEnd(nameWidth)} ${server.transport.padEnd(5)} ${clip(server.target, targetWidth)}`,
+    );
+  }
+  if (window.end < overlay.servers.length) lines.push(`... ${overlay.servers.length - window.end} more`);
+  lines.push('↑↓/jk select · Enter inspect · t test · Esc/q close');
+  return lines;
+}
+
+function mcpProbeLines(probe: McpOverlayProbe | undefined, innerWidth: number): string[] {
+  if (!probe) return [];
+  if (probe.status === 'running') return ['test: running...'];
+  if (probe.status === 'fail') {
+    const transport = probe.transport ? ` (${probe.transport})` : '';
+    return [`test: FAIL${transport} ${clip(probe.error ?? 'unknown error', Math.max(1, innerWidth - 12))}`];
+  }
+
+  const tools = probe.tools ?? [];
+  const lines = [`test: PASS (${tools.length} tools)`];
+  for (const tool of tools.slice(0, 5)) {
+    const description = tool.description ? ` - ${tool.description}` : '';
+    lines.push(`tool: ${clip(`${tool.name}${description}`, Math.max(1, innerWidth - 6))}`);
+  }
+  if (tools.length > 5) lines.push(`... ${tools.length - 5} more tools`);
+  return lines;
+}
+
+function McpHubOverlay({ columns, overlay }: { columns: number; overlay: McpOverlayState }) {
+  const innerWidth = Math.max(1, overlayWidth(columns) - 4);
+  const lines = mcpOverlayLines(overlay, columns);
+  return (
+    <OverlayBox columns={columns}>
+      {lines.map((line, index) => {
+        const isHeader = index === 0;
+        const isActive = line.startsWith('>');
+        return (
+          <Text
+            key={`${index}-${line}`}
+            color={isHeader ? 'cyan' : isActive ? 'green' : undefined}
+            dimColor={!isHeader && !isActive}
+            inverse={isActive}
+            wrap="truncate-end"
+          >
+            {clip(line, innerWidth)}
+          </Text>
+        );
+      })}
+    </OverlayBox>
+  );
+}
+
+export function pagerOverlayLines(overlay: PagerOverlayState, columns: number, pageSize = DEFAULT_PAGER_PAGE_SIZE): string[] {
+  const width = overlayWidth(columns);
+  const innerWidth = Math.max(1, width - 4);
+  const size = Math.max(3, pageSize);
+  const max = Math.max(0, overlay.lines.length - size);
+  const offset = Math.max(0, Math.min(overlay.offset, max));
+  const end = Math.min(overlay.lines.length, offset + size);
+  const title = overlay.title || 'Sanook pager';
+  const visible = overlay.lines.slice(offset, end).map((line) => clip(line || ' ', innerWidth));
+  const hint =
+    end < overlay.lines.length
+      ? `↑↓/jk line · Enter/Space/PgDn page · b/PgUp back · g/G top/bottom · Esc/q close (${end}/${overlay.lines.length})`
+      : `end · ↑↓/jk · b/PgUp back · g top · Esc/q close (${overlay.lines.length} lines)`;
+  return [title, ...visible, clip(hint, innerWidth)];
+}
+
+function PagerOverlay({ columns, overlay, pageSize }: { columns: number; overlay: PagerOverlayState; pageSize: number }) {
+  const innerWidth = Math.max(1, overlayWidth(columns) - 4);
+  const lines = pagerOverlayLines(overlay, columns, pageSize);
+  return (
+    <OverlayBox columns={columns}>
+      {lines.map((line, index) => (
+        <Text key={`${index}-${line}`} color={index === 0 ? 'cyan' : undefined} dimColor={index > 0} wrap="truncate-end">
+          {clip(line, innerWidth)}
+        </Text>
+      ))}
+    </OverlayBox>
+  );
+}
+
+export function skillsOverlayLines(overlay: SkillsOverlayState, columns: number): string[] {
+  const width = overlayWidth(columns);
+  const innerWidth = Math.max(1, width - 4);
+  const selected = overlay.skills[overlay.selected];
+  const nameWidth = Math.max(12, Math.min(30, Math.floor(innerWidth * 0.34)));
+  const descWidth = Math.max(10, innerWidth - nameWidth - 6);
+
+  if (!overlay.skills.length) {
+    return ['Sanook skills hub', 'No skills found', 'Esc/q close'];
+  }
+
+  if (overlay.detail && selected) {
+    return [
+      'Sanook skills hub',
+      selected.name,
+      selected.description ? clip(selected.description, innerWidth) : '(no description)',
+      selected.whenToUse ? `when: ${clip(selected.whenToUse, Math.max(1, innerWidth - 6))}` : '',
+      `path: ${clip(selected.path, Math.max(1, innerWidth - 6))}`,
+      'Enter/Esc back · q close',
+    ].filter(Boolean);
+  }
+
+  const window = listWindow(overlay.skills.length, overlay.selected, SKILL_WINDOW);
+  const visible = overlay.skills.slice(window.start, window.end);
+  const lines = ['Sanook skills hub', `${overlay.skills.length} skills · Enter inspect`];
+
+  if (window.start > 0) lines.push(`... ${window.start} above`);
+  for (const [offset, skill] of visible.entries()) {
+    const index = window.start + offset;
+    const cursor = index === overlay.selected ? '>' : ' ';
+    lines.push(`${cursor} ${clip(skill.name, nameWidth).padEnd(nameWidth)} ${clip(skill.description || '(no description)', descWidth)}`);
+  }
+  if (window.end < overlay.skills.length) lines.push(`... ${overlay.skills.length - window.end} more`);
+  lines.push('↑↓/jk select · Enter inspect · Esc/q close');
+  return lines;
+}
+
+function SkillsHubOverlay({ columns, overlay }: { columns: number; overlay: SkillsOverlayState }) {
+  const innerWidth = Math.max(1, overlayWidth(columns) - 4);
+  const lines = skillsOverlayLines(overlay, columns);
+  return (
+    <OverlayBox columns={columns}>
+      {lines.map((line, index) => {
+        const isHeader = index === 0;
+        const isActive = line.startsWith('>');
+        return (
+          <Text
+            key={`${index}-${line}`}
+            color={isHeader ? 'cyan' : isActive ? 'green' : undefined}
+            dimColor={!isHeader && !isActive}
+            inverse={isActive}
+            wrap="truncate-end"
+          >
+            {clip(line, innerWidth)}
+          </Text>
+        );
+      })}
+    </OverlayBox>
+  );
+}
+
+export function sessionsOverlayLines(overlay: SessionsOverlayState, columns: number): string[] {
+  const width = overlayWidth(columns);
+  const innerWidth = Math.max(1, width - 4);
+  if (!overlay.sessions.length) {
+    return ['Sanook sessions', 'No saved sessions for this project', 'Esc/q close'];
+  }
+
+  const idWidth = Math.max(12, Math.min(24, Math.floor(innerWidth * 0.28)));
+  const metaWidth = Math.max(12, Math.min(28, Math.floor(innerWidth * 0.34)));
+  const titleWidth = Math.max(10, innerWidth - idWidth - metaWidth - 8);
+  const window = listWindow(overlay.sessions.length, overlay.selected, SESSION_WINDOW);
+  const visible = overlay.sessions.slice(window.start, window.end);
+  const lines = ['Sanook sessions', `${overlay.sessions.length} resumable · Enter resume`];
+
+  if (window.start > 0) lines.push(`... ${window.start} above`);
+  for (const [offset, session] of visible.entries()) {
+    const index = window.start + offset;
+    const cursor = index === overlay.selected ? '>' : ' ';
+    const title = session.title || firstUserSummary(session) || '(untitled)';
+    const meta = `${session.model} · ${shortDate(session.updated)}`;
+    lines.push(
+      `${cursor} ${clip(session.id, idWidth).padEnd(idWidth)} ${clip(title, titleWidth).padEnd(titleWidth)} ${clip(meta, metaWidth)}`,
+    );
+  }
+  if (window.end < overlay.sessions.length) lines.push(`... ${overlay.sessions.length - window.end} more`);
+  lines.push('↑↓/jk select · Enter resume · Esc/q close');
+  return lines;
+}
+
+function firstUserSummary(session: Session): string {
+  const user = session.messages.find((message) => message.role === 'user');
+  const content = user?.content;
+  if (typeof content === 'string') return content.replace(/\s+/g, ' ').trim();
+  if (Array.isArray(content)) {
+    const text = content
+      .map((part) => (typeof part === 'object' && part && 'text' in part && typeof part.text === 'string' ? part.text : ''))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return text;
+  }
+  return '';
+}
+
+function SessionsSwitcherOverlay({ columns, overlay }: { columns: number; overlay: SessionsOverlayState }) {
+  const innerWidth = Math.max(1, overlayWidth(columns) - 4);
+  const lines = sessionsOverlayLines(overlay, columns);
+  return (
+    <OverlayBox columns={columns}>
+      {lines.map((line, index) => {
+        const isHeader = index === 0;
+        const isActive = line.startsWith('>');
+        return (
+          <Text
+            key={`${index}-${line}`}
+            color={isHeader ? 'cyan' : isActive ? 'green' : undefined}
+            dimColor={!isHeader && !isActive}
+            inverse={isActive}
+            wrap="truncate-end"
+          >
+            {clip(line, innerWidth)}
+          </Text>
+        );
+      })}
+    </OverlayBox>
+  );
+}
+
 /** Floating TUI overlays inspired by Hermes hubs; model/skills/session hubs plug in here. */
-export function FloatingOverlay({ columns, overlay }: FloatingOverlayProps) {
+export function FloatingOverlay({ columns, overlay, pageSize = DEFAULT_PAGER_PAGE_SIZE }: FloatingOverlayProps) {
   if (!overlay) return null;
   if (overlay.kind === 'hotkeys') return <HotkeysOverlay columns={columns} />;
+  if (overlay.kind === 'mcp') return <McpHubOverlay columns={columns} overlay={overlay} />;
   if (overlay.kind === 'model') return <ModelPickerOverlay columns={columns} overlay={overlay} />;
+  if (overlay.kind === 'pager') return <PagerOverlay columns={columns} overlay={overlay} pageSize={pageSize} />;
+  if (overlay.kind === 'skills') return <SkillsHubOverlay columns={columns} overlay={overlay} />;
+  if (overlay.kind === 'sessions') return <SessionsSwitcherOverlay columns={columns} overlay={overlay} />;
   return null;
 }

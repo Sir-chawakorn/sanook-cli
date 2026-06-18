@@ -5,28 +5,37 @@ import type { ModelMessage } from 'ai';
 import { Box, Text, Static, useApp, useInput, useStdout } from 'ink';
 import {
   BUILTIN_COMMANDS,
+  HELP_TEXT,
   expandCustomCommand,
   loadCustomCommands,
   parseCommand,
   parseSlashInvocation,
 } from '../commands.js';
 import { runAgent, type AgentEvent } from '../loop.js';
-import { saveSession, newSessionId } from '../session.js';
+import { saveSession, newSessionId, listSessions, type Session } from '../session.js';
 import { getBrainPath, appendBrainWorklog } from '../memory.js';
 import { autoCompact, estimateTokens, summarizeCompact } from '../compaction.js';
 import { makeSummarizer } from '../summarize.js';
 import { agentTuning, patchGlobalConfig } from '../config.js';
 import { snapshotWorkTree, restoreWorkTree } from '../checkpoint.js';
 import { renderInsights } from '../insights.js';
+import { loadMcpHubEntries } from '../mcp-hub.js';
+import { probeMcpServer } from '../mcp.js';
+import { initialModelPickerIndex, modelPickerOptions } from '../model-picker.js';
+import { clampCompletionIndex, completionForInput, completionReplaceValue } from '../slash-completion.js';
+import { loadSkills } from '../skills.js';
 import { useEditor } from './useEditor.js';
+import { useBusyElapsedSeconds } from './useBusyElapsed.js';
+import { useGitBranch } from './useGitBranch.js';
 import { loadHistory, appendHistory } from './history.js';
 import { expandMentions } from './mentions.js';
 import { BRAND } from '../brand.js';
 import { Banner } from './banner.js';
-import { FloatingOverlay, type OverlayState } from './overlay.js';
-import { compactPreview, getQueueWindow } from './queue.js';
+import { CompletionOverlay, FloatingOverlay, type OverlayState } from './overlay.js';
+import { clampQueueActiveIndex, compactPreview, getQueueWindow, queueActiveIndexAfterDelete } from './queue.js';
 import { SessionPanel } from './session-panel.js';
 import { footerStatus } from './status.js';
+import { toolTrailLines, updateToolTrailOnEvent, type ToolTrailItem } from './tool-trail.js';
 
 const execFileP = promisify(execFile);
 const PRE_TURN_COMPACT_TOKENS = 100_000; // session ยาวมากเท่านั้นถึง summarize ก่อน turn (mode summarize)
@@ -35,6 +44,7 @@ interface Turn {
   id: number;
   role: 'user' | 'assistant' | 'system';
   text: string;
+  toolTrail?: ToolTrailItem[];
 }
 interface Mark {
   turnId: number;
@@ -70,12 +80,18 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     return seed;
   });
   const [streaming, setStreaming] = useState('');
+  const [toolTrail, setToolTrail] = useState<ToolTrailItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [model, setModel] = useState(initialModel);
   const [approvalReq, setApprovalReq] = useState<{ tool: string; summary: string } | null>(null);
   const [overlay, setOverlay] = useState<OverlayState | null>(null);
+  const [completionIndex, setCompletionIndex] = useState(0);
+  const [historyResetKey, setHistoryResetKey] = useState(0);
+  const [queueActiveIndex, setQueueActiveIndex] = useState<number | null>(null);
   const idRef = useRef(0);
   const lastCost = useRef<string>('');
+  const nextToolTrailId = useRef(0);
+  const toolTrailRef = useRef<ToolTrailItem[]>([]);
   const msgsRef = useRef<ModelMessage[]>(initialHistory ?? []); // conversation จริงสำหรับ LLM (สะสมข้ามรอบ)
   const sessionId = useRef(newSessionId());
   const sessionCreated = useRef(new Date().toISOString());
@@ -91,19 +107,98 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const enqueue = (msg: string): void => {
     queueRef.current.push(msg);
     setQueued([...queueRef.current]);
+    setQueueActiveIndex((index) => clampQueueActiveIndex(index, queueRef.current.length));
   };
   const dequeue = (): string | undefined => {
     const m = queueRef.current.shift();
     setQueued([...queueRef.current]);
+    setQueueActiveIndex((index) => {
+      if (!queueRef.current.length) return null;
+      if (index === null) return 0;
+      return clampQueueActiveIndex(index - 1, queueRef.current.length);
+    });
     return m;
   };
   const clearQueue = (): void => {
     queueRef.current = [];
     setQueued([]);
+    setQueueActiveIndex(null);
+  };
+  const moveQueueActive = (delta: number): void => {
+    setQueueActiveIndex((index) => {
+      const active = clampQueueActiveIndex(index, queueRef.current.length);
+      return active === null ? null : clampQueueActiveIndex(active + delta, queueRef.current.length);
+    });
+  };
+  const removeActiveQueued = (): string | undefined => {
+    const length = queueRef.current.length;
+    const active = clampQueueActiveIndex(queueActiveIndex, length);
+    if (active === null) return undefined;
+    const [removed] = queueRef.current.splice(active, 1);
+    setQueued([...queueRef.current]);
+    setQueueActiveIndex(queueActiveIndexAfterDelete(active, length));
+    return removed;
   };
 
-  const addTurn = (role: Turn['role'], text: string): void =>
-    setHistory((h) => [...h, { id: idRef.current++, role, text }]);
+  const resetLiveToolTrail = (): void => {
+    nextToolTrailId.current = 0;
+    toolTrailRef.current = [];
+    setToolTrail([]);
+  };
+
+  const snapshotToolTrail = (): ToolTrailItem[] | undefined =>
+    toolTrailRef.current.length ? toolTrailRef.current.map((item) => ({ ...item })) : undefined;
+
+  const addTurn = (role: Turn['role'], text: string, extras?: { toolTrail?: ToolTrailItem[] }): void =>
+    setHistory((h) => [
+      ...h,
+      {
+        id: idRef.current++,
+        role,
+        text,
+        toolTrail: extras?.toolTrail?.length ? extras.toolTrail.map((item) => ({ ...item })) : undefined,
+      },
+    ]);
+
+  const recordToolTrailEvent = (event: AgentEvent): void => {
+    if (event.type !== 'tool-call' && event.type !== 'tool-result' && event.type !== 'error') return;
+    const type = event.type === 'tool-call' ? 'tool-call' : event.type === 'tool-result' ? 'tool-result' : 'error';
+    const next = updateToolTrailOnEvent(
+      toolTrailRef.current,
+      { detail: event.detail, text: event.text, tool: event.tool, type },
+      nextToolTrailId.current,
+    );
+    nextToolTrailId.current = next.nextId;
+    toolTrailRef.current = next.items;
+    setToolTrail(next.items);
+  };
+
+  const replaceHistory = (next: Turn[]): void => {
+    setHistoryResetKey((key) => key + 1);
+    setHistory(next);
+  };
+
+  const filterHistory = (predicate: (turn: Turn) => boolean): void => {
+    setHistoryResetKey((key) => key + 1);
+    setHistory((h) => h.filter(predicate));
+  };
+
+  const cwd = process.cwd();
+  const gitBranch = useGitBranch(cwd);
+  const busyElapsedSeconds = useBusyElapsedSeconds(busy);
+  const columns = Math.max(20, stdout?.columns ?? 80);
+  const pagerPageSize = Math.max(5, Math.min(18, (stdout?.rows ?? 24) - 10));
+  const completion = !overlay && !busy ? completionForInput(editor.value, cwd) : { items: [], replaceFrom: 0 };
+  const completions = completion.items;
+  const selectedCompletion = clampCompletionIndex(completionIndex, completions.length);
+
+  const applyCompletion = (): boolean => {
+    const next = completionReplaceValue(editor.value, completions[selectedCompletion], completion.replaceFrom);
+    if (!next) return false;
+    editor.setValue(next);
+    setCompletionIndex(0);
+    return true;
+  };
 
   // /diff /undo — git-backed (execFile ไม่ผ่าน shell)
   async function runGit(args: string[], label: string): Promise<void> {
@@ -122,8 +217,204 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       setApprovalReq({ tool, summary });
     });
 
+  const openModelPicker = (): void => {
+    const options = modelPickerOptions(model);
+    setOverlay({ kind: 'model', options, selected: initialModelPickerIndex(options) });
+  };
+
+  const openMcpHub = async (): Promise<void> => {
+    try {
+      const state = await loadMcpHubEntries(process.cwd());
+      setOverlay({ detail: false, kind: 'mcp', notes: state.notes, selected: 0, servers: state.entries });
+    } catch (e) {
+      addTurn('system', `mcp: ${(e as Error).message}`);
+    }
+  };
+
+  const moveMcpHub = (delta: number): void => {
+    setOverlay((current) => {
+      if (current?.kind !== 'mcp' || current.detail) return current;
+      const last = Math.max(0, current.servers.length - 1);
+      return { ...current, selected: Math.max(0, Math.min(last, current.selected + delta)) };
+    });
+  };
+
+  const testMcpServerFromOverlay = (current: OverlayState): void => {
+    if (current.kind !== 'mcp') return;
+    const server = current.servers[current.selected];
+    if (!server) return;
+
+    setOverlay({ ...current, detail: true, probe: { serverName: server.name, status: 'running' } });
+    void probeMcpServer(server.config, 8_000)
+      .then((result) => {
+        setOverlay((latest) => {
+          if (latest?.kind !== 'mcp' || !latest.detail || latest.probe?.serverName !== server.name) return latest;
+          return {
+            ...latest,
+            detail: true,
+            probe: result.ok
+              ? { serverName: server.name, status: 'pass', tools: result.tools, transport: result.transport }
+              : {
+                  error: result.error ?? 'unknown error',
+                  serverName: server.name,
+                  status: 'fail',
+                  transport: result.transport,
+                },
+          };
+        });
+      })
+      .catch((e) => {
+        setOverlay((latest) => {
+          if (latest?.kind !== 'mcp' || !latest.detail || latest.probe?.serverName !== server.name) return latest;
+          return {
+            ...latest,
+            detail: true,
+            probe: { error: (e as Error).message, serverName: server.name, status: 'fail' },
+          };
+        });
+      });
+  };
+
+  const moveModelPicker = (delta: number): void => {
+    setOverlay((current) => {
+      if (current?.kind !== 'model') return current;
+      const last = Math.max(0, current.options.length - 1);
+      return { ...current, selected: Math.max(0, Math.min(last, current.selected + delta)) };
+    });
+  };
+
+  const selectModelFromOverlay = (current: OverlayState): void => {
+    if (current.kind !== 'model') return;
+    const selectedSpec = current.options[current.selected]?.spec ?? '';
+    setOverlay(null);
+    if (!selectedSpec) return;
+    const result = parseCommand(`/model ${selectedSpec}`, { model, costSummary: lastCost.current });
+    if (result.modelChange) setModel(result.modelChange);
+    if (result.message) addTurn('system', result.message);
+  };
+
+  const openHelpPager = (text = HELP_TEXT): void => {
+    setOverlay({ kind: 'pager', lines: text.split('\n'), offset: 0, title: 'Sanook help' });
+  };
+
+  const movePager = (delta: number | 'top' | 'bottom'): void => {
+    setOverlay((current) => {
+      if (current?.kind !== 'pager') return current;
+      const max = Math.max(0, current.lines.length - pagerPageSize);
+      const step = delta === 'top' ? -current.lines.length : delta === 'bottom' ? current.lines.length : delta;
+      const next = Math.max(0, Math.min(current.offset + step, max));
+      return next === current.offset ? current : { ...current, offset: next };
+    });
+  };
+
+  const pagePagerForward = (): void => {
+    setOverlay((current) => {
+      if (current?.kind !== 'pager') return current;
+      const max = Math.max(0, current.lines.length - pagerPageSize);
+      if (current.offset >= max) return null;
+      return { ...current, offset: Math.min(current.offset + pagerPageSize, max) };
+    });
+  };
+
+  const openSkillsHub = async (): Promise<void> => {
+    try {
+      const skills = (await loadSkills()).sort((a, b) => a.name.localeCompare(b.name));
+      setOverlay({ detail: false, kind: 'skills', selected: 0, skills });
+    } catch (e) {
+      addTurn('system', `skills: ${(e as Error).message}`);
+    }
+  };
+
+  const moveSkillsHub = (delta: number): void => {
+    setOverlay((current) => {
+      if (current?.kind !== 'skills' || current.detail) return current;
+      const last = Math.max(0, current.skills.length - 1);
+      return { ...current, selected: Math.max(0, Math.min(last, current.selected + delta)) };
+    });
+  };
+
+  const openSessionsHub = async (): Promise<void> => {
+    try {
+      const sessions = await listSessions({ cwd: process.cwd(), limit: 20 });
+      setOverlay({ kind: 'sessions', selected: 0, sessions });
+    } catch (e) {
+      addTurn('system', `sessions: ${(e as Error).message}`);
+    }
+  };
+
+  const moveSessionsHub = (delta: number): void => {
+    setOverlay((current) => {
+      if (current?.kind !== 'sessions') return current;
+      const last = Math.max(0, current.sessions.length - 1);
+      return { ...current, selected: Math.max(0, Math.min(last, current.selected + delta)) };
+    });
+  };
+
+  const resumeSessionFromOverlay = (current: OverlayState): void => {
+    if (current.kind !== 'sessions') return;
+    const session = current.sessions[current.selected];
+    setOverlay(null);
+    if (!session) return;
+    restoreSession(session);
+  };
+
+  const restoreSession = (session: Session): void => {
+    msgsRef.current = session.messages;
+    checkpoints.current = [];
+    lastRun.current = null;
+    lastCost.current = '';
+    sessionId.current = session.id;
+    sessionCreated.current = session.created;
+    setModel(session.model);
+    resetLiveToolTrail();
+    replaceHistory([{ id: idRef.current++, role: 'system', text: `↻ เปิด session ${session.id} (${session.messages.length} messages)` }]);
+  };
+
   useInput((input, key) => {
     if (overlay) {
+      if (overlay.kind === 'model') {
+        if (key.escape || input === 'q' || input === 'Q') setOverlay(null);
+        else if (key.return) selectModelFromOverlay(overlay);
+        else if (key.downArrow || input === 'j' || input === 'J') moveModelPicker(1);
+        else if (key.upArrow || input === 'k' || input === 'K') moveModelPicker(-1);
+        return;
+      }
+      if (overlay.kind === 'mcp') {
+        if (input === 'q' || input === 'Q') setOverlay(null);
+        else if (input === 't' || input === 'T') testMcpServerFromOverlay(overlay);
+        else if (overlay.detail && (key.escape || key.return)) setOverlay({ ...overlay, detail: false });
+        else if (key.escape) setOverlay(null);
+        else if (key.return && overlay.servers.length) setOverlay({ ...overlay, detail: true });
+        else if (key.downArrow || input === 'j' || input === 'J') moveMcpHub(1);
+        else if (key.upArrow || input === 'k' || input === 'K') moveMcpHub(-1);
+        return;
+      }
+      if (overlay.kind === 'pager') {
+        if (key.escape || input === 'q' || input === 'Q') setOverlay(null);
+        else if (key.upArrow || input === 'k' || input === 'K') movePager(-1);
+        else if (key.downArrow || input === 'j' || input === 'J') movePager(1);
+        else if (key.pageUp || input === 'b' || input === 'B') movePager(-pagerPageSize);
+        else if (input === 'g') movePager('top');
+        else if (input === 'G') movePager('bottom');
+        else if (key.return || key.pageDown || input === ' ') pagePagerForward();
+        return;
+      }
+      if (overlay.kind === 'skills') {
+        if (input === 'q' || input === 'Q') setOverlay(null);
+        else if (overlay.detail && (key.escape || key.return)) setOverlay({ ...overlay, detail: false });
+        else if (key.escape) setOverlay(null);
+        else if (key.return && overlay.skills.length) setOverlay({ ...overlay, detail: true });
+        else if (key.downArrow || input === 'j' || input === 'J') moveSkillsHub(1);
+        else if (key.upArrow || input === 'k' || input === 'K') moveSkillsHub(-1);
+        return;
+      }
+      if (overlay.kind === 'sessions') {
+        if (key.escape || input === 'q' || input === 'Q') setOverlay(null);
+        else if (key.return) resumeSessionFromOverlay(overlay);
+        else if (key.downArrow || input === 'j' || input === 'J') moveSessionsHub(1);
+        else if (key.upArrow || input === 'k' || input === 'K') moveSessionsHub(-1);
+        return;
+      }
       if (key.escape || key.return || input === 'q' || input === 'Q') setOverlay(null);
       return;
     }
@@ -145,6 +436,14 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         clearQueue();
         return;
       }
+      if (key.ctrl && input === 'x') {
+        removeActiveQueued();
+        return;
+      }
+      if (!editor.value && queueRef.current.length && (key.upArrow || key.downArrow)) {
+        moveQueueActive(key.upArrow ? -1 : 1);
+        return;
+      }
       // พิมพ์ระหว่าง busy ได้ — Enter = ต่อคิว (รันอัตโนมัติหลัง turn นี้จบ)
       const a = editor.handleKey(input, key);
       if (a === 'submit') {
@@ -160,6 +459,19 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         if (v) enqueue(v);
       }
       return;
+    }
+    if (completions.length) {
+      if (key.upArrow) {
+        setCompletionIndex((index) => clampCompletionIndex(index - 1, completions.length));
+        return;
+      }
+      if (key.downArrow) {
+        setCompletionIndex((index) => clampCompletionIndex(index + 1, completions.length));
+        return;
+      }
+      if (key.tab || key.return) {
+        if (applyCompletion()) return;
+      }
     }
     const action = editor.handleKey(input, key);
     if (action === 'submit') void submit(editor.value);
@@ -187,7 +499,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     }
     msgsRef.current = msgsRef.current.slice(0, cp.msgLen);
     lastRun.current = null;
-    setHistory((h) => h.filter((t) => t.id < cp.turnId));
+    filterHistory((t) => t.id < cp.turnId);
     addTurn('system', `↩ ย้อนกลับ 1 turn${note}`);
   }
 
@@ -200,7 +512,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     }
     msgsRef.current = msgsRef.current.slice(0, previous.msgLen);
     checkpoints.current = checkpoints.current.filter((cp) => cp.turnId < previous.turnId);
-    setHistory((h) => h.filter((t) => t.id < previous.turnId));
+    filterHistory((t) => t.id < previous.turnId);
     const mark = { turnId: idRef.current, msgLen: previous.msgLen };
     const preview = previous.userText.length > 120 ? `${previous.userText.slice(0, 117)}...` : previous.userText;
     addTurn('user', '/retry');
@@ -268,7 +580,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         msgsRef.current = [];
         checkpoints.current = [];
         lastRun.current = null;
-        return setHistory([]);
+        setStreaming('');
+        resetLiveToolTrail();
+        replaceHistory([]);
+        return;
       }
       if (cmd.action === 'compact') {
         void compactHistory(40_000, 'บีบ context');
@@ -294,8 +609,28 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         );
         return;
       }
+      if (cmd.action === 'help') {
+        openHelpPager(cmd.message);
+        return;
+      }
+      if (cmd.action === 'mcpHub') {
+        void openMcpHub();
+        return;
+      }
       if (cmd.action === 'hotkeys') {
         setOverlay({ kind: 'hotkeys' });
+        return;
+      }
+      if (cmd.action === 'modelPicker') {
+        openModelPicker();
+        return;
+      }
+      if (cmd.action === 'skillsHub') {
+        void openSkillsHub();
+        return;
+      }
+      if (cmd.action === 'sessionsHub') {
+        void openSessionsHub();
         return;
       }
       if (cmd.modelChange) setModel(cmd.modelChange);
@@ -332,6 +667,8 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     checkpoints.current.push({ ref, turnId: mark.turnId, msgLen: mark.msgLen });
     const ac = new AbortController(); // steering: ให้ Esc/Ctrl+C หยุด stream กลางทางได้
     abortRef.current = ac;
+    resetLiveToolTrail();
+    setStreaming('');
     setBusy(true);
     let buf = '';
     let lastFlush = 0;
@@ -355,14 +692,15 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
               lastFlush = now;
             }
           } else if (e.type === 'tool-call') {
-            buf += `\n→ ${e.tool}\n`;
-            setStreaming(buf);
+            recordToolTrailEvent(e);
+          } else if (e.type === 'tool-result' || e.type === 'error') {
+            recordToolTrailEvent(e);
           }
         },
       });
       msgsRef.current = messages;
       lastCost.current = cost.summary();
-      addTurn('assistant', buf.trim() || text.trim());
+      addTurn('assistant', buf.trim() || text.trim(), { toolTrail: snapshotToolTrail() });
       // เซฟ session ทุกรอบ → resume ได้ด้วย sanook -c
       void saveSession({
         id: sessionId.current,
@@ -387,13 +725,14 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     } catch (err) {
       if (ac.signal.aborted) {
         // หยุดเอง — เก็บ partial output ไว้ดู, ทิ้ง turn นี้ออกจาก LLM history (msgsRef ไม่อัปเดต)
-        if (buf.trim()) addTurn('assistant', buf.trim());
+        if (buf.trim()) addTurn('assistant', buf.trim(), { toolTrail: snapshotToolTrail() });
         addTurn('system', '⊘ หยุด turn แล้ว (ไฟล์ที่ tool แก้ไปแล้วคืนด้วย /rewind ได้)');
       } else {
         addTurn('system', `ERROR: ${(err as Error).message}`);
       }
     } finally {
       setStreaming('');
+      resetLiveToolTrail();
       setBusy(false);
       abortRef.current = null;
     }
@@ -403,8 +742,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   }
 
   const costHint = lastCost.current.includes('cost ') ? lastCost.current.split('cost ')[1] : '';
-  const columns = Math.max(20, stdout?.columns ?? 80);
-  const queueWindow = getQueueWindow(queued.length);
+  const contextTokens = estimateTokens(msgsRef.current);
+  const activeQueueIndex = clampQueueActiveIndex(queueActiveIndex, queued.length);
+  const queueWindow = getQueueWindow(queued.length, activeQueueIndex);
+  const toolTrailView = toolTrailLines(toolTrail, columns);
 
   return (
     <Box flexDirection="column">
@@ -414,20 +755,29 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
           <SessionPanel columns={columns} model={model} mode={permissionMode === 'ask' ? 'ask' : 'auto'} />
         </>
       ) : null}
-      <Static items={history}>{(turn) => <TurnView key={turn.id} turn={turn} />}</Static>
+      <Static key={historyResetKey} items={history}>{(turn) => <TurnView key={turn.id} columns={columns} turn={turn} />}</Static>
       {streaming ? (
         <Box marginTop={1}>
           <Text>{streaming}</Text>
         </Box>
       ) : null}
-      <FloatingOverlay columns={columns} overlay={overlay} />
+      {toolTrailView.length ? (
+        <ToolTrailView columns={columns} items={toolTrail} />
+      ) : null}
+      <FloatingOverlay columns={columns} overlay={overlay} pageSize={pagerPageSize} />
+      <CompletionOverlay columns={columns} items={completions} selected={selectedCompletion} />
       {queued.length ? (
         <Box flexDirection="column" marginTop={1}>
-          <Text dimColor>queued ({queued.length}) · Esc clears</Text>
+          <Text dimColor>queued ({queued.length}) · ↑↓ select · Ctrl+X delete · Esc clears</Text>
           {queueWindow.showLead ? <Text dimColor> …</Text> : null}
           {queued.slice(queueWindow.start, queueWindow.end).map((q, i) => (
-            <Text key={`${queueWindow.start + i}-${q.slice(0, 16)}`} dimColor>
-              {' '} {queueWindow.start + i + 1}. {compactPreview(q, Math.max(16, columns - 10))}
+            <Text
+              key={`${queueWindow.start + i}-${q.slice(0, 16)}`}
+              color={queueWindow.start + i === activeQueueIndex ? 'yellow' : undefined}
+              dimColor={queueWindow.start + i !== activeQueueIndex}
+            >
+              {queueWindow.start + i === activeQueueIndex ? '›' : ' '} {queueWindow.start + i + 1}.{' '}
+              {compactPreview(q, Math.max(16, columns - 10))}
             </Text>
           ))}
           {queueWindow.showTail ? <Text dimColor>  …and {queued.length - queueWindow.end} more</Text> : null}
@@ -445,7 +795,20 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
           <InputView value={editor.value} cursor={editor.cursor} busy={busy} />
         </Box>
       )}
-      <Text dimColor>{footerStatus({ columns, costHint, model, mode: permissionMode === 'ask' ? 'ask' : 'auto' })}</Text>
+      <Text dimColor>
+        {footerStatus({
+          branch: gitBranch,
+          busy,
+          columns,
+          contextTokens,
+          costHint,
+          cwd,
+          elapsedSeconds: busyElapsedSeconds,
+          model,
+          mode: permissionMode === 'ask' ? 'ask' : 'auto',
+          queuedCount: queued.length,
+        })}
+      </Text>
     </Box>
   );
 }
@@ -467,7 +830,31 @@ function InputView({ value, cursor, busy }: { value: string; cursor: number; bus
   );
 }
 
-function TurnView({ turn }: { turn: Turn }) {
+function ToolTrailView({ columns, items }: { columns: number; items: ToolTrailItem[] }) {
+  const lines = toolTrailLines(items, columns);
+  if (!lines.length) return null;
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      {lines.map((line, index) => {
+        const isRunning = line.startsWith('>');
+        const isError = line.startsWith('!');
+        const isDone = line.startsWith('+');
+        return (
+          <Text
+            key={`${index}-${line}`}
+            color={index === 0 ? 'cyan' : isError ? 'red' : isRunning ? 'yellow' : undefined}
+            dimColor={isDone}
+            wrap="truncate-end"
+          >
+            {line}
+          </Text>
+        );
+      })}
+    </Box>
+  );
+}
+
+function TurnView({ columns, turn }: { columns: number; turn: Turn }) {
   if (turn.role === 'system') return <Text dimColor>{turn.text}</Text>;
   if (turn.role === 'user')
     return (
@@ -477,8 +864,9 @@ function TurnView({ turn }: { turn: Turn }) {
       </Box>
     );
   return (
-    <Box marginTop={1}>
+    <Box flexDirection="column" marginTop={1}>
       <Text>{turn.text}</Text>
+      {turn.toolTrail ? <ToolTrailView columns={columns} items={turn.toolTrail} /> : null}
     </Box>
   );
 }

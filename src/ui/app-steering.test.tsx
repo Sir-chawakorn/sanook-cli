@@ -94,4 +94,41 @@ describe('real-time steering', () => {
 
     unmount();
   });
+
+  it('Ctrl+X deletes the active queued prompt while busy', async () => {
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" permissionMode="auto" />);
+
+    stdin.write('first prompt');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => h.opts !== null);
+
+    stdin.write('queued one');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('queued one'));
+
+    stdin.write('queued two');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('queued two'));
+
+    expect(lastFrame()).toContain('queued (2)');
+    expect(lastFrame()).toContain('› 1. queued one');
+
+    stdin.write('\x1B[B'); // Down arrow selects the second queued row while draft is empty.
+    await waitFor(() => (lastFrame() ?? '').includes('› 2. queued two'));
+
+    stdin.write('\x18'); // Ctrl+X
+    await waitFor(() => !(lastFrame() ?? '').includes('queued two'));
+
+    expect(lastFrame()).toContain('queued (1)');
+    expect(lastFrame()).toContain('queued one');
+
+    stdin.write('\x18'); // Ctrl+X
+    await waitFor(() => !(lastFrame() ?? '').includes('queued ('));
+
+    expect(lastFrame()).not.toContain('queued one');
+    unmount();
+  });
 });

@@ -161,6 +161,7 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
     lines.push(`  brainPath: ${valueOrUnset(loadedConfig.brainPath)}`);
     lines.push(`  cacheTtl: ${loadedConfig.cacheTtl}`);
     lines.push(`  compaction: ${loadedConfig.compaction}`);
+    lines.push(`  contextCompression: ${loadedConfig.contextCompression}`);
     lines.push(`  thinking: ${valueOrUnset(loadedConfig.thinking)}`);
     lines.push(`  summaryModel: ${valueOrUnset(loadedConfig.summaryModel)}`);
     lines.push(`  embeddingModel: ${valueOrUnset(loadedConfig.embeddingModel)}`);
