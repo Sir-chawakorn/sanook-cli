@@ -100,7 +100,10 @@ export function parseSendTarget(raw: string): SendTarget {
   const target: SendTarget = { platform, address, thread };
   if (platform === 'telegram') {
     if (address) target.chatId = parseNumericId(address, 'chat_id');
-    if (thread) target.threadId = parseNumericId(thread, 'thread_id');
+    if (thread) {
+      target.threadId = parseNumericId(thread, 'thread_id');
+      if (target.threadId <= 0) throw new Error('thread_id ต้องเป็น integer มากกว่า 0');
+    }
   }
   if (platform === 'signal' && address) target.address = normalizeSignalId(address);
   if (platform === 'whatsapp' && address) {

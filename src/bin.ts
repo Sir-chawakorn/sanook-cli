@@ -190,8 +190,8 @@ config & mcp:
   ${BRAND.cliName} insights [--days N] [--all]    ดู usage/session insights ในเครื่อง
   ${BRAND.cliName} dump [--show-keys]             diagnostic/support dump แบบไม่โชว์ raw secret
   ${BRAND.cliName} tools                          ดู tool surface ที่ agent ใช้ได้
-  ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/budgetUsd/permissionMode/cacheTtl/compaction/thinking/embeddingModel)
-  ${BRAND.cliName} mcp [list|add <name> <cmd> …|remove <name>]   จัดการ MCP servers
+  ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/budgetUsd/permissionMode/cacheTtl/compaction/contextCompression/thinking/embeddingModel)
+  ${BRAND.cliName} mcp [search|info|install|test|doctor|preset|list|add|remove]   จัดการ MCP servers
   ${BRAND.cliName} trust [status|add|remove]      อนุญาต/ยกเลิก project .sanook mcp/hooks/skills/commands
 
 flags:
@@ -3141,6 +3141,7 @@ async function runConfig(args: string[]): Promise<void> {
     'pricing',
     'cacheTtl',
     'compaction',
+    'contextCompression',
     'thinking',
     'summaryModel',
     'embeddingModel',
@@ -3179,6 +3180,9 @@ async function runConfig(args: string[]): Promise<void> {
       process.exit(1);
     } else if (key === 'compaction' && raw !== 'truncate' && raw !== 'summarize') {
       console.error('compaction ต้องเป็น truncate หรือ summarize');
+      process.exit(1);
+    } else if (key === 'contextCompression' && raw !== 'off' && raw !== 'selective' && raw !== 'headroom') {
+      console.error('contextCompression ต้องเป็น off, selective หรือ headroom');
       process.exit(1);
     } else if (key === 'thinking') {
       // เก็บเป็น number (budget) หรือ boolean ให้ตรง ConfigSchema (ไม่เก็บ string)
@@ -3261,25 +3265,190 @@ async function runMcpServe(): Promise<void> {
   await runMcpServer();
 }
 
-/** sanook mcp [list | add <name> <command> [args...] | remove <name>] — จัดการ ~/.sanook/mcp.json */
+/** sanook mcp [search|info|install|test|doctor|list|add|remove] — จัดการ ~/.sanook/mcp.json */
 async function runMcp(args: string[]): Promise<void> {
-  const mcpPath = appHomePath('mcp.json');
-  type Server = { command?: string; args?: string[]; url?: string };
-  let cfg: { mcpServers: Record<string, Server> } = { mcpServers: {} };
-  try {
-    const parsed = JSON.parse(await readFile(mcpPath, 'utf8')) as { mcpServers?: Record<string, Server> };
-    cfg = { mcpServers: parsed.mcpServers ?? {} };
-  } catch {
-    /* ยังไม่มีไฟล์ */
-  }
-  const write = async (): Promise<void> => {
-    await mkdir(dirname(mcpPath), { recursive: true });
-    await writeFile(mcpPath, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
-    await chmod(mcpPath, 0o600).catch(() => {});
+  type Server = { command?: string; args?: string[]; url?: string; env?: Record<string, string>; headers?: Record<string, string> };
+  const readConfig = async (path: string): Promise<{ mcpServers: Record<string, Server> }> => {
+    try {
+      const parsed = JSON.parse(await readFile(path, 'utf8')) as { mcpServers?: Record<string, Server> };
+      return { mcpServers: parsed.mcpServers ?? {} };
+    } catch {
+      return { mcpServers: {} };
+    }
   };
-  const [action, name, command, ...cmdArgs] = args;
+  const writeConfig = async (path: string, cfg: { mcpServers: Record<string, Server> }): Promise<void> => {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
+    await chmod(path, 0o600).catch(() => {});
+  };
+  const mcpPath = appHomePath('mcp.json');
+  let cfg = await readConfig(mcpPath);
+  const [action = 'list', ...rest] = args;
+  const positionals = (items: string[], valueFlags = new Set<string>()): string[] => {
+    const out: string[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.startsWith('--')) {
+        out.push(item);
+        continue;
+      }
+      const flag = item.includes('=') ? item.slice(0, item.indexOf('=')) : item;
+      if (!item.includes('=') && valueFlags.has(flag) && items[i + 1]) i++;
+    }
+    return out;
+  };
+
+  if (action === 'search') {
+    const { searchMcpRegistry, formatRegistrySearch } = await import('./mcp-registry.js');
+    let limit = 10;
+    let cursor: string | undefined;
+    const query: string[] = [];
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i];
+      if (a === '--limit') limit = Number(rest[++i]);
+      else if (a.startsWith('--limit=')) limit = Number(a.slice('--limit='.length));
+      else if (a === '--cursor') cursor = rest[++i];
+      else if (a.startsWith('--cursor=')) cursor = a.slice('--cursor='.length);
+      else query.push(a);
+    }
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+      console.error('--limit ต้องเป็นจำนวนเต็ม 1-50');
+      process.exit(1);
+    }
+    const result = await searchMcpRegistry(query.join(' '), { limit, cursor });
+    console.log(formatRegistrySearch(result));
+    return;
+  }
+
+  if (action === 'info') {
+    const { getMcpRegistryServer, formatRegistryInfo } = await import('./mcp-registry.js');
+    const name = positionals(rest, new Set(['--version']))[0];
+    const versionArg = rest.find((item) => item.startsWith('--version='));
+    const version = versionArg?.slice('--version='.length) ?? (rest.includes('--version') ? rest[rest.indexOf('--version') + 1] : undefined);
+    if (!name) {
+      console.error(`ใช้: ${BRAND.cliName} mcp info <registry-server-name> [--version=x.y.z]`);
+      process.exit(1);
+    }
+    const server = await getMcpRegistryServer(name, { version });
+    if (!server) {
+      console.error(`ไม่เจอ MCP registry server: ${name}`);
+      process.exit(1);
+    }
+    console.log(formatRegistryInfo(server));
+    return;
+  }
+
+  if (action === 'preset') {
+    const { formatPreset } = await import('./mcp-registry.js');
+    console.log(formatPreset(rest[0]));
+    return;
+  }
+
+  if (action === 'install') {
+    const {
+      buildMcpInstallPlan,
+      getMcpRegistryServer,
+      parseKeyValueList,
+      formatRegistryInfo,
+    } = await import('./mcp-registry.js');
+    const name = positionals(rest, new Set(['--name', '--transport', '--env', '--header', '--version']))[0];
+    if (!name) {
+      console.error(`ใช้: ${BRAND.cliName} mcp install <registry-server-name> [--name alias] [--transport auto|remote|stdio] [--env KEY=value] [--header KEY=value] [--project]`);
+      process.exit(1);
+    }
+    const optionValues = (flag: string): string[] => {
+      const out: string[] = [];
+      for (let i = 0; i < rest.length; i++) {
+        if (rest[i] === flag && rest[i + 1]) out.push(rest[++i]);
+        else if (rest[i].startsWith(`${flag}=`)) out.push(rest[i].slice(flag.length + 1));
+      }
+      return out;
+    };
+    const valueOf = (flag: string): string | undefined => optionValues(flag)[0];
+    const alias = valueOf('--name');
+    if (alias && !isValidMcpServerName(alias)) {
+      console.error('ชื่อ MCP server ต้องเป็น a-z/A-Z/0-9/_/- ความยาวไม่เกิน 64 และห้ามใช้ชื่อพิเศษ');
+      process.exit(1);
+    }
+    const transport = valueOf('--transport') as 'auto' | 'remote' | 'stdio' | undefined;
+    if (transport && !['auto', 'remote', 'stdio'].includes(transport)) {
+      console.error('--transport ต้องเป็น auto, remote, หรือ stdio');
+      process.exit(1);
+    }
+    const server = await getMcpRegistryServer(name, { version: valueOf('--version') });
+    if (!server) {
+      console.error(`ไม่เจอ MCP registry server: ${name}`);
+      process.exit(1);
+    }
+    const plan = buildMcpInstallPlan(server, {
+      alias,
+      transport,
+      env: parseKeyValueList(optionValues('--env')),
+      headers: parseKeyValueList(optionValues('--header')),
+    });
+    if (!plan.ok) {
+      console.log(formatRegistryInfo(server));
+      console.error(`\nยัง install ไม่ได้: ต้องระบุ ${plan.missing.join(', ') || 'transport/package ที่รองรับ'}`);
+      if (plan.missing.some((item) => item.startsWith('env:'))) console.error(`ตัวอย่าง: ${BRAND.cliName} mcp install ${name} --env KEY=value`);
+      if (plan.missing.some((item) => item.startsWith('header:'))) console.error(`ตัวอย่าง: ${BRAND.cliName} mcp install ${name} --header Authorization='Bearer ...'`);
+      for (const warning of plan.warnings) console.error(`warning: ${warning}`);
+      process.exit(1);
+    }
+    let targetPath = mcpPath;
+    if (rest.includes('--project')) {
+      const { projectConfigPathIfTrusted, projectRoot } = await import('./trust.js');
+      const root = await projectRoot(process.cwd());
+      const projectPath = await projectConfigPathIfTrusted('mcp.json', root);
+      if (!projectPath) {
+        console.error(`project MCP ต้อง trust ก่อน: ${BRAND.cliName} trust add`);
+        process.exit(1);
+      }
+      targetPath = projectPath;
+    }
+    cfg = await readConfig(targetPath);
+    cfg.mcpServers[plan.alias] = plan.config;
+    await writeConfig(targetPath, cfg);
+    console.log(`ติดตั้ง MCP "${plan.alias}" จาก ${server.name} (${plan.source}) → ${targetPath}`);
+    if (plan.requirements.length) console.log(`requirements: ${plan.requirements.join(', ')}`);
+    for (const warning of plan.warnings) console.log(`warning: ${warning}`);
+    console.log(`ทดสอบ: ${BRAND.cliName} mcp test ${plan.alias}`);
+    return;
+  }
+
+  if (action === 'test' || action === 'doctor') {
+    const { loadMcpConfig, probeMcpServer } = await import('./mcp.js');
+    const logs: string[] = [];
+    const merged = await loadMcpConfig((m) => logs.push(m));
+    const names = action === 'test' && rest[0] ? [rest[0]] : Object.keys(merged);
+    if (!names.length) {
+      console.log(`ยังไม่มี MCP server — เพิ่ม: ${BRAND.cliName} mcp search github`);
+      return;
+    }
+    let failed = false;
+    if (logs.length) for (const log of logs) console.log(`note: ${log}`);
+    for (const n of names) {
+      const server = merged[n];
+      if (!server) {
+        failed = true;
+        console.log(`[FAIL] ${n} — ไม่เจอใน config`);
+        continue;
+      }
+      const probe = await probeMcpServer(server);
+      if (probe.ok) {
+        console.log(`[PASS] ${n} (${probe.transport}) — ${probe.tools.length} tool(s)`);
+        for (const tool of probe.tools.slice(0, action === 'doctor' ? 8 : 30)) console.log(`       - ${tool.name}${tool.description ? ` — ${tool.description}` : ''}`);
+        if (action === 'doctor' && probe.tools.length > 8) console.log(`       ... ${probe.tools.length - 8} more`);
+      } else {
+        failed = true;
+        console.log(`[FAIL] ${n} (${probe.transport}) — ${probe.error}`);
+      }
+    }
+    if (failed) process.exit(1);
+    return;
+  }
 
   if (action === 'add') {
+    const [name, command, ...cmdArgs] = rest;
     if (!name || !command) {
       console.error(`ใช้: ${BRAND.cliName} mcp add <name> <command> [args...]   (เช่น: mcp add fs npx -y @modelcontextprotocol/server-filesystem /path)`);
       console.error(`     remote: ${BRAND.cliName} mcp add <name> https://host/mcp   (Streamable-HTTP)`);
@@ -3291,27 +3460,44 @@ async function runMcp(args: string[]): Promise<void> {
     }
     // command เป็น http(s):// → remote MCP (Streamable-HTTP), ไม่งั้น stdio
     cfg.mcpServers[name] = /^https?:\/\//.test(command) ? { url: command } : { command, args: cmdArgs };
-    await write();
+    await writeConfig(mcpPath, cfg);
     console.log(`เพิ่ม MCP server "${name}"${/^https?:\/\//.test(command) ? ' (remote http)' : ''}`);
     return;
   }
   if (action === 'remove' || action === 'rm') {
+    const [name] = rest;
     if (name && cfg.mcpServers[name]) {
       delete cfg.mcpServers[name];
-      await write();
-      console.log(`ลบ MCP server "${name}" แล้ว`);
+      await writeConfig(mcpPath, cfg);
+      console.log(`ลบ MCP server "${name}" แล้ว (${mcpPath})`);
     } else console.log(`ไม่เจอ MCP server "${name ?? ''}"`);
     return;
   }
-  const names = Object.keys(cfg.mcpServers);
-  if (!names.length) {
-    console.log(`ยังไม่มี MCP server — เพิ่ม: ${BRAND.cliName} mcp add <name> <command> [args...]`);
+  if (action !== 'list') {
+    console.log(`ใช้: ${BRAND.cliName} mcp [search|info|install|test|doctor|preset|list|add|remove|serve]`);
     return;
   }
+  const { loadMcpConfig } = await import('./mcp.js');
+  const logs: string[] = [];
+  const merged = await loadMcpConfig((m) => logs.push(m));
+  const names = Object.keys(merged);
+  if (!names.length) {
+    console.log(`ยังไม่มี MCP server — เพิ่ม: ${BRAND.cliName} mcp search github`);
+    return;
+  }
+  if (logs.length) for (const log of logs) console.log(`note: ${log}`);
   console.log(`${names.length} MCP servers:`);
   for (const n of names) {
-    const s = cfg.mcpServers[n];
+    const s = merged[n];
     console.log(`  ${n}  —  ${s.url ? `${s.url} (http)` : `${s.command} ${(s.args ?? []).join(' ')}`}`);
+  }
+  if (rest.includes('--tools')) {
+    const { probeMcpServer } = await import('./mcp.js');
+    for (const n of names) {
+      const probe = await probeMcpServer(merged[n]);
+      console.log(`\n${probe.ok ? '[PASS]' : '[FAIL]'} ${n} tools${probe.ok ? ` (${probe.tools.length})` : ` — ${probe.error}`}`);
+      for (const tool of probe.tools.slice(0, 30)) console.log(`  - ${tool.name}`);
+    }
   }
 }
 
@@ -3585,7 +3771,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'index' && (argv.length === 1 || argv[1].startsWith('--'))) return runIndex(argv.slice(1));
   if (argv[0] === 'search' && argv.length > 1) return runSearch(argv.slice(1));
   if (argv[0] === 'mcp' && argv[1] === 'serve') return runMcpServe();
-  if (argv[0] === 'mcp' && ['add', 'list', 'remove', 'rm', undefined].includes(argv[1])) return runMcp(argv.slice(1));
+  if (argv[0] === 'mcp' && ['add', 'list', 'remove', 'rm', 'search', 'info', 'install', 'test', 'doctor', 'preset', undefined].includes(argv[1])) return runMcp(argv.slice(1));
   if (argv[0] === 'trust' && ['status', 'add', 'remove', 'rm', undefined].includes(argv[1])) return runTrust(argv.slice(1));
 
   const { model, budget, json, quiet, prompt: argPrompt, planMode, yes, resume } = parseArgs(argv);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { estimateTokens, autoCompact, truncateText, summarizeCompact, messagesToText } from './compaction.js';
+import { estimateTokens, autoCompact, truncateText, summarizeCompact, messagesToText, selectivelyCompressStaleToolResults } from './compaction.js';
 import type { ModelMessage } from 'ai';
 
 describe('estimateTokens', () => {
@@ -48,6 +48,70 @@ describe('autoCompact', () => {
     expect(out[0]).toBe(system[0]);
     expect(out[1]).toBe(system[1]);
     expect(out.some((m) => typeof m.content === 'string' && m.content.includes('ถูกตัด'))).toBe(true);
+  });
+});
+
+describe('selectivelyCompressStaleToolResults', () => {
+  function toolText(message: ModelMessage): string {
+    const part = Array.isArray(message.content) ? (message.content[0] as any) : undefined;
+    return part?.output?.value ?? '';
+  }
+
+  it('compresses old huge tool output but keeps the recent tail unchanged', () => {
+    const oldOutput = [
+      'read_file src/app.ts',
+      ...Array.from({ length: 120 }, (_, i) => `debug noise ${i} ${'x'.repeat(80)}`),
+      'src/app.ts:99 ERROR important failure',
+      ...Array.from({ length: 120 }, (_, i) => `more noise ${i} ${'y'.repeat(80)}`),
+    ].join('\n');
+    const recentOutput = `${oldOutput}\nrecent tail must stay full`;
+    const msgs: ModelMessage[] = [
+      { role: 'user', content: 'inspect' },
+      {
+        role: 'tool',
+        content: [{ type: 'tool-result', toolCallId: 'old', toolName: 'read_file', output: { type: 'text', value: oldOutput } }] as never,
+      },
+      { role: 'assistant', content: 'ok' },
+      {
+        role: 'tool',
+        content: [{ type: 'tool-result', toolCallId: 'recent', toolName: 'read_file', output: { type: 'text', value: recentOutput } }] as never,
+      },
+    ];
+
+    const out = selectivelyCompressStaleToolResults(msgs, 2, 2_000, 1_000);
+    expect(out).not.toBe(msgs);
+    expect(JSON.stringify(out[1])).toContain('important failure');
+    expect(JSON.stringify(out[1]).length).toBeLessThan(JSON.stringify(msgs[1]).length / 2);
+    expect(out[3]).toBe(msgs[3]);
+  });
+
+  it('returns the same reference when no stale tool output is large enough', () => {
+    const msgs: ModelMessage[] = [
+      {
+        role: 'tool',
+        content: [{ type: 'tool-result', toolCallId: 'x', toolName: 'grep', output: { type: 'text', value: 'short' } }] as never,
+      },
+    ];
+    expect(selectivelyCompressStaleToolResults(msgs, 0)).toBe(msgs);
+  });
+
+  it('uses a tighter budget for older stale tool outputs', () => {
+    const large = (label: string): string =>
+      [
+        `${label} start`,
+        ...Array.from({ length: 220 }, (_, i) => `${label} log ${i} ${'x'.repeat(90)}`),
+        `${label} ERROR preserve me`,
+        ...Array.from({ length: 220 }, (_, i) => `${label} tail ${i} ${'y'.repeat(90)}`),
+      ].join('\n');
+    const msgs: ModelMessage[] = ['oldest', 'middle', 'newest'].map((label) => ({
+      role: 'tool',
+      content: [{ type: 'tool-result', toolCallId: label, toolName: 'run_bash', output: { type: 'text', value: large(label) } }] as never,
+    }));
+
+    const out = selectivelyCompressStaleToolResults(msgs, 0, 6_000, 1_000);
+    expect(toolText(out[0]).length).toBeLessThan(toolText(out[2]).length);
+    expect(toolText(out[0])).toContain('oldest ERROR preserve me');
+    expect(toolText(out[2])).toContain('newest ERROR preserve me');
   });
 });
 

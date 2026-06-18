@@ -28,5 +28,6 @@ MCP/stack/DoD/verification rulebook
 ## Standards
 
 - [[Shared/Tech-Standards/verification-standard]] — verification ladder, evidence format, and final gate contract
+- [[Shared/Tech-Standards/mcp-integration-roadmap]] — MCP registry/install/test UX roadmap
 
 up:: [[Shared/_Index]]

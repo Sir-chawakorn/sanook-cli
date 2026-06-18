@@ -29,5 +29,7 @@ parent: "[[Home]]"
 
 - [[Research/2026-06-17-ai-second-brain-method-experiment]] — ทดลองเปรียบเทียบวิธีใช้ second-brain ร่วมกับ AI และเลือก Scientific Loop Sequence
 - [[Research/2026-06-18-hermes-cli-second-brain-expansion-research]] — research ว่าควรเพิ่มอะไรใน second-brain เพื่อให้ Hermes CLI ใช้ vault ได้ดีขึ้น
+- [[Research/2026-06-18-sanook-mcp-ecosystem-and-ux-roadmap]] — MCP ecosystem scan + Sanook CLI registry/install/test roadmap
+- [[Research/2026-06-18-ai-token-reduction-frameworks]] — compare LLMLingua, Selective Context, and Headroom for Sanook token reduction
 
 up:: [[Home]]

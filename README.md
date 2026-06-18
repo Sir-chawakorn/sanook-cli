@@ -456,7 +456,18 @@ Connect Model Context Protocol servers over **stdio or remote Streamable-HTTP** 
 }
 ```
 
-Add servers from the CLI too: `sanook mcp add fs npx -y @modelcontextprotocol/server-filesystem /path` (stdio) or `sanook mcp add remote https://example.com/mcp` (a URL is detected as remote HTTP).
+Discover and install servers from the official MCP registry:
+
+```bash
+sanook mcp search gitlab
+sanook mcp info com.gitlab/mcp
+sanook mcp install com.gitlab/mcp --name gitlab
+sanook mcp preset dev
+sanook mcp test gitlab
+sanook mcp doctor
+```
+
+Use `--env KEY=value` or `--header KEY=value` when a registry entry requires secrets, and `--project` to write to a trusted project `.sanook/mcp.json`. Some hosted MCP endpoints may return `401 Unauthorized` until you pass an auth header, even when the registry entry does not declare it yet. You can still add servers manually: `sanook mcp add fs npx -y @modelcontextprotocol/server-filesystem /path` (stdio) or `sanook mcp add remote https://example.com/mcp` (a URL is detected as remote HTTP).
 
 Their tools are merged into the agent's toolset automatically. `/tools` in the REPL lists everything currently available.
 
@@ -501,6 +512,8 @@ Quality-neutral knobs in `~/.sanook/config.json` (or the matching `SANOOK_*` env
 | `config set …` | env | effect |
 |---|---|---|
 | `cacheTtl 1h` | `SANOOK_CACHE_TTL=1h` | keep the cached system preamble alive for 1h (default `5m`) — cheaper to resume after a pause |
+| `contextCompression selective` | `SANOOK_CONTEXT_COMPRESSION=selective` | zero-LLM, query-aware selective compression for stale, very large tool outputs before each model step (default `selective`; set `off` to disable) |
+| `contextCompression headroom` | `SANOOK_CONTEXT_COMPRESSION=headroom` | wrap the Vercel AI SDK model with `headroom-ai` when you run a Headroom proxy/cloud setup (`SANOOK_HEADROOM_BASE_URL` / `SANOOK_HEADROOM_API_KEY`) |
 | `compaction summarize` | `SANOOK_COMPACTION=summarize` | when context gets long, condense it with a **cheap model** instead of truncating — better recall at the same budget (default `truncate`, zero-LLM) |
 | — | `SANOOK_SUBAGENT_MODEL=haiku` | run all sub-agent work (exploration/search) on a cheaper model while the main agent keeps the strong one |
 | `summaryModel <spec>` | `SANOOK_SUMMARY_MODEL=<spec>` | model used for summarize-compaction (default: the fast sibling of your main model) |

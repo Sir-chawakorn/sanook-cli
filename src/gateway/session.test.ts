@@ -40,6 +40,36 @@ describe('gateway chat sessions', () => {
     expect(session?.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
   });
 
+  it('keeps gateway session filenames inside the session directory', async () => {
+    const { gatewaySessionId, loadGatewaySession, saveGatewaySession } = await import('./session.js');
+    const platform = '../escape/path';
+    const id = gatewaySessionId(platform, 'target');
+
+    expect(id).toMatch(/^escape-path-[a-f0-9]{24}$/);
+    await expect(
+      saveGatewaySession({
+        id: '../escape',
+        platform,
+        target: 'target',
+        created: '2026-06-18T00:00:00.000Z',
+        updated: '2026-06-18T00:00:00.000Z',
+        model: 'sonnet',
+        messages: [],
+      }),
+    ).rejects.toThrow(/gateway session id/);
+
+    await saveGatewaySession({
+      id,
+      platform,
+      target: 'target',
+      created: '2026-06-18T00:00:00.000Z',
+      updated: '2026-06-18T00:00:00.000Z',
+      model: 'sonnet',
+      messages: [{ role: 'user', content: 'safe' }],
+    });
+    expect((await loadGatewaySession(platform, 'target'))?.id).toBe(id);
+  });
+
   it('detects Hermes-style silence tokens', async () => {
     const { runGatewayAgent, shouldSuppressDelivery } = await import('./session.js');
     expect(shouldSuppressDelivery('[SILENT]')).toBe(true);

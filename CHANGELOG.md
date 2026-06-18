@@ -2,6 +2,16 @@
 
 ## 0.5.2
 
+### Token reduction — selective context compression for stale tool output
+
+- **`contextCompression: "selective" | "headroom" | "off"`** (env `SANOOK_CONTEXT_COMPRESSION`) — default `"selective"` is a zero-LLM, per-step compressor inspired by Selective Context, LongLLMLingua-style query awareness, and Headroom-style context pruning. It keeps the latest tool results full, but compresses older huge tool outputs with recency-aware budgets and preserves anchors plus high-information lines (current-query matches, errors, paths, diffs, code structure, rare terms) before the next model request. `"headroom"` optionally wraps the Vercel AI SDK model with the `headroom-ai` GitHub/npm framework when a Headroom proxy/cloud setup is available; `"off"` disables compression.
+
+### MCP registry UX — discover, install, and diagnose servers
+
+- **`sanook mcp search/info/install`** — browse the official MCP registry, inspect transports/packages/secret requirements, and write a ready-to-use stdio or Streamable-HTTP config into `~/.sanook/mcp.json` (or trusted project config with `--project`).
+- **`sanook mcp test` / `sanook mcp doctor` / `sanook mcp list --tools`** — probe configured MCP servers, show advertised tools, and fail clearly when a server is missing credentials, unreachable, or misconfigured.
+- **`sanook mcp preset`** — curated starter bundles (`dev`, `research`, `pm`, `ops`) for common Sanook workflows.
+
 ### Second-brain CLI tooling — doctor, context, eval
 
 - **`sanook brain context [--task "..."]`** — shows the exact `<brain_vault>` context Sanook injects from `Shared/AI-Context-Index.md`, `current-state.md`, and Memory-Inbox, with source char counts and stale/missing index warnings. With `--task`, it also runs focused retrieval over vault/session/skill hits.

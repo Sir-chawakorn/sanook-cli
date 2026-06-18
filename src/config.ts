@@ -45,6 +45,8 @@ export const ConfigSchema = z.object({
   cacheTtl: z.enum(['5m', '1h']).catch('5m').default('5m'),
   // วิธีบีบ context ตอนยาว: 'truncate' (default, zero-LLM) · 'summarize' (ใช้ model ถูกย่อ — จำ context ได้ดีกว่า)
   compaction: z.enum(['truncate', 'summarize']).catch('truncate').default('truncate'),
+  // token reducer: off, local zero-LLM selective compressor, or optional Headroom proxy adapter.
+  contextCompression: z.enum(['off', 'selective', 'headroom']).catch('selective').default('selective'),
   // extended thinking (Anthropic): false/ไม่ตั้ง = ปิด · true = budget default · number = budget tokens
   thinking: z.union([z.boolean(), z.number().int().positive()]).optional().catch(undefined),
   // model สำหรับย่อ (compaction=summarize) — ไม่ตั้ง = ใช้ fast-sibling ของ model หลัก (ค่ายเดียวกัน ถูกกว่า)
@@ -92,16 +94,22 @@ function parseCompaction(v: unknown): 'truncate' | 'summarize' | undefined {
   return clean === 'truncate' || clean === 'summarize' ? clean : undefined;
 }
 
+function parseContextCompression(v: unknown): 'off' | 'selective' | 'headroom' | undefined {
+  const clean = trimmedString(v);
+  return clean === 'off' || clean === 'selective' || clean === 'headroom' ? clean : undefined;
+}
+
 export interface AgentTuning {
   cacheTtl: '5m' | '1h';
   thinkingBudget?: number;
   compaction: 'truncate' | 'summarize';
+  contextCompression: 'off' | 'selective' | 'headroom';
   summaryModel?: string;
 }
 
 /**
  * อ่าน tuning knobs (cache TTL / thinking / compaction / summary model) จาก global config.json
- * + env override (SANOOK_CACHE_TTL / SANOOK_THINKING / SANOOK_COMPACTION / SANOOK_SUMMARY_MODEL).
+ * + env override (SANOOK_CACHE_TTL / SANOOK_THINKING / SANOOK_COMPACTION / SANOOK_CONTEXT_COMPRESSION / SANOOK_SUMMARY_MODEL).
  * อ่านตรงจาก config.json (เลี่ยง thread ผ่าน call stack ลึก) — เบา, เรียกครั้งเดียวต่อ turn.
  */
 export async function agentTuning(): Promise<AgentTuning> {
@@ -109,8 +117,9 @@ export async function agentTuning(): Promise<AgentTuning> {
   const cacheTtl = parseCacheTtl(process.env.SANOOK_CACHE_TTL) ?? parseCacheTtl(raw.cacheTtl) ?? '5m';
   const thinkingBudget = parseThinking(trimmedString(process.env.SANOOK_THINKING) ?? raw.thinking);
   const compaction = parseCompaction(process.env.SANOOK_COMPACTION) ?? parseCompaction(raw.compaction) ?? 'truncate';
+  const contextCompression = parseContextCompression(process.env.SANOOK_CONTEXT_COMPRESSION) ?? parseContextCompression(raw.contextCompression) ?? 'selective';
   const summaryModel = trimmedString(process.env.SANOOK_SUMMARY_MODEL) ?? trimmedString(raw.summaryModel);
-  return { cacheTtl, thinkingBudget, compaction, summaryModel };
+  return { cacheTtl, thinkingBudget, compaction, contextCompression, summaryModel };
 }
 
 async function readJson(path: string): Promise<Record<string, unknown>> {

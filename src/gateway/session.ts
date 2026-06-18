@@ -41,12 +41,20 @@ export interface GatewayAgentRunResult {
   messages: ModelMessage[];
 }
 
+function safePlatformSegment(platform: string): string {
+  const safe = platform.trim().replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+  return safe || 'gateway';
+}
+
 export function gatewaySessionId(platform: string, target: string): string {
   const digest = createHash('sha256').update(`${platform}:${target}`).digest('hex').slice(0, 24);
-  return `${platform}-${digest}`;
+  return `${safePlatformSegment(platform)}-${digest}`;
 }
 
 function sessionPath(id: string): string {
+  if (!/^[A-Za-z0-9_.-]+$/.test(id) || id.includes('..')) {
+    throw new Error(`gateway session id ไม่ถูกต้อง: ${id}`);
+  }
   return join(SESSION_DIR, `${id}.json`);
 }
 
@@ -94,7 +102,11 @@ export async function listGatewaySessions(): Promise<GatewaySession[]> {
 export async function saveGatewaySession(session: GatewaySession): Promise<void> {
   if (!persistenceEnabled()) return;
   await mkdir(SESSION_DIR, { recursive: true });
-  await writeFile(sessionPath(session.id), `${JSON.stringify(redactUnknown(session), null, 2)}\n`, { mode: 0o600 });
+  const safeSession: GatewaySession = {
+    ...session,
+    messages: redactUnknown(session.messages) as ModelMessage[],
+  };
+  await writeFile(sessionPath(session.id), `${JSON.stringify(safeSession, null, 2)}\n`, { mode: 0o600 });
   await chmod(sessionPath(session.id), 0o600).catch(() => {});
 }
 

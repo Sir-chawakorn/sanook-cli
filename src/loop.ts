@@ -12,7 +12,7 @@ import { wrapToolsWithTimeout } from './tools/timeout.js';
 import { getMcpTools } from './mcp.js';
 import { gitContext } from './git.js';
 import { loadRepoMap } from './repomap.js';
-import { autoCompact } from './compaction.js';
+import { autoCompact, selectivelyCompressStaleToolResults } from './compaction.js';
 import { agentTuning, loadConfig } from './config.js';
 import { BRAND } from './brand.js';
 import { personalityPrompt } from './personality.js';
@@ -176,6 +176,16 @@ export interface RunAgentResult {
   cost: CostMeter;
 }
 
+async function maybeWrapWithHeadroom<T>(model: T): Promise<T> {
+  const { withHeadroom } = await import('headroom-ai/vercel-ai');
+  return withHeadroom(model as any, {
+    baseUrl: process.env.SANOOK_HEADROOM_BASE_URL ?? process.env.HEADROOM_BASE_URL,
+    apiKey: process.env.SANOOK_HEADROOM_API_KEY ?? process.env.HEADROOM_API_KEY,
+    fallback: true,
+    stack: 'sanook-cli',
+  }) as T;
+}
+
 /**
  * แกน harness — agent loop: LLM -> tool -> result -> loop จนเสร็จ
  * multi-provider (BYOK) ผ่าน registry + cost meter + budget cap
@@ -245,7 +255,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   if (PROVIDERS[parseSpec(opts.model).provider]?.kind === 'delegate') {
     return runDelegate(opts);
   }
-  const model = resolveModel(opts.model); // throws ถ้าไม่มี key / provider ผิด
+  const rawModel = resolveModel(opts.model); // throws ถ้าไม่มี key / provider ผิด
   let meter = new CostMeter(specKey(opts.model), opts.budgetUsd, sharedBudget);
 
   // โหลด context: auto-memory + skills + git state + repo map + project SANOOK.md → system prompt
@@ -260,6 +270,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     agentTuning(), // cache TTL + thinking budget (อ่านจาก config/env)
     loadConfig({}, opts.cwd ?? process.cwd()),
   ]);
+  const model = tuning.contextCompression === 'headroom' ? await maybeWrapWithHeadroom(rawModel) : rawModel;
   const planSuffix = opts.planMode
     ? '\n\nPLAN MODE: สำรวจและวางแผนเท่านั้น — ห้ามแก้ไฟล์หรือรันคำสั่งที่เปลี่ยน state. จบด้วยแผนเป็นขั้นตอนให้ user อนุมัติก่อนลงมือ.'
     : '';
@@ -351,7 +362,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
       abortSignal: opts.signal,
       // งานยาว (tool calls เยอะ) → prune tool output เก่า กัน context บวม
       prepareStep: ({ messages }) => {
-        const compacted = autoCompact(messages, AUTO_COMPACT_TOKENS);
+        const optimized = tuning.contextCompression === 'selective' ? selectivelyCompressStaleToolResults(messages) : messages;
+        const compacted = autoCompact(optimized, AUTO_COMPACT_TOKENS);
         return compacted !== messages ? { messages: compacted } : {};
       },
       onStepFinish: ({ usage, providerMetadata }) => {

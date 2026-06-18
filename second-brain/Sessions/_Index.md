@@ -38,5 +38,7 @@ code/config · subfolder (Sessions = flat เสมอ)
 - [[Sessions/2026-06-18-final-gate-template-final]] — evidence-backed closeout for the final gate template work
 - [[Sessions/2026-06-18-sanook-brain-final-cli]] — implement `sanook brain final`, final-lite, review validation, and eval coverage
 - [[Sessions/2026-06-18-sanook-brain-final-cli-final]] — evidence-backed closeout for the Sanook brain final CLI work
+- [[Sessions/2026-06-18-mcp-ecosystem-and-sanook-ux-scan]] — scan Sanook MCP support and registry-based integration opportunities
+- [[Sessions/2026-06-18-token-reduction-framework-integration]] — integrate selective context compression after GitHub framework scan
 
 up:: [[Home]]

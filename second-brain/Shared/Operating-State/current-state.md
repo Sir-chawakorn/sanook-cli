@@ -22,12 +22,15 @@ ai_surface: starter
 - 2026-06-18: เพิ่ม `sanook brain review` เป็น curator review แบบ read-only สำหรับ inbox/context-packs/sessions/evals/note hygiene
 - 2026-06-18: เพิ่ม [[Templates/final]] เป็น final gate / evidence matrix ก่อนปิดงาน non-trivial
 - 2026-06-18: เพิ่ม `sanook brain final`, [[Templates/final-lite]], final-gate validator ใน `brain review`, และ `SB-FINAL` ใน `brain eval` แล้ว
+- 2026-06-18: MCP P0 implemented ใน Sanook CLI แล้ว: registry-backed `mcp search/info/install/preset/test/doctor/list --tools`; verification ผ่าน และพบว่า GitLab remote ต้อง auth header ก่อน probe ผ่าน
+- 2026-06-18: เพิ่ม [[Research/2026-06-18-ai-token-reduction-frameworks]], default query-aware selective context compression, adaptive stale-tool budgets, และ optional Headroom framework mode ใน Sanook CLI
 
 ## Active Bets
 
 - Scientific Loop Sequence: single retrieval path + JIT task rules + explicit write routing + eval/consolidation loop
 - AI จะเก่งขึ้นแบบวัดได้เมื่อมี benchmark + taste examples + reusable context packs
 - Final gate ที่มี evidence และ CLI scaffold จะลดการ claim done เกินจริงตอนปิดงาน
+- Token/cost จะลดได้อย่างปลอดภัยที่สุดจาก stale tool-output compression ก่อน ไม่ใช่บีบ user intent หรือ recent evidence
 
 ## Blockers
 
@@ -37,6 +40,9 @@ _(ติดอะไรอยู่)_
 
 - [ ] Review remaining worktree diff before commit/release
 - [ ] Dogfood `sanook brain final --task "..." --from-diff` ในงาน implementation ถัดไป
+- [x] ทำ MCP P0: `sanook mcp search`, `sanook mcp info`, `sanook mcp install`, `sanook mcp test`
+- [ ] MCP follow-up: auth hints for hosted remotes that return `401`, risk labels, and richer install preview/cache
+- [ ] Token compression follow-up: benchmark real multi-step traces and smoke test Headroom mode with a real proxy/cloud setup
 - [ ] ถ้าจะต่อ second-brain CLI รอบถัดไป: ทำ `sanook brain pack list|show`, `sanook brain new <type>`, หรือ `sanook brain repair`
 - [ ] เพิ่ม good/bad examples ใหม่ใน [[Shared/User-Memory/response-examples]] เมื่อมี feedback จริงรอบถัดไป
 

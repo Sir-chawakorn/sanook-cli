@@ -31,7 +31,7 @@ function safeEnv(): Record<string, string> {
   return out;
 }
 
-interface McpServerConfig {
+export interface McpServerConfig {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
@@ -42,10 +42,17 @@ interface McpServerConfig {
 interface McpConfig {
   mcpServers?: Record<string, McpServerConfig>;
 }
-interface McpToolDef {
+export interface McpToolDef {
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
+}
+
+export interface McpProbeResult {
+  ok: boolean;
+  transport: 'http' | 'stdio';
+  tools: McpToolDef[];
+  error?: string;
 }
 
 export function isValidMcpServerName(name: string): boolean {
@@ -250,17 +257,17 @@ class McpClient {
     this.transport = cfg.url ? new HttpTransport(cfg.url, cfg.headers) : new StdioTransport(cfg);
   }
 
-  async initialize(): Promise<void> {
+  async initialize(timeoutMs = REQUEST_TIMEOUT): Promise<void> {
     await this.transport.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
       clientInfo: { name: BRAND.mcpClientName, version: VERSION },
-    });
+    }, timeoutMs);
     this.transport.notify('notifications/initialized');
   }
 
-  async listTools(): Promise<McpToolDef[]> {
-    const r = (await this.transport.request('tools/list')) as { tools?: McpToolDef[] };
+  async listTools(timeoutMs = REQUEST_TIMEOUT): Promise<McpToolDef[]> {
+    const r = (await this.transport.request('tools/list', undefined, timeoutMs)) as { tools?: McpToolDef[] };
     return r?.tools ?? [];
   }
 
@@ -279,6 +286,27 @@ class McpClient {
 
   close(): void {
     this.transport.close();
+  }
+}
+
+export async function probeMcpServer(cfg: McpServerConfig, timeoutMs = REQUEST_TIMEOUT): Promise<McpProbeResult> {
+  const transport = cfg.url ? 'http' : 'stdio';
+  if (!cfg.url && !cfg.command) return { ok: false, transport, tools: [], error: 'ต้องมี command หรือ url' };
+  const client = new McpClient(cfg);
+  const deadline = Date.now() + Math.max(1, timeoutMs);
+  const remaining = (method: string): number => {
+    const ms = deadline - Date.now();
+    if (ms <= 0) throw new Error(`mcp timeout: ${method}`);
+    return ms;
+  };
+  try {
+    await client.initialize(remaining('initialize'));
+    const tools = await client.listTools(remaining('tools/list'));
+    return { ok: true, transport, tools };
+  } catch (e) {
+    return { ok: false, transport, tools: [], error: (e as Error).message };
+  } finally {
+    client.close();
   }
 }
 

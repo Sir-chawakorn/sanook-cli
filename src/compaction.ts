@@ -1,8 +1,42 @@
 import type { ModelMessage } from 'ai';
+import { selectiveCompressText } from './context-compression.js';
 
 const TRUNC_HEAD = 400;
 const TRUNC_TAIL = 600;
 const CHARS_PER_TOKEN = 4; // ประมาณคร่าวๆ (จริง ~3.5-4 ต่อ token)
+const SELECTIVE_TOOL_TARGET_CHARS = 6_000;
+const SELECTIVE_TOOL_MIN_CHARS = 8_000;
+
+function textFromMessageContent(content: ModelMessage['content']): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part) => {
+      if (typeof part === 'object' && part && 'type' in part && part.type === 'text' && 'text' in part && typeof part.text === 'string') return part.text;
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function latestUserText(messages: readonly ModelMessage[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role !== 'user') continue;
+    const text = textFromMessageContent(messages[i].content).trim();
+    if (text) return text;
+  }
+  return undefined;
+}
+
+function adaptiveStaleTarget(baseTarget: number, rank: number, count: number): number {
+  if (count <= 1) return baseTarget;
+  const recency = rank / Math.max(1, count - 1); // 0 = oldest, 1 = newest stale
+  return Math.max(1_500, Math.floor(baseTarget * (0.35 + 0.65 * recency)));
+}
+
+function adaptiveMinChars(targetChars: number, baseMinChars: number): number {
+  return Math.min(baseMinChars, Math.max(targetChars + 1_000, Math.floor(targetChars * 1.45)));
+}
 
 /** ตัดข้อความยาว เก็บหัว (intent) + ท้าย (error/result) */
 export function truncateText(s: string): string {
@@ -21,23 +55,79 @@ export function truncateText(s: string): string {
  */
 export function pruneToolResults(messages: ModelMessage[], keepTail = 4): ModelMessage[] {
   const cut = Math.max(0, messages.length - keepTail);
-  return messages.map((m, i) => {
+  let changed = false;
+  const out = messages.map((m, i) => {
     if (i >= cut) return m;
     if (m.role !== 'tool' || !Array.isArray(m.content)) return m;
-    return {
-      ...m,
-      content: m.content.map((part) => {
-        if (
-          part.type === 'tool-result' &&
-          part.output?.type === 'text' &&
-          typeof part.output.value === 'string'
-        ) {
-          return { ...part, output: { ...part.output, value: truncateText(part.output.value) } };
+    const content = m.content.map((part) => {
+      if (
+        part.type === 'tool-result' &&
+        part.output?.type === 'text' &&
+        typeof part.output.value === 'string'
+      ) {
+        const compressed = selectiveCompressText(part.output.value, {
+          targetChars: SELECTIVE_TOOL_TARGET_CHARS,
+          minChars: SELECTIVE_TOOL_MIN_CHARS,
+        });
+        if (compressed.changed) {
+          changed = true;
+          return { ...part, output: { ...part.output, value: compressed.text } };
         }
-        return part;
-      }),
-    } as ModelMessage;
+        const truncated = truncateText(part.output.value);
+        if (truncated !== part.output.value) {
+          changed = true;
+          return { ...part, output: { ...part.output, value: truncated } };
+        }
+      }
+      return part;
+    });
+    return content === m.content ? m : ({ ...m, content } as ModelMessage);
   });
+  return changed ? out : messages;
+}
+
+/**
+ * Per-step token optimizer (zero LLM cost).
+ * Compresses stale, very large tool results before each model request while keeping the latest tail full.
+ */
+export function selectivelyCompressStaleToolResults(
+  messages: ModelMessage[],
+  keepTail = 6,
+  targetChars = SELECTIVE_TOOL_TARGET_CHARS,
+  minChars = SELECTIVE_TOOL_MIN_CHARS,
+  query = latestUserText(messages),
+): ModelMessage[] {
+  const cut = Math.max(0, messages.length - keepTail);
+  const staleToolIndexes = messages
+    .map((m, i) => ({ m, i }))
+    .filter(({ m, i }) => i < cut && m.role === 'tool' && Array.isArray(m.content))
+    .map(({ i }) => i);
+  const rankByIndex = new Map(staleToolIndexes.map((index, rank) => [index, rank]));
+  let changed = false;
+  const out = messages.map((m, i) => {
+    if (i >= cut) return m;
+    if (m.role !== 'tool' || !Array.isArray(m.content)) return m;
+    let messageChanged = false;
+    const adaptiveTarget = adaptiveStaleTarget(targetChars, rankByIndex.get(i) ?? 0, staleToolIndexes.length);
+    const adaptiveMin = adaptiveMinChars(adaptiveTarget, minChars);
+    const content = m.content.map((part) => {
+      if (
+        part.type === 'tool-result' &&
+        part.output?.type === 'text' &&
+        typeof part.output.value === 'string'
+      ) {
+        const compressed = selectiveCompressText(part.output.value, { targetChars: adaptiveTarget, minChars: adaptiveMin, query });
+        if (compressed.changed) {
+          changed = true;
+          messageChanged = true;
+          return { ...part, output: { ...part.output, value: compressed.text } };
+        }
+      }
+      return part;
+    });
+    return messageChanged ? ({ ...m, content } as ModelMessage) : m;
+  });
+  return changed ? out : messages;
 }
 
 /** ประมาณ token ของ conversation (chars/4) — ไม่เป๊ะแต่พอใช้ตัดสิน compact */
