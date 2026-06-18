@@ -43,6 +43,8 @@ Do not make the next step `HERMES.md`. For Sanook CLI, the better work is:
 
 ### `sanook brain doctor`
 
+Status: implemented.
+
 Check the vault itself, not just installation:
 
 - `brainPath` configured and exists.
@@ -54,6 +56,8 @@ Check the vault itself, not just installation:
 
 ### `sanook brain context [--task "..."]`
 
+Status: implemented.
+
 Show the exact context Sanook would inject or retrieve:
 
 - Hot context sources and character counts.
@@ -61,6 +65,8 @@ Show the exact context Sanook would inject or retrieve:
 - Clear warning when context is stale, too large, or missing expected files.
 
 ### `sanook brain eval`
+
+Status: implemented.
 
 Turn `Evals/second-brain-benchmarks.md` into a runnable sanity check:
 
@@ -72,12 +78,15 @@ Turn `Evals/second-brain-benchmarks.md` into a runnable sanity check:
 
 ### `sanook brain review`
 
+Status: implemented.
+
 Curator-style health review for the vault:
 
 - Stale context packs.
 - Duplicate or contradictory memory candidates.
 - Sessions without index entries.
 - Evals that have not been updated after framework changes.
+- Markdown routing hygiene: purpose blockquote, `parent`, and `up::`.
 
 ### `sanook brain pack list|show`
 
@@ -108,7 +117,7 @@ Add folders only when a Sanook command needs stable output:
 
 - `Evals/Benchmarks/` when `sanook brain eval` wants per-case files.
 - `Acceptance/Golden-Cases/` when golden fixtures multiply.
-- `Reviews/Vault-Health/` when `sanook brain review` starts writing scheduled reports.
+- `Reviews/Vault-Health/` when `sanook brain review` starts writing scheduled reports. The current command is read-only, so no new folder is needed yet.
 
 Avoid broad folders:
 
@@ -119,12 +128,29 @@ Avoid broad folders:
 
 ## First Implementation Slice
 
-Best first code slice:
+Completed on 2026-06-18:
 
-1. Add `src/brain-doctor.ts` with pure check functions.
-2. Add tests for missing hot files, stale index, and map/FOLDERS drift.
-3. Wire `sanook brain doctor` in `src/bin.ts`.
-4. Update help text.
-5. Run `npm test -- src/brain.test.ts src/brain-doctor.test.ts`.
+1. Added `src/brain-doctor.ts` with pure check functions and CLI wiring.
+2. Added `src/brain-context.ts` so Sanook can inspect the exact prompt context and task retrieval hits.
+3. Added `src/brain-eval.ts` as a runnable benchmark sanity checker over `Evals/second-brain-benchmarks.md`.
+4. Updated shell/REPL help and changelog.
+5. Verified with targeted second-brain tests and typecheck.
+
+## Second Implementation Slice
+
+Completed on 2026-06-18:
+
+1. Added `src/brain-review.ts` for curator-style vault review.
+2. Wired `sanook brain review [--no-hygiene]` into CLI and help.
+3. Updated generated `Shared/Context-Packs/_Index.md` to link bundled context packs.
+4. Verified with review/scaffold/memory tests and typecheck.
+
+## Next Implementation Slice
+
+Best next code slice:
+
+1. Add `sanook brain pack list|show` for `Shared/Context-Packs/`.
+2. Add `sanook brain new <type>` once note creation templates need a CLI surface.
+3. Add `sanook brain repair` for safe one-line fixes after `doctor`/`review` reports them.
 
 up:: [[Projects/sanook-cli/_Index]]

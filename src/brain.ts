@@ -47,6 +47,7 @@ interface Folder {
   role: string;
   put?: string; // ใส่อะไรที่นี่
   avoid?: string; // ไม่ใส่อะไรที่นี่ (กัน routing ผิด)
+  links?: string[]; // seed links ที่ควรอยู่ใน generated _Index
 }
 export const FOLDERS: Folder[] = [
   // ── Core (MVV) ──
@@ -96,7 +97,17 @@ export const FOLDERS: Folder[] = [
   { dir: 'Shared/Scripts', role: 'automation maintenance (lint/graph audit/metrics)', put: 'สคริปต์ maintenance ที่รันจริง', avoid: 'one-off ที่ retired (→Scripts-Archive)' },
   { dir: 'Shared/Scripts-Archive', role: 'สคริปต์ one-off ที่ retired', put: 'script เก่าเก็บเป็นประวัติ', avoid: 'script ที่ยังใช้ (→Scripts)' },
   { dir: 'Shared/mcp-servers', role: 'vendored local MCP server bundle (code/README)', put: 'โค้ด/README ของ MCP server (config อยู่ Tech-Standards)', avoid: 'config การต่อ (→Tech-Standards/mcp.json)' },
-  { dir: 'Shared/Context-Packs', role: 'full-context bundle ต่อ domain/task-type', put: 'pack รวม context พร้อมโหลด', avoid: 'โน้ตเดี่ยว (→ปลายทางปกติ)' },
+  {
+    dir: 'Shared/Context-Packs',
+    role: 'full-context bundle ต่อ domain/task-type',
+    put: 'pack รวม context พร้อมโหลด',
+    avoid: 'โน้ตเดี่ยว (→ปลายทางปกติ)',
+    links: [
+      '- [[Shared/Context-Packs/second-brain-maintenance]] — แก้ vault structure, routing, memory policy, indexes, runbooks, agent adapters',
+      '- [[Shared/Context-Packs/coding-release]] — แก้ code/tests/build/release/CLI scripts',
+      '- [[Shared/Context-Packs/research-to-framework]] — research/experiment → framework update',
+    ],
+  },
   { dir: 'Shared/Context7-Docs', role: 'cached external lib doc (regenerable — gitignore)', put: 'cache ของ context7/lib doc', avoid: 'durable knowledge (→Learning/Research)' },
   { dir: 'Shared/AI-Threads', role: 'saved AI reasoning/conversation trail (ไม่ใช่ source of truth)', put: 'thread ที่เก็บไว้ review/resume/promote', avoid: 'durable decision (promote → Decision-Memory)' },
   { dir: 'Shared/Prompting', role: 'prompt-engineering pattern (style/structure)', put: 'pattern การเขียน prompt ที่ reuse', avoid: 'prompt asset ต่อ task (→Prompts)' },
@@ -163,6 +174,7 @@ ${f.avoid ?? '_(—)_'}
 
 _(ยังว่าง — โน้ตในโฟลเดอร์นี้จะถูกลิงก์ที่นี่)_
 
+${f.links?.length ? `## Seed Notes\n\n${f.links.join('\n')}\n\n` : ''}
 up:: [[${parent}]]
 `;
 }

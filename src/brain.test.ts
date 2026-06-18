@@ -143,6 +143,10 @@ describe('scaffoldBrain', () => {
     const idx = await readFile(join(target, 'Projects', '_Index.md'), 'utf8');
     expect(idx).toContain('## ใส่ที่นี่');
     expect(idx).toContain('## ไม่ใส่ที่นี่');
+    const packs = await readFile(join(target, 'Shared', 'Context-Packs', '_Index.md'), 'utf8');
+    expect(packs).toContain('[[Shared/Context-Packs/second-brain-maintenance]]');
+    expect(packs).toContain('[[Shared/Context-Packs/coding-release]]');
+    expect(packs).toContain('[[Shared/Context-Packs/research-to-framework]]');
   });
 
   it('Vault Structure Map ครอบทุกโฟลเดอร์ใน FOLDERS (กัน drift) + Raw Sources มีจริง', async () => {

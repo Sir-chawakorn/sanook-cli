@@ -83,46 +83,139 @@ export async function loadBrainContext(): Promise<string> {
   return brainPath ? buildBrainContext(brainPath) : '';
 }
 
-/** ประกอบ brain context จาก vault path (pure → testable) — entry + current-state + remembered facts */
-export async function buildBrainContext(brainPath: string): Promise<string> {
-  const parts: string[] = [];
-  // 1. entry/pointers (Vault Structure Map ฯลฯ)
-  const idx = await readTrimmed(join(brainPath, 'Shared', 'AI-Context-Index.md'), 3000);
-  if (idx) parts.push(idx);
-  // 2. current-state — เนื้อจริง (live focus) ไม่ใช่แค่ pointer
-  const cs = await readTrimmed(join(brainPath, 'Shared', 'Operating-State', 'current-state.md'), 1500);
-  if (cs) parts.push(`## current-state\n${cs}`);
-  // 3. ปิด loop: fact ที่ remember ไว้ (Memory-Inbox) กลับเข้า context — ไม่งั้น vault = write-only
-  const inbox = await inboxCandidates(join(brainPath, 'Shared', 'Memory-Inbox', 'memory-inbox.md'), 1200);
-  if (inbox) parts.push(`## remembered (Memory-Inbox)\n${inbox}`);
-  if (!parts.length) return '';
-  return `<brain_vault path="${brainPath}" note="second-brain ของ user — สิ่งที่จำไว้/state ปัจจุบันอยู่ใน block นี้; route โน้ตตาม Vault Structure Map; อ่าน/เขียนไฟล์ใน vault ด้วย absolute path ได้">\n${parts.join('\n\n')}\n</brain_vault>`;
+export type BrainContextPartStatus = 'present' | 'empty' | 'missing';
+
+export interface BrainContextPart {
+  id: 'ai-context-index' | 'current-state' | 'memory-inbox';
+  label: string;
+  relPath: string;
+  path: string;
+  content: string;
+  chars: number;
+  maxChars: number;
+  status: BrainContextPartStatus;
 }
 
-/** อ่านไฟล์ + trim หัว N ตัว ('' ถ้าไม่มี/ว่าง) */
-async function readTrimmed(p: string, max: number): Promise<string> {
+/** ประกอบ source parts ชุดเดียวกับที่ inject เข้า prompt จริง — ให้ CLI inspect ได้โดยไม่ drift */
+export async function buildBrainContextParts(brainPath: string): Promise<BrainContextPart[]> {
+  const idx = await readTrimmedPart({
+    id: 'ai-context-index',
+    label: 'AI Context Index',
+    brainPath,
+    relPath: 'Shared/AI-Context-Index.md',
+    maxChars: 3000,
+  });
+  const currentState = await readTrimmedPart({
+    id: 'current-state',
+    label: 'Current State',
+    brainPath,
+    relPath: 'Shared/Operating-State/current-state.md',
+    maxChars: 1500,
+    wrap: (content) => `## current-state\n${content}`,
+  });
+  const inbox = await readInboxPart(brainPath, 'Shared/Memory-Inbox/memory-inbox.md', 1200);
+  return [idx, currentState, inbox];
+}
+
+export function renderBrainContext(brainPath: string, parts: readonly BrainContextPart[]): string {
+  const content = parts.map((part) => part.content).filter(Boolean);
+  if (!content.length) return '';
+  return `<brain_vault path="${brainPath}" note="second-brain ของ user — สิ่งที่จำไว้/state ปัจจุบันอยู่ใน block นี้; route โน้ตตาม Vault Structure Map; อ่าน/เขียนไฟล์ใน vault ด้วย absolute path ได้">\n${content.join('\n\n')}\n</brain_vault>`;
+}
+
+/** ประกอบ brain context จาก vault path (pure → testable) — entry + current-state + remembered facts */
+export async function buildBrainContext(brainPath: string): Promise<string> {
+  return renderBrainContext(brainPath, await buildBrainContextParts(brainPath));
+}
+
+async function readTrimmedPart(input: {
+  id: BrainContextPart['id'];
+  label: string;
+  brainPath: string;
+  relPath: string;
+  maxChars: number;
+  wrap?: (content: string) => string;
+}): Promise<BrainContextPart> {
+  const p = join(input.brainPath, input.relPath);
   try {
-    const c = (await readFile(p, 'utf8')).trim();
-    if (!c) return '';
-    return c.length > max ? `${c.slice(0, max)}\n…` : c;
+    const raw = (await readFile(p, 'utf8')).trim();
+    const trimmed = raw.length > input.maxChars ? `${raw.slice(0, input.maxChars)}\n…` : raw;
+    const content = trimmed ? input.wrap?.(trimmed) ?? trimmed : '';
+    return {
+      id: input.id,
+      label: input.label,
+      relPath: input.relPath,
+      path: p,
+      content,
+      chars: content.length,
+      maxChars: input.maxChars,
+      status: content ? 'present' : 'empty',
+    };
   } catch {
-    return '';
+    return {
+      id: input.id,
+      label: input.label,
+      relPath: input.relPath,
+      path: p,
+      content: '',
+      chars: 0,
+      maxChars: input.maxChars,
+      status: 'missing',
+    };
   }
 }
 
 /** ดึงรายการ "- ..." ใต้ "## New Candidates" จาก memory-inbox (fact ที่ remember ไว้) */
 async function inboxCandidates(p: string, max: number): Promise<string> {
   try {
-    const after = (await readFile(p, 'utf8')).split('## New Candidates')[1];
-    if (!after) return '';
-    const lines = after
-      .split('\n')
-      .filter((l) => l.trim().startsWith('- ') && !l.includes('_('))
-      .map((l) => l.trim());
-    const text = lines.join('\n').trim();
-    return text.length > max ? `${text.slice(0, max)}\n…` : text;
+    return inboxCandidatesFromText(await readFile(p, 'utf8'), max);
   } catch {
     return '';
+  }
+}
+
+function inboxCandidatesFromText(content: string, max: number): string {
+  const lines = content.split('\n');
+  const markerIndex = lines.findIndex((line) => line.trim() === '## New Candidates');
+  if (markerIndex === -1) return '';
+  const sectionLines: string[] = [];
+  for (const line of lines.slice(markerIndex + 1)) {
+    if (/^#{1,6}\s+/.test(line.trim())) break;
+    sectionLines.push(line);
+  }
+  const candidates = sectionLines
+    .filter((l) => l.trim().startsWith('- ') && !l.includes('_('))
+    .map((l) => l.trim());
+  const text = candidates.join('\n').trim();
+  return text.length > max ? `${text.slice(0, max)}\n…` : text;
+}
+
+async function readInboxPart(brainPath: string, relPath: string, maxChars: number): Promise<BrainContextPart> {
+  const p = join(brainPath, relPath);
+  try {
+    const content = inboxCandidatesFromText(await readFile(p, 'utf8'), maxChars);
+    const wrapped = content ? `## remembered (Memory-Inbox)\n${content}` : '';
+    return {
+      id: 'memory-inbox',
+      label: 'Memory Inbox',
+      relPath,
+      path: p,
+      content: wrapped,
+      chars: wrapped.length,
+      maxChars,
+      status: wrapped ? 'present' : 'empty',
+    };
+  } catch {
+    return {
+      id: 'memory-inbox',
+      label: 'Memory Inbox',
+      relPath,
+      path: p,
+      content: '',
+      chars: 0,
+      maxChars,
+      status: 'missing',
+    };
   }
 }
 

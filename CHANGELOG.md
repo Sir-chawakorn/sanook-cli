@@ -2,6 +2,14 @@
 
 ## 0.5.2
 
+### Second-brain CLI tooling — doctor, context, eval
+
+- **`sanook brain context [--task "..."]`** — shows the exact `<brain_vault>` context Sanook injects from `Shared/AI-Context-Index.md`, `current-state.md`, and Memory-Inbox, with source char counts and stale/missing index warnings. With `--task`, it also runs focused retrieval over vault/session/skill hits.
+- **`sanook brain eval`** — turns `Evals/second-brain-benchmarks.md` into a lightweight runner: static vault sanity checks, context-size/missing-source checks, index freshness, and retrieval probes for key rules/ledgers.
+- **`sanook brain review`** — curator-style vault review for Memory-Inbox duplicates/possible contradictions, stale or incomplete context packs, session notes missing from the search manifest, eval freshness after framework changes, and markdown routing hygiene.
+- **Context assembly is inspectable without drift**: `buildBrainContext()` now exposes typed source parts and renders from the same parts used by the agent prompt.
+- **Fresh scaffold discoverability**: generated `Shared/Context-Packs/_Index.md` now links the bundled context packs, so review/search can find them immediately.
+
 ### Whole-codebase audit — confirmed bugs fixed across the CLI
 
 A multi-agent review swept every subsystem (agent loop, tools, providers, gateway, MCP, search, orchestration) and adversarially verified each finding. The ones fixed here:

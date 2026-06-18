@@ -8,8 +8,14 @@ describe('CLI update', () => {
     expect(compareVersions('0.4.1', '0.4.0')).toBe(1);
     expect(compareVersions('0.4.0', '0.4.0')).toBe(0);
     expect(compareVersions('0.4.0', '0.4.1')).toBe(-1);
+    expect(compareVersions('9999999999999999.0.0', '10000000000000000.0.0')).toBe(-1);
+    expect(compareVersions('10000000000000000.0.0', '9999999999999999.0.0')).toBe(1);
     expect(compareVersions('1.0.0', '1.0.0-beta.1')).toBe(1);
     expect(compareVersions('1.0.0-beta.2', '1.0.0-beta.10')).toBe(-1);
+    expect(compareVersions('1.0.0-beta.9999999999999999', '1.0.0-beta.10000000000000000')).toBe(-1);
+    expect(compareVersions('1.0.0-beta.10000000000000000', '1.0.0-beta.9999999999999999')).toBe(1);
+    expect(compareVersions('1.0.0-alpha-beta', '1.0.0-alpha-alpha')).toBe(1);
+    expect(compareVersions('1.0.0-alpha-alpha', '1.0.0-alpha-beta')).toBe(-1);
     expect(isNewerVersion('0.5.0', '0.4.0')).toBe(true);
     expect(isNewerVersion('0.4.0', '0.4.0')).toBe(false);
   });

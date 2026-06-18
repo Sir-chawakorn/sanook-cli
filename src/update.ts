@@ -60,11 +60,23 @@ function packageUrl(registry: string, packageName: string): string {
   return `${base}/${encoded}`;
 }
 
-function splitVersion(version: string): { core: number[]; prerelease: string[] } {
+function normalizeNumericIdentifier(part: string): string | undefined {
+  return /^\d+$/.test(part) ? part.replace(/^0+/, '') || '0' : undefined;
+}
+
+function compareNumericIdentifiers(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length !== b.length) return a.length > b.length ? 1 : -1;
+  return a > b ? 1 : -1;
+}
+
+function splitVersion(version: string): { core: string[]; prerelease: string[] } {
   const [withoutBuild] = version.trim().replace(/^v/, '').split('+');
-  const [corePart, prereleasePart = ''] = withoutBuild.split('-', 2);
+  const prereleaseIndex = withoutBuild.indexOf('-');
+  const corePart = prereleaseIndex === -1 ? withoutBuild : withoutBuild.slice(0, prereleaseIndex);
+  const prereleasePart = prereleaseIndex === -1 ? '' : withoutBuild.slice(prereleaseIndex + 1);
   return {
-    core: corePart.split('.').map((part) => Number.parseInt(part, 10)).map((n) => (Number.isFinite(n) ? n : 0)),
+    core: corePart.split('.').map((part) => normalizeNumericIdentifier(part) ?? '0'),
     prerelease: prereleasePart ? prereleasePart.split('.') : [],
   };
 }
@@ -79,10 +91,12 @@ function comparePrerelease(a: string[], b: string[]): number {
     const pb = b[i];
     if (pa === undefined) return -1;
     if (pb === undefined) return 1;
-    const na = /^\d+$/.test(pa) ? Number(pa) : Number.NaN;
-    const nb = /^\d+$/.test(pb) ? Number(pb) : Number.NaN;
-    if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na > nb ? 1 : -1;
-    if (Number.isFinite(na) !== Number.isFinite(nb)) return Number.isFinite(na) ? -1 : 1;
+    const na = normalizeNumericIdentifier(pa);
+    const nb = normalizeNumericIdentifier(pb);
+    if (na !== undefined && nb !== undefined && na !== nb) {
+      return compareNumericIdentifiers(na, nb);
+    }
+    if ((na !== undefined) !== (nb !== undefined)) return na !== undefined ? -1 : 1;
     if (pa !== pb) return pa > pb ? 1 : -1;
   }
   return 0;
@@ -93,9 +107,9 @@ export function compareVersions(a: string, b: string): number {
   const vb = splitVersion(b);
   const len = Math.max(va.core.length, vb.core.length, 3);
   for (let i = 0; i < len; i++) {
-    const na = va.core[i] ?? 0;
-    const nb = vb.core[i] ?? 0;
-    if (na !== nb) return na > nb ? 1 : -1;
+    const na = va.core[i] ?? '0';
+    const nb = vb.core[i] ?? '0';
+    if (na !== nb) return compareNumericIdentifiers(na, nb);
   }
   return comparePrerelease(va.prerelease, vb.prerelease);
 }

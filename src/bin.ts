@@ -173,6 +173,9 @@ skills (built-in + ติดตั้งเพิ่มได้):
 second brain (Obsidian workspace สำหรับจัดเก็บงาน + ความจำ AI):
   ${BRAND.cliName} brain init [path]              สร้างโครงสร้าง second-brain ที่ path (ไม่ใส่ = ถาม)
   ${BRAND.cliName} brain doctor                   ตรวจ health ของ second-brain ที่ config.brainPath
+  ${BRAND.cliName} brain context [--task "..."]    แสดง context ที่ Sanook จะ inject + retrieval hits ต่อ task
+  ${BRAND.cliName} brain eval                     รัน second-brain benchmark sanity checks
+  ${BRAND.cliName} brain review                   curator review: inbox, packs, sessions, evals, note hygiene
 
 search (BM25 + optional BYOK semantic เหนือ vault + memory + sessions + skills):
   ${BRAND.cliName} index                          (re)index vault+memory แบบ incremental (O(delta))
@@ -2990,14 +2993,76 @@ async function runBrainDoctor(): Promise<void> {
   if (!report.ok) process.exit(1);
 }
 
+/** sanook brain context [--task "..."] — show the prompt context Sanook loads from the vault */
+async function runBrainContext(args: string[]): Promise<void> {
+  const { parseBrainContextArgs, inspectBrainContext, formatBrainContextReport } = await import('./brain-context.js');
+  const parsed = parseBrainContextArgs(args);
+  if (!parsed.ok) {
+    console.error(parsed.message);
+    console.error(`ใช้: ${BRAND.cliName} brain context [--task "..."] [--mode auto|fts|semantic|hybrid] [--limit N] [--source vault,session,skill] [--no-content]`);
+    process.exit(1);
+  }
+  const cfg = await loadConfig({});
+  const report = await inspectBrainContext({
+    brainPath: cfg.brainPath,
+    task: parsed.value.task,
+    mode: parsed.value.mode,
+    limit: parsed.value.limit,
+    sources: parsed.value.sources,
+  });
+  console.log(formatBrainContextReport(report, parsed.value.showContent));
+  if (!report.ok) process.exit(1);
+}
+
+/** sanook brain eval — run the lightweight second-brain benchmark sanity checks */
+async function runBrainEval(args: string[]): Promise<void> {
+  const allowed = new Set(['--no-retrieval']);
+  const unknown = args.filter((arg) => !allowed.has(arg));
+  if (unknown.length) {
+    console.error(`ไม่รู้จัก option: ${unknown.join(' ')}`);
+    console.error(`ใช้: ${BRAND.cliName} brain eval [--no-retrieval]`);
+    process.exit(1);
+  }
+  const cfg = await loadConfig({});
+  const { runBrainEval: evaluate, formatBrainEvalReport } = await import('./brain-eval.js');
+  const report = await evaluate({ brainPath: cfg.brainPath, runRetrieval: !args.includes('--no-retrieval') });
+  console.log(formatBrainEvalReport(report));
+  if (!report.ok) process.exit(1);
+}
+
+/** sanook brain review — curator health review over the configured second-brain vault */
+async function runBrainReview(args: string[]): Promise<void> {
+  const { parseBrainReviewArgs, reviewBrain, formatBrainReviewReport } = await import('./brain-review.js');
+  const parsed = parseBrainReviewArgs(args);
+  if (!parsed.ok) {
+    console.error(parsed.message);
+    console.error(`ใช้: ${BRAND.cliName} brain review [--no-hygiene]`);
+    process.exit(1);
+  }
+  const cfg = await loadConfig({});
+  const report = await reviewBrain({
+    brainPath: cfg.brainPath,
+    scanMarkdownHygiene: parsed.value.scanMarkdownHygiene,
+  });
+  console.log(formatBrainReviewReport(report));
+  if (!report.ok) process.exit(1);
+}
+
 /** sanook brain init [path] — scaffold second-brain workspace (interactive ถ้าไม่ใส่ path) */
 async function runBrain(args: string[]): Promise<void> {
   if (args[0] === 'doctor') return runBrainDoctor();
+  if (args[0] === 'context') return runBrainContext(args.slice(1));
+  if (args[0] === 'eval') return runBrainEval(args.slice(1));
+  if (args[0] === 'review') return runBrainReview(args.slice(1));
 
   if (args[0] !== 'init') {
     console.log(`ใช้:
   sanook brain init [path]   สร้างโครงสร้าง second-brain (Obsidian vault)
   sanook brain doctor        ตรวจ health ของ second-brain ที่ config.brainPath
+  sanook brain context       แสดง context ที่ Sanook จะ inject
+  sanook brain context --task "..."  ดู retrieval hits ต่อ task
+  sanook brain eval          รัน second-brain benchmark sanity checks
+  sanook brain review        curator review: inbox, packs, sessions, evals, note hygiene
 
   ไม่ใส่ path → wizard ถาม path + ตัวตน
   -y, --yes  ใช้ค่า default ทั้งหมด (ต้องระบุ path)`);
@@ -3492,7 +3557,7 @@ async function main(): Promise<void> {
     return runSkill(argv.slice(1));
   }
   if (argv[0] === 'models') return runModels(argv.slice(1));
-  if (argv[0] === 'brain' && ['init', 'doctor', undefined].includes(argv[1])) return runBrain(argv.slice(1));
+  if (argv[0] === 'brain' && ['init', 'doctor', 'context', 'eval', 'review', undefined].includes(argv[1])) return runBrain(argv.slice(1));
   if (argv[0] === 'config' && ['get', 'set', 'list', undefined].includes(argv[1])) return runConfig(argv.slice(1));
   if (argv[0] === 'index' && (argv.length === 1 || argv[1].startsWith('--'))) return runIndex(argv.slice(1));
   if (argv[0] === 'search' && argv.length > 1) return runSearch(argv.slice(1));

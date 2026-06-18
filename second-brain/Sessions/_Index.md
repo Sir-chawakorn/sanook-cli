@@ -33,5 +33,6 @@ code/config · subfolder (Sessions = flat เสมอ)
 - [[Sessions/2026-06-18-cli-args-release-readiness]] — ตรวจ cli-args serve port UX + release readiness gates
 - [[Sessions/2026-06-18-hermes-second-brain-expansion-research]] — วิจัยว่า second-brain ควรเพิ่มอะไรเพื่อรองรับ Hermes CLI ให้ดีขึ้น
 - [[Sessions/2026-06-18-sanook-cli-second-brain-roadmap-correction]] — correction: เป้าจริงคือทำ second-brain feature ใน Sanook CLI
+- [[Sessions/2026-06-18-sanook-brain-cli-p0-implementation]] — implement `brain doctor`, `brain context`, `brain eval`, and `brain review`
 
 up:: [[Home]]
