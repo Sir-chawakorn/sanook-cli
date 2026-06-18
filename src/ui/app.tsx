@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ModelMessage } from 'ai';
@@ -12,7 +12,8 @@ import {
   parseSlashInvocation,
 } from '../commands.js';
 import { runAgent, type AgentEvent } from '../loop.js';
-import { saveSession, newSessionId, listSessions, type Session } from '../session.js';
+import { saveSession, newSessionId, listSessions, removeSession, type Session } from '../session.js';
+import { TOOL_CATALOG } from '../tool-catalog.js';
 import { getBrainPath, appendBrainWorklog } from '../memory.js';
 import { autoCompact, estimateTokens, summarizeCompact } from '../compaction.js';
 import { makeSummarizer } from '../summarize.js';
@@ -24,6 +25,7 @@ import { probeMcpServer } from '../mcp.js';
 import { initialModelPickerIndex, modelPickerOptions } from '../model-picker.js';
 import { clampCompletionIndex, completionForInput, completionReplaceValue } from '../slash-completion.js';
 import { loadSkills } from '../skills.js';
+import { copyTextToClipboard } from '../clipboard.js';
 import { useEditor } from './useEditor.js';
 import { useBusyElapsedSeconds } from './useBusyElapsed.js';
 import { useGitBranch } from './useGitBranch.js';
@@ -33,9 +35,11 @@ import { BRAND } from '../brand.js';
 import { Banner } from './banner.js';
 import { CompletionOverlay, FloatingOverlay, type OverlayState } from './overlay.js';
 import { clampQueueActiveIndex, compactPreview, getQueueWindow, queueActiveIndexAfterDelete } from './queue.js';
+import { MarkdownText, StreamingMarkdownText } from './markdown.js';
 import { SessionPanel } from './session-panel.js';
 import { footerStatus } from './status.js';
-import { toolTrailLines, updateToolTrailOnEvent, type ToolTrailItem } from './tool-trail.js';
+import { thinkingPanelLines, snapshotThinking, type DetailsDisplayMode } from './thinking-panel.js';
+import { toolTrailLines, updateToolTrailOnEvent, type ToolTrailDisplayMode, type ToolTrailItem } from './tool-trail.js';
 
 const execFileP = promisify(execFile);
 const PRE_TURN_COMPACT_TOKENS = 100_000; // session ยาวมากเท่านั้นถึง summarize ก่อน turn (mode summarize)
@@ -43,6 +47,7 @@ const PRE_TURN_COMPACT_TOKENS = 100_000; // session ยาวมากเท่�
 interface Turn {
   id: number;
   role: 'user' | 'assistant' | 'system';
+  thinking?: string;
   text: string;
   toolTrail?: ToolTrailItem[];
 }
@@ -80,6 +85,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     return seed;
   });
   const [streaming, setStreaming] = useState('');
+  const [thinking, setThinking] = useState('');
   const [toolTrail, setToolTrail] = useState<ToolTrailItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [model, setModel] = useState(initialModel);
@@ -88,10 +94,15 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const [completionIndex, setCompletionIndex] = useState(0);
   const [historyResetKey, setHistoryResetKey] = useState(0);
   const [queueActiveIndex, setQueueActiveIndex] = useState<number | null>(null);
+  const [toolTrailMode, setToolTrailModeState] = useState<ToolTrailDisplayMode>('expanded');
+  const [thinkingMode, setThinkingMode] = useState<DetailsDisplayMode>('collapsed');
+  const [contextCompression, setContextCompression] = useState<'headroom' | 'off' | 'selective' | undefined>();
   const idRef = useRef(0);
   const lastCost = useRef<string>('');
   const nextToolTrailId = useRef(0);
   const toolTrailRef = useRef<ToolTrailItem[]>([]);
+  const toolTrailModeRef = useRef<ToolTrailDisplayMode>('expanded');
+  const thinkingRef = useRef('');
   const msgsRef = useRef<ModelMessage[]>(initialHistory ?? []); // conversation จริงสำหรับ LLM (สะสมข้ามรอบ)
   const sessionId = useRef(newSessionId());
   const sessionCreated = useRef(new Date().toISOString());
@@ -146,15 +157,49 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     setToolTrail([]);
   };
 
+  const resetLiveThinking = (): void => {
+    thinkingRef.current = '';
+    setThinking('');
+  };
+
+  const setToolTrailMode = (mode: ToolTrailDisplayMode): void => {
+    toolTrailModeRef.current = mode;
+    setToolTrailModeState(mode);
+    setHistoryResetKey((key) => key + 1);
+  };
+
+  const changeToolTrailMode = (mode?: ToolTrailDisplayMode): ToolTrailDisplayMode => {
+    const next = mode ?? (toolTrailModeRef.current === 'expanded' ? 'compact' : 'expanded');
+    setToolTrailMode(next);
+    return next;
+  };
+
+  const noteToolTrailMode = (mode: ToolTrailDisplayMode): void => {
+    addTurn('system', `tool trail → ${mode} (${mode === 'compact' ? 'สรุปสั้น' : mode === 'hidden' ? 'ซ่อน' : 'แสดงรายละเอียด'})`);
+  };
+
   const snapshotToolTrail = (): ToolTrailItem[] | undefined =>
     toolTrailRef.current.length ? toolTrailRef.current.map((item) => ({ ...item })) : undefined;
 
-  const addTurn = (role: Turn['role'], text: string, extras?: { toolTrail?: ToolTrailItem[] }): void =>
+  const applyDetailsMode = (section: 'thinking' | 'tools' | undefined, mode: DetailsDisplayMode | undefined): void => {
+    if (!section || !mode) return;
+    if (section === 'thinking') {
+      setThinkingMode(mode);
+      setHistoryResetKey((key) => key + 1);
+      addTurn('system', `details thinking → ${mode}`);
+      return;
+    }
+    const nextToolMode: ToolTrailDisplayMode = mode === 'expanded' ? 'expanded' : mode === 'hidden' ? 'hidden' : 'compact';
+    noteToolTrailMode(changeToolTrailMode(nextToolMode));
+  };
+
+  const addTurn = (role: Turn['role'], text: string, extras?: { thinking?: string; toolTrail?: ToolTrailItem[] }): void =>
     setHistory((h) => [
       ...h,
       {
         id: idRef.current++,
         role,
+        thinking: extras?.thinking,
         text,
         toolTrail: extras?.toolTrail?.length ? extras.toolTrail.map((item) => ({ ...item })) : undefined,
       },
@@ -191,6 +236,20 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const completion = !overlay && !busy ? completionForInput(editor.value, cwd) : { items: [], replaceFrom: 0 };
   const completions = completion.items;
   const selectedCompletion = clampCompletionIndex(completionIndex, completions.length);
+
+  useEffect(() => {
+    let alive = true;
+    void agentTuning()
+      .then((tuning) => {
+        if (alive) setContextCompression(tuning.contextCompression);
+      })
+      .catch(() => {
+        if (alive) setContextCompression(undefined);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const applyCompletion = (): boolean => {
     const next = completionReplaceValue(editor.value, completions[selectedCompletion], completion.replaceFrom);
@@ -235,7 +294,18 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     setOverlay((current) => {
       if (current?.kind !== 'mcp' || current.detail) return current;
       const last = Math.max(0, current.servers.length - 1);
-      return { ...current, selected: Math.max(0, Math.min(last, current.selected + delta)) };
+      return { ...current, probe: undefined, selected: Math.max(0, Math.min(last, current.selected + delta)), toolSelected: 0 };
+    });
+  };
+
+  const moveMcpToolCatalog = (delta: number): void => {
+    setOverlay((current) => {
+      if (current?.kind !== 'mcp' || !current.detail) return current;
+      const tools = current.probe?.status === 'pass' ? (current.probe.tools ?? []) : [];
+      if (!tools.length) return current;
+      const last = tools.length - 1;
+      const selected = Math.max(0, Math.min(last, (current.toolSelected ?? 0) + delta));
+      return { ...current, toolSelected: selected };
     });
   };
 
@@ -244,7 +314,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     const server = current.servers[current.selected];
     if (!server) return;
 
-    setOverlay({ ...current, detail: true, probe: { serverName: server.name, status: 'running' } });
+    setOverlay({ ...current, detail: true, probe: { serverName: server.name, status: 'running' }, toolSelected: 0 });
     void probeMcpServer(server.config, 8_000)
       .then((result) => {
         setOverlay((latest) => {
@@ -260,6 +330,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
                   status: 'fail',
                   transport: result.transport,
                 },
+            toolSelected: 0,
           };
         });
       })
@@ -270,6 +341,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
             ...latest,
             detail: true,
             probe: { error: (e as Error).message, serverName: server.name, status: 'fail' },
+            toolSelected: 0,
           };
         });
       });
@@ -325,6 +397,32 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     }
   };
 
+  const openToolsHub = (): void => {
+    setOverlay({ detail: false, kind: 'tools', selected: 0, tools: TOOL_CATALOG });
+  };
+
+  const copyLatestAssistant = async (): Promise<void> => {
+    const latest = [...history].reverse().find((turn) => turn.role === 'assistant' && turn.text.trim());
+    if (!latest) {
+      addTurn('system', 'copy: ยังไม่มีคำตอบ assistant ให้คัดลอก');
+      return;
+    }
+    try {
+      const result = await copyTextToClipboard(latest.text, { writeOsc52: (sequence) => stdout?.write(sequence) });
+      addTurn('system', `copy: copied latest assistant (${latest.text.length} chars) via ${result.detail}`);
+    } catch (e) {
+      addTurn('system', `copy: ${(e as Error).message}`);
+    }
+  };
+
+  const moveToolsHub = (delta: number): void => {
+    setOverlay((current) => {
+      if (current?.kind !== 'tools' || current.detail) return current;
+      const last = Math.max(0, current.tools.length - 1);
+      return { ...current, selected: Math.max(0, Math.min(last, current.selected + delta)) };
+    });
+  };
+
   const moveSkillsHub = (delta: number): void => {
     setOverlay((current) => {
       if (current?.kind !== 'skills' || current.detail) return current;
@@ -346,8 +444,13 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     setOverlay((current) => {
       if (current?.kind !== 'sessions') return current;
       const last = Math.max(0, current.sessions.length - 1);
-      return { ...current, selected: Math.max(0, Math.min(last, current.selected + delta)) };
+      return { ...current, notice: undefined, pendingDeleteId: undefined, selected: Math.max(0, Math.min(last, current.selected + delta)) };
     });
+  };
+
+  const inspectSessionFromOverlay = (current: OverlayState): void => {
+    if (current.kind !== 'sessions' || !current.sessions[current.selected]) return;
+    setOverlay({ ...current, detail: true, notice: undefined, pendingDeleteId: undefined });
   };
 
   const resumeSessionFromOverlay = (current: OverlayState): void => {
@@ -367,7 +470,34 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     sessionCreated.current = session.created;
     setModel(session.model);
     resetLiveToolTrail();
+    resetLiveThinking();
     replaceHistory([{ id: idRef.current++, role: 'system', text: `↻ เปิด session ${session.id} (${session.messages.length} messages)` }]);
+  };
+
+  const deleteSessionFromOverlay = async (current: OverlayState): Promise<void> => {
+    if (current.kind !== 'sessions') return;
+    const session = current.sessions[current.selected];
+    if (!session) return;
+
+    if (current.pendingDeleteId !== session.id) {
+      setOverlay({ ...current, notice: `delete? press d again: ${session.id}`, pendingDeleteId: session.id });
+      return;
+    }
+
+    try {
+      const removed = await removeSession(session.id);
+      const sessions = current.sessions.filter((item) => item.id !== session.id);
+      const selected = Math.max(0, Math.min(current.selected, sessions.length - 1));
+      setOverlay({
+        detail: false,
+        kind: 'sessions',
+        notice: removed ? `deleted ${session.id}` : `already removed ${session.id}`,
+        selected,
+        sessions,
+      });
+    } catch (e) {
+      setOverlay({ ...current, notice: `delete failed: ${(e as Error).message}`, pendingDeleteId: undefined });
+    }
   };
 
   useInput((input, key) => {
@@ -382,9 +512,11 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       if (overlay.kind === 'mcp') {
         if (input === 'q' || input === 'Q') setOverlay(null);
         else if (input === 't' || input === 'T') testMcpServerFromOverlay(overlay);
-        else if (overlay.detail && (key.escape || key.return)) setOverlay({ ...overlay, detail: false });
+        else if (overlay.detail && (key.escape || key.return)) setOverlay({ ...overlay, detail: false, toolSelected: 0 });
         else if (key.escape) setOverlay(null);
-        else if (key.return && overlay.servers.length) setOverlay({ ...overlay, detail: true });
+        else if (key.return && overlay.servers.length) setOverlay({ ...overlay, detail: true, toolSelected: 0 });
+        else if (overlay.detail && (key.downArrow || input === 'j' || input === 'J')) moveMcpToolCatalog(1);
+        else if (overlay.detail && (key.upArrow || input === 'k' || input === 'K')) moveMcpToolCatalog(-1);
         else if (key.downArrow || input === 'j' || input === 'J') moveMcpHub(1);
         else if (key.upArrow || input === 'k' || input === 'K') moveMcpHub(-1);
         return;
@@ -409,10 +541,23 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         return;
       }
       if (overlay.kind === 'sessions') {
-        if (key.escape || input === 'q' || input === 'Q') setOverlay(null);
+        if (input === 'q' || input === 'Q') setOverlay(null);
+        else if (overlay.detail && key.escape) setOverlay({ ...overlay, detail: false, notice: undefined, pendingDeleteId: undefined });
+        else if (key.escape) setOverlay(null);
+        else if (input === 'd' || input === 'D') void deleteSessionFromOverlay(overlay);
+        else if (input === 'i' || input === 'I') inspectSessionFromOverlay(overlay);
         else if (key.return) resumeSessionFromOverlay(overlay);
-        else if (key.downArrow || input === 'j' || input === 'J') moveSessionsHub(1);
-        else if (key.upArrow || input === 'k' || input === 'K') moveSessionsHub(-1);
+        else if (!overlay.detail && (key.downArrow || input === 'j' || input === 'J')) moveSessionsHub(1);
+        else if (!overlay.detail && (key.upArrow || input === 'k' || input === 'K')) moveSessionsHub(-1);
+        return;
+      }
+      if (overlay.kind === 'tools') {
+        if (input === 'q' || input === 'Q') setOverlay(null);
+        else if (overlay.detail && (key.escape || key.return)) setOverlay({ ...overlay, detail: false });
+        else if (key.escape) setOverlay(null);
+        else if (key.return && overlay.tools.length) setOverlay({ ...overlay, detail: true });
+        else if (key.downArrow || input === 'j' || input === 'J') moveToolsHub(1);
+        else if (key.upArrow || input === 'k' || input === 'K') moveToolsHub(-1);
         return;
       }
       if (key.escape || key.return || input === 'q' || input === 'Q') setOverlay(null);
@@ -436,6 +581,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         clearQueue();
         return;
       }
+      if (key.ctrl && input === 't') {
+        noteToolTrailMode(changeToolTrailMode());
+        return;
+      }
       if (key.ctrl && input === 'x') {
         removeActiveQueued();
         return;
@@ -448,6 +597,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       const a = editor.handleKey(input, key);
       if (a === 'submit') {
         const v = editor.value.trim();
+        const expanded = editor.expandValue(v).trim();
         editor.reset();
         const slash = parseSlashInvocation(v);
         if (slash?.name === 'stop') {
@@ -456,7 +606,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
           clearQueue();
           return;
         }
-        if (v) enqueue(v);
+        if (expanded) enqueue(expanded);
       }
       return;
     }
@@ -472,6 +622,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       if (key.tab || key.return) {
         if (applyCompletion()) return;
       }
+    }
+    if (key.ctrl && input === 't') {
+      noteToolTrailMode(changeToolTrailMode());
+      return;
     }
     const action = editor.handleKey(input, key);
     if (action === 'submit') void submit(editor.value);
@@ -527,8 +681,9 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       addTurn('system', `context ~${before} tokens — ยังไม่ต้องบีบ`);
       return;
     }
-    const tuning = await agentTuning().catch(() => null);
-    if (tuning?.compaction === 'summarize') {
+      const tuning = await agentTuning().catch(() => null);
+      if (tuning?.contextCompression) setContextCompression(tuning.contextCompression);
+      if (tuning?.compaction === 'summarize') {
       addTurn('system', '⏳ กำลังย่อ context ด้วย model ถูก…');
       msgsRef.current = await summarizeCompact(
         msgsRef.current,
@@ -544,13 +699,14 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   }
 
   async function submit(raw: string): Promise<void> {
-    const text = raw.trim();
+    const displayText = raw.trim();
+    const text = editor.expandValue(displayText).trim();
     editor.reset();
-    if (!text) return;
-    appendHistory(text, replHistory.current[replHistory.current.length - 1]);
-    replHistory.current.push(text);
+    if (!displayText) return;
+    appendHistory(displayText, replHistory.current[replHistory.current.length - 1]);
+    replHistory.current.push(displayText);
 
-    const slash = parseSlashInvocation(text);
+    const slash = parseSlashInvocation(displayText);
     if (slash) {
       if (slash.name === 'rewind') {
         await rewind();
@@ -561,20 +717,20 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         if (custom) {
           const expanded = expandCustomCommand(custom, slash.args);
           const mark = { turnId: idRef.current, msgLen: msgsRef.current.length };
-          addTurn('user', text);
+          addTurn('user', displayText);
           if (!expanded.trim()) {
             addTurn('system', `custom command /${slash.name} ว่าง`);
             return;
           }
-          await runAssistantTurn(expanded, [], mark, text);
+          await runAssistantTurn(expanded, [], mark, displayText);
           return;
         }
       }
     }
 
-    const cmd = parseCommand(text, { model, costSummary: lastCost.current });
+    const cmd = parseCommand(displayText, { model, costSummary: lastCost.current });
     if (cmd.handled) {
-      addTurn('user', text);
+      addTurn('user', displayText);
       if (cmd.action === 'quit') return exit();
       if (cmd.action === 'clear') {
         msgsRef.current = [];
@@ -587,6 +743,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       }
       if (cmd.action === 'compact') {
         void compactHistory(40_000, 'บีบ context');
+        return;
+      }
+      if (cmd.action === 'copyLast') {
+        void copyLatestAssistant();
         return;
       }
       if (cmd.action === 'diff') return void runGit(['diff', '--stat'], 'diff');
@@ -629,6 +789,18 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         void openSkillsHub();
         return;
       }
+      if (cmd.action === 'toolTrail') {
+        noteToolTrailMode(changeToolTrailMode(cmd.toolTrailMode));
+        return;
+      }
+      if (cmd.action === 'details') {
+        applyDetailsMode(cmd.detailSection, cmd.detailMode);
+        return;
+      }
+      if (cmd.action === 'toolsHub') {
+        openToolsHub();
+        return;
+      }
       if (cmd.action === 'sessionsHub') {
         void openSessionsHub();
         return;
@@ -640,10 +812,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
 
     // prompt ปกติ → expand @mentions (inline ไฟล์ text + เก็บ path รูป)
     const mark = { turnId: idRef.current, msgLen: msgsRef.current.length };
-    addTurn('user', text);
+    addTurn('user', displayText);
     const { text: expanded, images, errors } = await expandMentions(text);
     if (errors.length) addTurn('system', `@mention: ${errors.join(' · ')}`);
-    await runAssistantTurn(expanded, images, mark, text);
+    await runAssistantTurn(expanded, images, mark, displayText);
   }
 
   async function runAssistantTurn(promptText: string, images: string[], mark: Mark, userText = promptText): Promise<void> {
@@ -652,6 +824,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     // (mode truncate: ปล่อยให้ loop.ts ตัดต่อ-step เอา; ไม่บีบที่นี่ กัน latency)
     if (estimateTokens(msgsRef.current) > PRE_TURN_COMPACT_TOKENS) {
       const t = await agentTuning().catch(() => null);
+      if (t?.contextCompression) setContextCompression(t.contextCompression);
       if (t?.compaction === 'summarize') {
         addTurn('system', '⏳ context ยาว — ย่ออัตโนมัติก่อนรอบนี้…');
         msgsRef.current = await summarizeCompact(
@@ -668,10 +841,13 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     const ac = new AbortController(); // steering: ให้ Esc/Ctrl+C หยุด stream กลางทางได้
     abortRef.current = ac;
     resetLiveToolTrail();
+    resetLiveThinking();
     setStreaming('');
     setBusy(true);
     let buf = '';
+    let reasoningBuf = '';
     let lastFlush = 0;
+    let lastThinkingFlush = 0;
     try {
       const { cost, messages, text } = await runAgent({
         model,
@@ -695,12 +871,20 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
             recordToolTrailEvent(e);
           } else if (e.type === 'tool-result' || e.type === 'error') {
             recordToolTrailEvent(e);
+          } else if (e.type === 'reasoning') {
+            reasoningBuf += e.text ?? '';
+            thinkingRef.current = reasoningBuf;
+            const now = Date.now();
+            if (now - lastThinkingFlush > 120) {
+              setThinking(reasoningBuf);
+              lastThinkingFlush = now;
+            }
           }
         },
       });
       msgsRef.current = messages;
       lastCost.current = cost.summary();
-      addTurn('assistant', buf.trim() || text.trim(), { toolTrail: snapshotToolTrail() });
+      addTurn('assistant', buf.trim() || text.trim(), { thinking: snapshotThinking(reasoningBuf), toolTrail: snapshotToolTrail() });
       // เซฟ session ทุกรอบ → resume ได้ด้วย sanook -c
       void saveSession({
         id: sessionId.current,
@@ -725,13 +909,14 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     } catch (err) {
       if (ac.signal.aborted) {
         // หยุดเอง — เก็บ partial output ไว้ดู, ทิ้ง turn นี้ออกจาก LLM history (msgsRef ไม่อัปเดต)
-        if (buf.trim()) addTurn('assistant', buf.trim(), { toolTrail: snapshotToolTrail() });
+        if (buf.trim()) addTurn('assistant', buf.trim(), { thinking: snapshotThinking(reasoningBuf), toolTrail: snapshotToolTrail() });
         addTurn('system', '⊘ หยุด turn แล้ว (ไฟล์ที่ tool แก้ไปแล้วคืนด้วย /rewind ได้)');
       } else {
         addTurn('system', `ERROR: ${(err as Error).message}`);
       }
     } finally {
       setStreaming('');
+      resetLiveThinking();
       resetLiveToolTrail();
       setBusy(false);
       abortRef.current = null;
@@ -745,7 +930,8 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const contextTokens = estimateTokens(msgsRef.current);
   const activeQueueIndex = clampQueueActiveIndex(queueActiveIndex, queued.length);
   const queueWindow = getQueueWindow(queued.length, activeQueueIndex);
-  const toolTrailView = toolTrailLines(toolTrail, columns);
+  const toolTrailView = toolTrailLines(toolTrail, columns, toolTrailMode);
+  const thinkingView = thinkingPanelLines(thinking, columns, thinkingMode);
 
   return (
     <Box flexDirection="column">
@@ -755,14 +941,19 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
           <SessionPanel columns={columns} model={model} mode={permissionMode === 'ask' ? 'ask' : 'auto'} />
         </>
       ) : null}
-      <Static key={historyResetKey} items={history}>{(turn) => <TurnView key={turn.id} columns={columns} turn={turn} />}</Static>
+      <Static key={historyResetKey} items={history}>
+        {(turn) => (
+          <TurnView key={turn.id} columns={columns} thinkingMode={thinkingMode} toolTrailMode={toolTrailMode} turn={turn} />
+        )}
+      </Static>
+      {thinkingView.length ? <ThinkingView columns={columns} mode={thinkingMode} text={thinking} /> : null}
       {streaming ? (
-        <Box marginTop={1}>
-          <Text>{streaming}</Text>
+        <Box flexDirection="column" marginTop={1}>
+          <StreamingMarkdownText columns={columns} text={streaming} />
         </Box>
       ) : null}
       {toolTrailView.length ? (
-        <ToolTrailView columns={columns} items={toolTrail} />
+        <ToolTrailView columns={columns} items={toolTrail} mode={toolTrailMode} />
       ) : null}
       <FloatingOverlay columns={columns} overlay={overlay} pageSize={pagerPageSize} />
       <CompletionOverlay columns={columns} items={completions} selected={selectedCompletion} />
@@ -800,6 +991,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
           branch: gitBranch,
           busy,
           columns,
+          contextCompression,
           contextTokens,
           costHint,
           cwd,
@@ -830,8 +1022,8 @@ function InputView({ value, cursor, busy }: { value: string; cursor: number; bus
   );
 }
 
-function ToolTrailView({ columns, items }: { columns: number; items: ToolTrailItem[] }) {
-  const lines = toolTrailLines(items, columns);
+function ToolTrailView({ columns, items, mode }: { columns: number; items: ToolTrailItem[]; mode: ToolTrailDisplayMode }) {
+  const lines = toolTrailLines(items, columns, mode);
   if (!lines.length) return null;
   return (
     <Box flexDirection="column" marginTop={1}>
@@ -839,11 +1031,12 @@ function ToolTrailView({ columns, items }: { columns: number; items: ToolTrailIt
         const isRunning = line.startsWith('>');
         const isError = line.startsWith('!');
         const isDone = line.startsWith('+');
+        const isMeta = line.startsWith('view:') || line.startsWith('tools:');
         return (
           <Text
             key={`${index}-${line}`}
             color={index === 0 ? 'cyan' : isError ? 'red' : isRunning ? 'yellow' : undefined}
-            dimColor={isDone}
+            dimColor={isDone || isMeta}
             wrap="truncate-end"
           >
             {line}
@@ -854,7 +1047,31 @@ function ToolTrailView({ columns, items }: { columns: number; items: ToolTrailIt
   );
 }
 
-function TurnView({ columns, turn }: { columns: number; turn: Turn }) {
+function ThinkingView({ columns, mode, text }: { columns: number; mode: DetailsDisplayMode; text?: string }) {
+  const lines = thinkingPanelLines(text, columns, mode);
+  if (!lines.length) return null;
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      {lines.map((line, index) => (
+        <Text key={`${index}-${line}`} color={index === 0 ? 'cyan' : undefined} dimColor={index > 0} wrap="truncate-end">
+          {line}
+        </Text>
+      ))}
+    </Box>
+  );
+}
+
+function TurnView({
+  columns,
+  thinkingMode,
+  toolTrailMode,
+  turn,
+}: {
+  columns: number;
+  thinkingMode: DetailsDisplayMode;
+  toolTrailMode: ToolTrailDisplayMode;
+  turn: Turn;
+}) {
   if (turn.role === 'system') return <Text dimColor>{turn.text}</Text>;
   if (turn.role === 'user')
     return (
@@ -865,8 +1082,9 @@ function TurnView({ columns, turn }: { columns: number; turn: Turn }) {
     );
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Text>{turn.text}</Text>
-      {turn.toolTrail ? <ToolTrailView columns={columns} items={turn.toolTrail} /> : null}
+      {turn.thinking ? <ThinkingView columns={columns} mode={thinkingMode} text={turn.thinking} /> : null}
+      <MarkdownText columns={columns} text={turn.text} />
+      {turn.toolTrail ? <ToolTrailView columns={columns} items={turn.toolTrail} mode={toolTrailMode} /> : null}
     </Box>
   );
 }

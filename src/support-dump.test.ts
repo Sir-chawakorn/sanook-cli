@@ -51,7 +51,7 @@ describe('support dump', () => {
     await mkdir(project, { recursive: true });
     await writeFile(
       join(home, '.sanook', 'config.json'),
-      JSON.stringify({ model: 'openai:gpt-5.3-codex', brainPath: join(home, 'Brain') }, null, 2),
+      JSON.stringify({ model: 'openai:gpt-5.3-codex', brainPath: join(home, 'Brain'), contextCompression: 'headroom' }, null, 2),
     );
     await writeFile(join(home, '.sanook', 'auth.json'), JSON.stringify({ OPENAI_API_KEY: rawKey }, null, 2));
     await writeFile(
@@ -143,6 +143,7 @@ describe('support dump', () => {
     expect(out).toContain('version: 9.9.9');
     expect(out).toContain('package: sanook-cli-test');
     expect(out).toContain('model: openai:gpt-5.3-codex');
+    expect(out).toContain('contextCompression: headroom');
     expect(out).toContain('openai');
     expect(out).toContain('stored in auth.json');
     expect(out).toContain('OPENAI_API_KEY=sk-t…ef');

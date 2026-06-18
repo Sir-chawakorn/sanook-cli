@@ -100,8 +100,10 @@ describe('App (Ink REPL)', () => {
     expect(lastFrame()).toContain('/model');
     expect(lastFrame()).toContain('Enter/Space/PgDn');
 
-    stdin.write('\r');
-    await tick();
+    for (let i = 0; i < 4 && !(lastFrame() ?? '').includes('นอก REPL'); i += 1) {
+      stdin.write('\r');
+      await tick();
+    }
 
     expect(lastFrame()).toContain('นอก REPL');
 
@@ -210,6 +212,30 @@ describe('App (Ink REPL)', () => {
     await tick();
 
     expect(lastFrame()).toContain('Enter inspect');
+    unmount();
+  });
+
+  it('/tools opens a Tools Hub overlay and Enter inspects the highlighted lane', async () => {
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" />);
+
+    stdin.write('/tools');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('Sanook tools hub'));
+
+    expect(lastFrame()).toContain('built-in lanes');
+    expect(lastFrame()).not.toContain('tools ที่ agent ใช้ได้');
+
+    stdin.write('\r');
+    await tick();
+
+    expect(lastFrame()).toContain('detail:');
+    expect(lastFrame()).toContain('/mcp');
+
+    stdin.write('\x1B');
+    await tick();
+
+    expect(lastFrame()).toContain('built-in lanes');
     unmount();
   });
 

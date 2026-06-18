@@ -7,6 +7,7 @@ import { projectConfigPathIfTrusted } from './trust.js';
 import { normalizePersonalityName, personalityListText } from './personality.js';
 import { parseInsightsArgs } from './insights-args.js';
 import { formatHotkeys } from './hotkeys.js';
+import { formatToolCatalog } from './tool-catalog.js';
 
 export interface CommandResult {
   /** true = เป็น slash command (ไม่ส่งเข้า agent) */
@@ -14,6 +15,7 @@ export interface CommandResult {
   action?:
     | 'clear'
     | 'compact'
+    | 'copyLast'
     | 'quit'
     | 'help'
     | 'diff'
@@ -27,7 +29,10 @@ export interface CommandResult {
     | 'mcpHub'
     | 'modelPicker'
     | 'skillsHub'
-    | 'sessionsHub';
+    | 'sessionsHub'
+    | 'details'
+    | 'toolTrail'
+    | 'toolsHub';
   /** ข้อความแสดงกลับ (help / cost / model / unknown) */
   message?: string;
   /** /model <spec> — เปลี่ยน model */
@@ -38,6 +43,11 @@ export interface CommandResult {
   insightsDays?: number;
   /** /insights --all */
   insightsAll?: boolean;
+  /** /trail [compact|expanded] */
+  toolTrailMode?: 'compact' | 'expanded';
+  /** /details thinking|tools hidden|collapsed|expanded */
+  detailMode?: 'hidden' | 'collapsed' | 'expanded';
+  detailSection?: 'thinking' | 'tools';
 }
 
 export const HELP_TEXT = `คำสั่ง:
@@ -47,11 +57,13 @@ export const HELP_TEXT = `คำสั่ง:
   /model [spec]    ดู/เปลี่ยน model (เช่น /model opus, /model openai:gpt-5)
   /personality [name]
                    ดู/ตั้ง personality overlay
+  /details [thinking|tools] [hidden|collapsed|expanded]
+                   คุมแผง thinking/tool trail แบบ Hermes-style
   /platforms       ดู providers + messaging platforms ที่รองรับ
   /tools           ดู tools ที่ agent ใช้ได้
   /mcp             เปิด MCP Hub overlay
   /skills          เปิด Skills Hub overlay (จัดการ: ${BRAND.cliName} skill list)
-  /sessions        เปิด Session Switcher overlay
+  /sessions        เปิด Session Switcher overlay · /trail พับ/ขยาย tool trail
   /diff            ดู git diff (สิ่งที่ agent แก้ในรอบนี้)
   /retry           รัน prompt ล่าสุดอีกครั้ง
   /stop            หยุด turn ที่กำลังรัน
@@ -61,6 +73,7 @@ export const HELP_TEXT = `คำสั่ง:
   /insights [--days N] [--all]
                    ดู usage/session insights ในเครื่อง
   /hotkeys         เปิด overlay คีย์ลัดใน REPL
+  /copy [last]     copy คำตอบ assistant ล่าสุดไป clipboard/OSC52
   ↑/↓ ประวัติ · @ไฟล์ แนบ context/รูป · \\ ลงท้าย = บรรทัดใหม่
   /clear           ล้าง conversation (เริ่มใหม่)
   /compact, /compress
@@ -74,15 +87,6 @@ export const HELP_TEXT = `คำสั่ง:
 custom commands:
   ~/.sanook/commands/<name>.md และ .sanook/commands/<name>.md (project ต้อง trust ก่อน)
   args: ใช้ $ARGUMENTS หรือ {{ args }}; ถ้าไม่มี placeholder จะ append args ต่อท้าย`;
-
-const TOOLS_LIST = [
-  'read_file (offset/limit) write_file edit_file (replace_all) list_dir glob grep run_bash',
-  'git_status git_diff git_log git_commit',
-  'remember recall · skill find_skills create_skill',
-  'schedule_task list_scheduled cancel_scheduled',
-  'task task_parallel task_spawn task_collect task_cancel task_status   ← sub-agent (ขนาน/background)',
-  'diagnostics   ← type error/lint จาก language server (LSP)',
-].join('\n  ');
 
 const MESSAGING_PLATFORMS = [
   'telegram',
@@ -224,6 +228,11 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
     case 'compact':
     case 'compress':
       return { handled: true, action: 'compact', message: 'บีบ context แล้ว' };
+    case 'copy': {
+      const target = args[0]?.toLowerCase();
+      if (!target || target === 'last' || target === 'assistant') return { handled: true, action: 'copyLast' };
+      return { handled: true, message: 'ใช้ /copy หรือ /copy last' };
+    }
     case 'quit':
     case 'exit':
       return { handled: true, action: 'quit' };
@@ -243,7 +252,33 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
       };
     }
     case 'tools':
-      return { handled: true, message: `tools ที่ agent ใช้ได้ (+ MCP ที่ตั้งไว้):\n  ${TOOLS_LIST}` };
+      return { handled: true, action: 'toolsHub', message: `tools ที่ agent ใช้ได้ (+ MCP ที่ตั้งไว้):\n  ${formatToolCatalog()}` };
+    case 'trail': {
+      const rawMode = args[0]?.toLowerCase();
+      if (!rawMode) return { handled: true, action: 'toolTrail', message: 'toggle tool trail view' };
+      if (['compact', 'collapse', 'collapsed', 'hide', 'summary'].includes(rawMode)) {
+        return { handled: true, action: 'toolTrail', message: 'tool trail → compact', toolTrailMode: 'compact' };
+      }
+      if (['expanded', 'expand', 'full', 'show'].includes(rawMode)) {
+        return { handled: true, action: 'toolTrail', message: 'tool trail → expanded', toolTrailMode: 'expanded' };
+      }
+      return { handled: true, message: 'ใช้ /trail, /trail compact, หรือ /trail expanded' };
+    }
+    case 'details': {
+      const section = args[0]?.toLowerCase();
+      const mode = args[1]?.toLowerCase();
+      const usage = 'ใช้ /details thinking|tools hidden|collapsed|expanded';
+      if (!section && !mode) return { handled: true, message: usage };
+      if (section !== 'thinking' && section !== 'tools') return { handled: true, message: usage };
+      if (mode !== 'hidden' && mode !== 'collapsed' && mode !== 'expanded') return { handled: true, message: usage };
+      return {
+        handled: true,
+        action: 'details',
+        detailMode: mode,
+        detailSection: section,
+        message: `details ${section} → ${mode}`,
+      };
+    }
     case 'platforms':
       return { handled: true, message: platformMenu() };
     case 'mcp':
@@ -296,11 +331,14 @@ export const BUILTIN_COMMANDS = new Set([
   'hotkeys',
   'compact',
   'compress',
+  'copy',
   'quit',
   'exit',
   'model',
   'personality',
+  'details',
   'platforms',
+  'trail',
   'tools',
   'mcp',
   'skills',

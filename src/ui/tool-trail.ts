@@ -1,4 +1,5 @@
 export type ToolTrailStatus = 'done' | 'error' | 'running';
+export type ToolTrailDisplayMode = 'compact' | 'expanded' | 'hidden';
 
 export interface ToolTrailItem {
   detail?: string;
@@ -90,14 +91,30 @@ export function updateToolTrailOnEvent(items: ToolTrailItem[], event: ToolTrailE
   return { items: trimItems(next), nextId };
 }
 
-export function toolTrailLines(items: ToolTrailItem[], columns: number): string[] {
+function markerForStatus(status: ToolTrailStatus): string {
+  return status === 'running' ? '>' : status === 'done' ? '+' : '!';
+}
+
+function statusSummary(items: ToolTrailItem[]): string {
+  const running = items.filter((item) => item.status === 'running').length;
+  const done = items.filter((item) => item.status === 'done').length;
+  const error = items.filter((item) => item.status === 'error').length;
+  return [`${done} done`, running ? `${running} running` : '', error ? `${error} error` : ''].filter(Boolean).join(' / ');
+}
+
+export function toolTrailLines(items: ToolTrailItem[], columns: number, mode: ToolTrailDisplayMode = 'expanded'): string[] {
+  if (mode === 'hidden') return [];
   if (!items.length) return [];
   const width = Math.max(24, Math.min(Math.max(30, columns - 4), 96));
   const nameWidth = Math.max(8, Math.min(24, Math.floor(width * 0.34)));
   const detailWidth = Math.max(0, width - nameWidth - 18);
-  const lines = [`Sanook tool trail (${items.length})`];
+  const lines = [`Sanook tool trail (${items.length})`, `view: ${mode} | ${statusSummary(items)} | Ctrl+T / /trail`];
+  if (mode === 'compact') {
+    lines.push(`tools: ${items.map((item) => `${markerForStatus(item.status)}${item.name}`).join(' ')}`);
+    return lines.map((line) => clip(line, width));
+  }
   for (const item of items) {
-    const marker = item.status === 'running' ? '>' : item.status === 'done' ? '+' : '!';
+    const marker = markerForStatus(item.status);
     const detail = item.detail ? ` ${clip(item.detail, detailWidth)}` : '';
     lines.push(`${marker} ${clip(item.name, nameWidth).padEnd(nameWidth)} ${item.status.padEnd(7)}${detail}`);
   }

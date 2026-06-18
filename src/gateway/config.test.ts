@@ -815,7 +815,7 @@ describe('gateway config', () => {
     });
   });
 
-  it('persists, resolves, and redacts BlueBubbles gateway config', async () => {
+  it('persists, resolves, and redacts BlueBubbles gateway config with chat GUID defaults', async () => {
     await C.patchGatewayConfig({
       bluebubbles: {
         enabled: true,
@@ -997,7 +997,7 @@ describe('gateway config', () => {
     });
   });
 
-  it('persists, resolves, and redacts BlueBubbles gateway config', async () => {
+  it('persists, resolves, and redacts BlueBubbles gateway config with localhost webhook overrides', async () => {
     await C.patchGatewayConfig({
       bluebubbles: {
         enabled: true,

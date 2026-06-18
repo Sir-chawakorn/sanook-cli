@@ -66,11 +66,11 @@ describe('App tool trail', () => {
     expect(lastFrame()).toContain('read_file');
     expect(lastFrame()).toContain('running');
 
-    h.opts!.onEvent?.({ detail: 'ok', tool: 'read_file', type: 'tool-result' });
-    await waitFor(() => (lastFrame() ?? '').includes('done'));
+    h.opts!.onEvent?.({ detail: 'detail-visible', tool: 'read_file', type: 'tool-result' });
+    await waitFor(() => (lastFrame() ?? '').includes('detail-visible'));
 
     expect(lastFrame()).toContain('read_file');
-    expect(lastFrame()).toContain('ok');
+    expect(lastFrame()).toContain('detail-visible');
 
     unmount();
   });
@@ -78,7 +78,7 @@ describe('App tool trail', () => {
   it('persists completed tool trails inside the assistant transcript without duplicating the live panel', async () => {
     h.run = async (opts) => {
       opts.onEvent?.({ detail: { path: 'src/app.tsx' }, tool: 'read_file', type: 'tool-call' });
-      opts.onEvent?.({ detail: 'ok', tool: 'read_file', type: 'tool-result' });
+      opts.onEvent?.({ detail: 'detail-visible', tool: 'read_file', type: 'tool-result' });
       opts.onEvent?.({ text: 'finished answer', type: 'text' });
       return {
         cost: { summary: () => 'tokens: 10' },
@@ -97,9 +97,122 @@ describe('App tool trail', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('read_file');
     expect(frame).toContain('done');
-    expect(frame).toContain('ok');
+    expect(frame).toContain('detail-visible');
     expect(frame.match(/Sanook tool trail/g)).toHaveLength(1);
 
+    unmount();
+  });
+
+  it('/trail compact and /trail expanded rerender saved transcript tool trails', async () => {
+    h.run = async (opts) => {
+      opts.onEvent?.({ detail: { path: 'src/app.tsx' }, tool: 'read_file', type: 'tool-call' });
+      opts.onEvent?.({ detail: 'detail-visible', tool: 'read_file', type: 'tool-result' });
+      opts.onEvent?.({ text: 'finished answer', type: 'text' });
+      return {
+        cost: { summary: () => 'tokens: 10' },
+        messages: [...(opts.history ?? []), { content: opts.prompt, role: 'user' }, { content: 'finished answer', role: 'assistant' }],
+        text: 'finished answer',
+      };
+    };
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" permissionMode="auto" />);
+
+    stdin.write('inspect the repo');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('view: expanded'));
+    expect(lastFrame()).toContain('detail-visible');
+
+    stdin.write('/trail compact');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('view: compact'));
+    expect(lastFrame()).toContain('tools: +read_file');
+    expect(lastFrame()).not.toContain('detail-visible');
+
+    stdin.write('/trail expanded');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('view: expanded'));
+    expect(lastFrame()).toContain('detail-visible');
+
+    unmount();
+  });
+
+  it('renders reasoning deltas in a thinking panel and /details thinking hidden hides saved thinking', async () => {
+    h.run = async (opts) => {
+      opts.onEvent?.({ text: 'Plan next tool\nRead package metadata', type: 'reasoning' });
+      opts.onEvent?.({ text: 'finished answer', type: 'text' });
+      return {
+        cost: { summary: () => 'tokens: 10' },
+        messages: [...(opts.history ?? []), { content: opts.prompt, role: 'user' }, { content: 'finished answer', role: 'assistant' }],
+        text: 'finished answer',
+      };
+    };
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" permissionMode="auto" />);
+
+    stdin.write('inspect the repo');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('Sanook thinking'));
+    expect(lastFrame()).toContain('Plan next tool');
+
+    stdin.write('/details thinking hidden');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('details thinking → hidden'));
+
+    expect(lastFrame()).not.toContain('Sanook thinking');
+    unmount();
+  });
+
+  it('/details tools hidden hides saved tool trails', async () => {
+    h.run = async (opts) => {
+      opts.onEvent?.({ detail: { path: 'src/app.tsx' }, tool: 'read_file', type: 'tool-call' });
+      opts.onEvent?.({ detail: 'detail-visible', tool: 'read_file', type: 'tool-result' });
+      opts.onEvent?.({ text: 'finished answer', type: 'text' });
+      return {
+        cost: { summary: () => 'tokens: 10' },
+        messages: [...(opts.history ?? []), { content: opts.prompt, role: 'user' }, { content: 'finished answer', role: 'assistant' }],
+        text: 'finished answer',
+      };
+    };
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" permissionMode="auto" />);
+
+    stdin.write('inspect the repo');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('Sanook tool trail'));
+
+    stdin.write('/details tools hidden');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('tool trail → hidden'));
+
+    expect(lastFrame()).not.toContain('Sanook tool trail');
+    unmount();
+  });
+
+  it('renders streaming and saved assistant markdown instead of raw markdown fences', async () => {
+    h.run = async (opts) => {
+      const markdown = '# Done\n\n- used `read_file`\n\n```ts\nconst ok = true;\n```';
+      opts.onEvent?.({ text: markdown, type: 'text' });
+      return {
+        cost: { summary: () => 'tokens: 10' },
+        messages: [...(opts.history ?? []), { content: opts.prompt, role: 'user' }, { content: markdown, role: 'assistant' }],
+        text: markdown,
+      };
+    };
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" permissionMode="auto" />);
+
+    stdin.write('render markdown');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('const ok = true;'));
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Done');
+    expect(frame).toContain('- used read_file');
+    expect(frame).not.toContain('```');
     unmount();
   });
 });

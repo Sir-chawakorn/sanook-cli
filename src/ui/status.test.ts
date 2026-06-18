@@ -6,6 +6,7 @@ describe('footerStatus', () => {
     const status = footerStatus({
       columns: 150,
       branch: 'feature/tui-status',
+      contextCompression: 'headroom',
       contextTokens: 42_000,
       costHint: '$0.01',
       cwd: '/Users/me/dev/sanook-cli',
@@ -16,6 +17,7 @@ describe('footerStatus', () => {
     expect(status).toContain('SANOOK');
     expect(status).toContain('ready');
     expect(status).toContain('ctx');
+    expect(status).toContain('cmp hdr');
     expect(status).toContain('/hotkeys');
     expect(status).toContain('cost $0.01');
     expect(status).toContain('dev/sanook-cli');
@@ -26,6 +28,7 @@ describe('footerStatus', () => {
   it('drops lower-priority hints on narrow terminals', () => {
     const status = footerStatus({
       columns: 36,
+      contextCompression: 'selective',
       contextTokens: 42_000,
       costHint: '$0.01',
       cwd: '/Users/me/dev/sanook-cli',
@@ -36,6 +39,7 @@ describe('footerStatus', () => {
     expect(status).toContain('openai:gpt-5.5');
     expect(status).toContain('auto');
     expect(status).not.toContain('/hotkeys');
+    expect(status).not.toContain('cmp');
     expect(status).not.toContain('$0.01');
     expect(status).not.toContain('sanook-cli');
     expect(status.length).toBeLessThanOrEqual(36);
@@ -45,6 +49,7 @@ describe('footerStatus', () => {
     const status = footerStatus({
       busy: true,
       columns: 80,
+      contextCompression: 'selective',
       contextTokens: 1200,
       model: 'anthropic:claude-sonnet-4-5',
       mode: 'ask',
@@ -54,7 +59,21 @@ describe('footerStatus', () => {
     expect(status).toContain('working');
     expect(status).toContain('q 3');
     expect(status).toContain('ctx 1.2k');
+    expect(status).not.toContain('cmp sel');
     expect(status.length).toBeLessThanOrEqual(80);
+  });
+
+  it('shows compression mode on roomy terminals below cost/cwd priority', () => {
+    const status = footerStatus({
+      columns: 96,
+      contextCompression: 'selective',
+      contextTokens: 1200,
+      model: 'sonnet',
+      mode: 'ask',
+    });
+
+    expect(status).toContain('cmp sel');
+    expect(status.length).toBeLessThanOrEqual(96);
   });
 
   it('reserves left status content so cwd yields first', () => {
@@ -72,6 +91,7 @@ describe('footerStatus', () => {
 
   it('sheds status segments in a stable priority order', () => {
     expect(statusSegments(120)).toEqual({
+      compression: true,
       contextBar: true,
       cost: true,
       cwd: true,
@@ -81,6 +101,7 @@ describe('footerStatus', () => {
       queue: true,
     });
     expect(statusSegments(44)).toMatchObject({
+      compression: false,
       contextBar: false,
       cost: false,
       cwd: false,

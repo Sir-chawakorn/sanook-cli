@@ -29,22 +29,22 @@ export function sessionPanelLines({ columns, cwd, model, mode }: SessionPanelPro
   const dir = displayDir(cwd);
   if (width < COMPACT_PANEL_COLUMNS) {
     return [
-      'Services: Tools · Brain · Skills · MCP · System',
-      'Tools  read/edit/run · git diff/undo',
-      'Brain  context · remember · worklog',
-      'Skills /skills · find/create reusable workflows',
-      'MCP    search/install · doctor',
+      'Routes: Code · Brain · Connect · Ship',
+      'Code    @file · /tools · git diff/undo',
+      'Brain   context · remember · /skills',
+      'Connect /mcp search/install · doctor',
+      'Ship    /copy · cost guard · final proof',
       `System ${model} · ${mode}-mode`,
     ];
   }
 
   return [
-    `${BRAND.bannerWide} services`,
-    'Tools   read/edit/run · git diff/undo · diagnostics',
-    'Brain   second-brain context · remember/recall · session worklog',
-    'Skills  /skills · find/create skills · reusable workflows',
-    'MCP     registry search/install · doctor · mcp serve',
-    'System  ask approvals · queued follow-ups · /hotkeys',
+    `${BRAND.bannerWide} service routes`,
+    'Code     @file mentions · read/edit/run tools · git diff/undo',
+    'Brain    second-brain context · remember/recall · reusable workflows /skills',
+    'Connect  MCP registry search/install · doctor · gateway serve',
+    'Ship     /copy handoff · cost guard · final proof · /undo safety',
+    'System   ask approvals · queued follow-ups · /hotkeys',
     `Runtime ${model} · ${mode}-mode · BYOK · ${dir}`,
   ];
 }

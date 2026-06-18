@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'ink-testing-library';
 import { modelPickerOptions } from '../model-picker.js';
+import { TOOL_CATALOG } from '../tool-catalog.js';
 import {
   FloatingOverlay,
   completionOverlayLines,
@@ -10,6 +11,7 @@ import {
   pagerOverlayLines,
   sessionsOverlayLines,
   skillsOverlayLines,
+  toolsOverlayLines,
 } from './overlay.js';
 
 const sampleSkills = [
@@ -144,6 +146,42 @@ describe('FloatingOverlay', () => {
     unmount();
   });
 
+  it('renders a tools hub overlay list and details', () => {
+    const list = toolsOverlayLines({ detail: false, kind: 'tools', selected: 4, tools: TOOL_CATALOG }, 82);
+    const detail = toolsOverlayLines({ detail: true, kind: 'tools', selected: 4, tools: TOOL_CATALOG }, 82);
+
+    expect(list).toContain('Sanook tools hub');
+    expect(list.join('\n')).toContain('agent orchestration');
+    expect(list.join('\n')).toContain('Enter inspect');
+    expect(detail.join('\n')).toContain('Agents / agent orchestration');
+    expect(detail.join('\n')).toContain('task_spawn');
+    expect(detail.join('\n')).toContain('/mcp');
+    expect(Math.max(...list.map((line) => line.length))).toBeLessThanOrEqual(82);
+  });
+
+  it('clips oversized tools hub detail rows to the overlay width', () => {
+    const lines = toolsOverlayLines(
+      {
+        detail: true,
+        kind: 'tools',
+        selected: 0,
+        tools: [
+          {
+            detail: 'x'.repeat(100),
+            group: 'VeryLongToolCatalogGroupName',
+            name: 'VeryLongToolCatalogEntryName',
+            summary: 'summary '.repeat(20),
+          },
+        ],
+      },
+      42,
+    );
+
+    expect(lines[0]).toBe('Sanook tools hub');
+    expect(lines.some((line) => line.endsWith('…'))).toBe(true);
+    expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(42);
+  });
+
   it('renders an MCP hub list and details', () => {
     const list = mcpOverlayLines({ detail: false, kind: 'mcp', notes: [], selected: 1, servers: sampleMcpServers }, 82);
     const detail = mcpOverlayLines({ detail: true, kind: 'mcp', notes: [], selected: 1, servers: sampleMcpServers }, 82);
@@ -170,9 +208,13 @@ describe('FloatingOverlay', () => {
         probe: {
           serverName: 'github',
           status: 'pass',
-          tools: [{ name: 'issues_list', description: 'List repository issues' }],
+          tools: [
+            { name: 'issues_list', description: 'List repository issues' },
+            { name: 'issues_get', description: 'Get one issue' },
+          ],
           transport: 'http',
         },
+        toolSelected: 1,
         selected: 1,
         servers: sampleMcpServers,
       },
@@ -191,8 +233,10 @@ describe('FloatingOverlay', () => {
     );
 
     expect(running.join('\n')).toContain('test: running...');
-    expect(pass.join('\n')).toContain('test: PASS (1 tools)');
-    expect(pass.join('\n')).toContain('issues_list');
+    expect(pass.join('\n')).toContain('test: PASS (2 tools)');
+    expect(pass.join('\n')).toContain('catalog: 2 tools');
+    expect(pass.join('\n')).toContain('  issues_list');
+    expect(pass.join('\n')).toContain('> issues_get');
     expect(fail.join('\n')).toContain('test: FAIL (http) missing token');
   });
 
@@ -212,6 +256,22 @@ describe('FloatingOverlay', () => {
     expect(lines.join('\n')).toContain('Audit');
     expect(lines.join('\n')).toContain('Gateway cleanup');
     expect(lines.join('\n')).toContain('Enter resume');
+    expect(lines.join('\n')).toContain('i inspect');
     expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(68);
+  });
+
+  it('renders session detail and delete confirmation hints', () => {
+    const detail = sessionsOverlayLines({ detail: true, kind: 'sessions', selected: 0, sessions: sampleSessions }, 72);
+    const armed = sessionsOverlayLines(
+      { detail: true, kind: 'sessions', pendingDeleteId: '2026-06-18-session-a', selected: 0, sessions: sampleSessions },
+      72,
+    );
+
+    expect(detail.join('\n')).toContain('id: 2026-06-18-session-a');
+    expect(detail.join('\n')).toContain('model: sonnet');
+    expect(detail.join('\n')).toContain('first: Audit');
+    expect(detail.join('\n')).toContain('d delete');
+    expect(armed.join('\n')).toContain('press d again');
+    expect(Math.max(...armed.map((line) => line.length))).toBeLessThanOrEqual(72);
   });
 });

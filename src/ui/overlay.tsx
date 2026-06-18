@@ -6,8 +6,9 @@ import type { ModelPickerOption } from '../model-picker.js';
 import type { Session } from '../session.js';
 import type { CompletionItem } from '../slash-completion.js';
 import type { Skill } from '../skills.js';
+import type { ToolCatalogEntry } from '../tool-catalog.js';
 
-export type OverlayKind = 'hotkeys' | 'mcp' | 'model' | 'pager' | 'skills' | 'sessions';
+export type OverlayKind = 'hotkeys' | 'mcp' | 'model' | 'pager' | 'skills' | 'sessions' | 'tools';
 
 export interface HotkeysOverlayState {
   kind: 'hotkeys';
@@ -26,6 +27,7 @@ export interface McpOverlayState {
   probe?: McpOverlayProbe;
   selected: number;
   servers: McpHubState['entries'];
+  toolSelected?: number;
 }
 
 export interface McpOverlayProbe {
@@ -51,9 +53,19 @@ export interface SkillsOverlayState {
 }
 
 export interface SessionsOverlayState {
+  detail?: boolean;
   kind: 'sessions';
+  notice?: string;
+  pendingDeleteId?: string;
   selected: number;
   sessions: Session[];
+}
+
+export interface ToolsOverlayState {
+  detail: boolean;
+  kind: 'tools';
+  selected: number;
+  tools: ToolCatalogEntry[];
 }
 
 export type OverlayState =
@@ -62,7 +74,8 @@ export type OverlayState =
   | ModelOverlayState
   | PagerOverlayState
   | SkillsOverlayState
-  | SessionsOverlayState;
+  | SessionsOverlayState
+  | ToolsOverlayState;
 
 export interface OverlayNavigation {
   next?: () => void;
@@ -93,6 +106,7 @@ const MODEL_WINDOW = 10;
 const MCP_WINDOW = 10;
 const SKILL_WINDOW = 10;
 const SESSION_WINDOW = 10;
+const TOOL_WINDOW = 10;
 const DEFAULT_PAGER_PAGE_SIZE = 12;
 const COMPLETION_WINDOW = 8;
 
@@ -262,7 +276,7 @@ export function mcpOverlayLines(overlay: McpOverlayState, columns: number): stri
 
   if (overlay.detail && selected) {
     const probe = overlay.probe?.serverName === selected.name ? overlay.probe : undefined;
-    const probeLines = mcpProbeLines(probe, innerWidth);
+    const probeLines = mcpProbeLines(probe, innerWidth, overlay.toolSelected ?? 0);
     return [
       'Sanook MCP hub',
       `${selected.name} (${selected.transport})`,
@@ -294,7 +308,7 @@ export function mcpOverlayLines(overlay: McpOverlayState, columns: number): stri
   return lines;
 }
 
-function mcpProbeLines(probe: McpOverlayProbe | undefined, innerWidth: number): string[] {
+function mcpProbeLines(probe: McpOverlayProbe | undefined, innerWidth: number, selectedIndex = 0): string[] {
   if (!probe) return [];
   if (probe.status === 'running') return ['test: running...'];
   if (probe.status === 'fail') {
@@ -304,11 +318,20 @@ function mcpProbeLines(probe: McpOverlayProbe | undefined, innerWidth: number): 
 
   const tools = probe.tools ?? [];
   const lines = [`test: PASS (${tools.length} tools)`];
-  for (const tool of tools.slice(0, 5)) {
+  if (!tools.length) return lines;
+
+  const active = Math.max(0, Math.min(selectedIndex, tools.length - 1));
+  const window = listWindow(tools.length, active, 6);
+  const visible = tools.slice(window.start, window.end);
+  lines.push(`catalog: ${tools.length} tools · ↑↓/jk browse`);
+  if (window.start > 0) lines.push(`... ${window.start} above`);
+  for (const [offset, tool] of visible.entries()) {
+    const index = window.start + offset;
+    const cursor = index === active ? '>' : ' ';
     const description = tool.description ? ` - ${tool.description}` : '';
-    lines.push(`tool: ${clip(`${tool.name}${description}`, Math.max(1, innerWidth - 6))}`);
+    lines.push(`${cursor} ${clip(`${tool.name}${description}`, Math.max(1, innerWidth - 2))}`);
   }
-  if (tools.length > 5) lines.push(`... ${tools.length - 5} more tools`);
+  if (window.end < tools.length) lines.push(`... ${tools.length - window.end} more tools`);
   return lines;
 }
 
@@ -427,11 +450,93 @@ function SkillsHubOverlay({ columns, overlay }: { columns: number; overlay: Skil
   );
 }
 
+export function toolsOverlayLines(overlay: ToolsOverlayState, columns: number): string[] {
+  const width = overlayWidth(columns);
+  const innerWidth = Math.max(1, width - 4);
+  const selected = overlay.tools[overlay.selected];
+  const groupWidth = Math.max(8, Math.min(16, Math.floor(innerWidth * 0.2)));
+  const nameWidth = Math.max(12, Math.min(26, Math.floor(innerWidth * 0.3)));
+  const summaryWidth = Math.max(10, innerWidth - groupWidth - nameWidth - 8);
+
+  if (!overlay.tools.length) {
+    return ['Sanook tools hub', 'No built-in tools found', 'Esc/q close'];
+  }
+
+  if (overlay.detail && selected) {
+    return [
+      'Sanook tools hub',
+      `${selected.group} / ${selected.name}`,
+      clip(selected.summary, innerWidth),
+      `detail: ${clip(selected.detail, Math.max(1, innerWidth - 8))}`,
+      'MCP tools live in /mcp · skills live in /skills',
+      'Enter/Esc back · q close',
+    ].map((line) => clip(line, width));
+  }
+
+  const window = listWindow(overlay.tools.length, overlay.selected, TOOL_WINDOW);
+  const visible = overlay.tools.slice(window.start, window.end);
+  const lines = ['Sanook tools hub', `${overlay.tools.length} built-in lanes · Enter inspect`];
+
+  if (window.start > 0) lines.push(`... ${window.start} above`);
+  for (const [offset, tool] of visible.entries()) {
+    const index = window.start + offset;
+    const cursor = index === overlay.selected ? '>' : ' ';
+    lines.push(
+      `${cursor} ${clip(tool.group, groupWidth).padEnd(groupWidth)} ${clip(tool.name, nameWidth).padEnd(nameWidth)} ${clip(tool.summary, summaryWidth)}`,
+    );
+  }
+  if (window.end < overlay.tools.length) lines.push(`... ${overlay.tools.length - window.end} more`);
+  lines.push('↑↓/jk select · Enter inspect · Esc/q close');
+  return lines.map((line) => clip(line, width));
+}
+
+function ToolsHubOverlay({ columns, overlay }: { columns: number; overlay: ToolsOverlayState }) {
+  const innerWidth = Math.max(1, overlayWidth(columns) - 4);
+  const lines = toolsOverlayLines(overlay, columns);
+  return (
+    <OverlayBox columns={columns}>
+      {lines.map((line, index) => {
+        const isHeader = index === 0;
+        const isActive = line.startsWith('>');
+        return (
+          <Text
+            key={`${index}-${line}`}
+            color={isHeader ? 'cyan' : isActive ? 'green' : undefined}
+            dimColor={!isHeader && !isActive}
+            inverse={isActive}
+            wrap="truncate-end"
+          >
+            {clip(line, innerWidth)}
+          </Text>
+        );
+      })}
+    </OverlayBox>
+  );
+}
+
 export function sessionsOverlayLines(overlay: SessionsOverlayState, columns: number): string[] {
   const width = overlayWidth(columns);
   const innerWidth = Math.max(1, width - 4);
   if (!overlay.sessions.length) {
-    return ['Sanook sessions', 'No saved sessions for this project', 'Esc/q close'];
+    return ['Sanook sessions', overlay.notice ? clip(overlay.notice, innerWidth) : 'No saved sessions for this project', 'Esc/q close'];
+  }
+
+  const selected = overlay.sessions[overlay.selected];
+  if (overlay.detail && selected) {
+    const title = selected.title || firstUserSummary(selected) || '(untitled)';
+    const user = firstUserSummary(selected) || '(no user prompt found)';
+    const deleteHint =
+      overlay.pendingDeleteId === selected.id ? 'Delete this session? press d again · Esc cancel' : 'Enter resume · d delete · Esc back · q close';
+    return [
+      'Sanook sessions',
+      clip(title, innerWidth),
+      `id: ${clip(selected.id, Math.max(1, innerWidth - 4))}`,
+      `model: ${clip(selected.model, Math.max(1, innerWidth - 7))}`,
+      `updated: ${shortDate(selected.updated)} · messages: ${selected.messages.length}`,
+      `cwd: ${clip(selected.cwd, Math.max(1, innerWidth - 5))}`,
+      `first: ${clip(user, Math.max(1, innerWidth - 7))}`,
+      clip(deleteHint, innerWidth),
+    ];
   }
 
   const idWidth = Math.max(12, Math.min(24, Math.floor(innerWidth * 0.28)));
@@ -439,7 +544,9 @@ export function sessionsOverlayLines(overlay: SessionsOverlayState, columns: num
   const titleWidth = Math.max(10, innerWidth - idWidth - metaWidth - 8);
   const window = listWindow(overlay.sessions.length, overlay.selected, SESSION_WINDOW);
   const visible = overlay.sessions.slice(window.start, window.end);
-  const lines = ['Sanook sessions', `${overlay.sessions.length} resumable · Enter resume`];
+  const lines = ['Sanook sessions', `${overlay.sessions.length} resumable · Enter resume · i inspect · d delete`];
+
+  if (overlay.notice) lines.push(clip(overlay.notice, innerWidth));
 
   if (window.start > 0) lines.push(`... ${window.start} above`);
   for (const [offset, session] of visible.entries()) {
@@ -452,7 +559,9 @@ export function sessionsOverlayLines(overlay: SessionsOverlayState, columns: num
     );
   }
   if (window.end < overlay.sessions.length) lines.push(`... ${overlay.sessions.length - window.end} more`);
-  lines.push('↑↓/jk select · Enter resume · Esc/q close');
+  const active = overlay.sessions[overlay.selected];
+  if (active && overlay.pendingDeleteId === active.id) lines.push('Delete selected? press d again · Esc cancel');
+  else lines.push('↑↓/jk select · Enter resume · i inspect · Esc/q close');
   return lines;
 }
 
@@ -504,5 +613,6 @@ export function FloatingOverlay({ columns, overlay, pageSize = DEFAULT_PAGER_PAG
   if (overlay.kind === 'pager') return <PagerOverlay columns={columns} overlay={overlay} pageSize={pageSize} />;
   if (overlay.kind === 'skills') return <SkillsHubOverlay columns={columns} overlay={overlay} />;
   if (overlay.kind === 'sessions') return <SessionsSwitcherOverlay columns={columns} overlay={overlay} />;
+  if (overlay.kind === 'tools') return <ToolsHubOverlay columns={columns} overlay={overlay} />;
   return null;
 }

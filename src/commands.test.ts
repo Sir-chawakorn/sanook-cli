@@ -174,12 +174,38 @@ describe('parseCommand', () => {
     ];
     for (const name of blocked) expect(msg.toLowerCase()).not.toContain(name);
   });
-  it('/tools → แสดง orchestration tools ครบ', () => {
-    const msg = parseCommand('/tools', ctx).message ?? '';
-    expect(msg).toContain('task_spawn');
-    expect(msg).toContain('task_collect');
-    expect(msg).toContain('task_cancel');
-    expect(msg).toContain('task_status');
+  it('/tools → เปิด Tools Hub overlay พร้อม fallback text', () => {
+    const result = parseCommand('/tools', ctx);
+    const msg = result.message ?? '';
+    expect(result.action).toBe('toolsHub');
+    expect(msg).toContain('Agents:');
+    expect(msg).toContain('task/task_parallel/task_spawn/task_collect');
+  });
+  it('/trail → toggle or set tool trail display mode', () => {
+    expect(parseCommand('/trail', ctx)).toMatchObject({ action: 'toolTrail', handled: true });
+    expect(parseCommand('/trail compact', ctx)).toMatchObject({ action: 'toolTrail', toolTrailMode: 'compact' });
+    expect(parseCommand('/trail expanded', ctx)).toMatchObject({ action: 'toolTrail', toolTrailMode: 'expanded' });
+    expect(parseCommand('/trail nope', ctx).message).toContain('/trail compact');
+  });
+  it('/copy → copy latest assistant response', () => {
+    expect(parseCommand('/copy', ctx)).toMatchObject({ action: 'copyLast', handled: true });
+    expect(parseCommand('/copy last', ctx)).toMatchObject({ action: 'copyLast', handled: true });
+    expect(parseCommand('/copy wat', ctx).message).toContain('/copy last');
+  });
+  it('/details → controls thinking and tool detail sections', () => {
+    expect(parseCommand('/details thinking expanded', ctx)).toMatchObject({
+      action: 'details',
+      detailMode: 'expanded',
+      detailSection: 'thinking',
+      handled: true,
+    });
+    expect(parseCommand('/details tools hidden', ctx)).toMatchObject({
+      action: 'details',
+      detailMode: 'hidden',
+      detailSection: 'tools',
+      handled: true,
+    });
+    expect(parseCommand('/details wat expanded', ctx).message).toContain('/details thinking|tools');
   });
   it('คำสั่งไม่รู้จัก → แนะนำ /help', () => {
     expect(parseCommand('/wat', ctx).message).toContain('/help');

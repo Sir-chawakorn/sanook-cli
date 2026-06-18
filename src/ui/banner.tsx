@@ -8,14 +8,15 @@ import { BRAND } from '../brand.js';
 // gradient ของ Sanook: เขียว → ส้ม → ฟ้า (สนุก = สดใส)
 const SANOOK_GRADIENT = ['#22C55E', '#F97316', '#38BDF8'];
 const BANNER_TITLE = BRAND.bannerWide.toUpperCase();
-const COMMAND_HINTS = ['/help', '/model', '/tools', '/status'];
-const BRAND_LINE = 'สนุกกับงานหนัก · local-first BYOK · second-brain + MCP workflows';
+const COMMAND_HINTS = ['/help', '/tools', '/mcp', '/status'];
+const BRAND_LINE = 'งานหนักให้เบาลง · local-first BYOK · second-brain + MCP workflows';
 const WORKFLOW = ['plan', 'patch', 'prove', 'remember'] as const;
 const PROMISE = ['readable', 'recoverable', 'remembered'] as const;
-const LAUNCHPAD = [
-  ['code', '@file · /tools · /diff'],
-  ['brain', 'sanook brain context · /compress'],
-  ['ship', '/cost · /undo · sanook mcp search'],
+const SERVICE_ROUTES = [
+  ['1', 'Code', '@file · /tools · /diff'],
+  ['2', 'Brain', 'brain context · /skills · /compress'],
+  ['3', 'Connect', '/mcp · serve · webhooks'],
+  ['4', 'Ship', '/cost · /copy · /undo'],
 ] as const;
 const WIDE_WORDMARK_MIN_COLUMNS = 96;
 const COMPACT_PANEL_COLUMNS = 76;
@@ -45,13 +46,13 @@ function bannerLines({ account, dir, model, mode, version }: { account: string; 
   const title = `${BANNER_TITLE} v${version} · terminal AI agent · ${account}`;
   const status = `● model ${model} · mode ${mode} · cwd ${dir}`;
   const flow = `Flow ${WORKFLOW.join(' -> ')} · Promise ${PROMISE.join(' · ')}`;
-  const launch = `Launchpad ${COMMAND_HINTS.join(' · ')}`;
+  const routeLine = `Routes ${SERVICE_ROUTES.map(([num, label]) => `${num} ${label}`).join(' | ')} · ${COMMAND_HINTS.join(' · ')}`;
 
   if (columns < TINY_PANEL_COLUMNS) {
     return [
       title,
       `● ${model} · ${mode}`,
-      '› /help · @file · /status',
+      '› /help · /tools · /mcp',
     ];
   }
 
@@ -61,9 +62,11 @@ function bannerLines({ account, dir, model, mode, version }: { account: string; 
       status,
       `◆ ${BRAND_LINE}`,
       `Flow ${WORKFLOW.join(' -> ')}`,
+      '› routes: Code · Brain · Connect · Ship',
       '› code: @file · /tools · /diff',
-      '› brain: sanook brain context',
-      '› ship: /cost · /undo',
+      '› brain: context · skills · compress',
+      '› connect: /mcp · serve',
+      '› ship: /copy · /cost · /undo',
     ];
   }
 
@@ -72,8 +75,8 @@ function bannerLines({ account, dir, model, mode, version }: { account: string; 
     status,
     `◆ ${BRAND_LINE}`,
     flow,
-    launch,
-    ...LAUNCHPAD.map(([label, hint]) => `› ${label}: ${hint}`),
+    routeLine,
+    ...SERVICE_ROUTES.map(([num, label, hint]) => `› ${num} ${label.padEnd(7)} ${hint}`),
   ];
 }
 

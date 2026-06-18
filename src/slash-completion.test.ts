@@ -16,11 +16,38 @@ describe('slash completion', () => {
   it('suggests built-in slash commands by prefix', () => {
     expect(slashCompletionItems('/s').map((item) => item.text)).toEqual(['/skills', '/sessions', '/status', '/stop']);
     expect(slashCompletionItems('/m').map((item) => item.text)).toEqual(['/model', '/mcp']);
+    expect(slashCompletionItems('/d').map((item) => item.text)).toEqual(['/details', '/diff']);
+    expect(slashCompletionItems('/cop').map((item) => item.text)).toEqual(['/copy']);
+    expect(slashCompletionItems('/tr').map((item) => item.text)).toEqual(['/trail']);
   });
 
   it('stays quiet for arguments or normal text', () => {
     expect(slashCompletionItems('/model sonnet')).toEqual([]);
     expect(slashCompletionItems('hello')).toEqual([]);
+  });
+
+  it('suggests focused arguments for detail and trail commands', () => {
+    const detailsSection = completionForInput('/details t');
+    expect(detailsSection.replaceFrom).toBe('/details '.length);
+    expect(detailsSection.items.map((item) => item.display)).toEqual(['thinking', 'tools']);
+    expect(completionReplaceValue('/details t', detailsSection.items[0], detailsSection.replaceFrom)).toBe('/details thinking ');
+
+    const detailsMode = completionForInput('/details thinking e');
+    expect(detailsMode.replaceFrom).toBe('/details thinking '.length);
+    expect(detailsMode.items.map((item) => item.text)).toEqual(['expanded']);
+    expect(completionReplaceValue('/details thinking e', detailsMode.items[0], detailsMode.replaceFrom)).toBe(
+      '/details thinking expanded',
+    );
+
+    const trailMode = completionForInput('/trail c');
+    expect(trailMode.replaceFrom).toBe('/trail '.length);
+    expect(trailMode.items.map((item) => item.text)).toEqual(['compact']);
+    expect(completionReplaceValue('/trail c', trailMode.items[0], trailMode.replaceFrom)).toBe('/trail compact');
+
+    const copyTarget = completionForInput('/copy l');
+    expect(copyTarget.replaceFrom).toBe('/copy '.length);
+    expect(copyTarget.items.map((item) => item.text)).toEqual(['last']);
+    expect(completionReplaceValue('/copy l', copyTarget.items[0], copyTarget.replaceFrom)).toBe('/copy last');
   });
 
   it('suggests local paths for trailing path-like tokens', () => {

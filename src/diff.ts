@@ -28,8 +28,15 @@ export function renderEditDiff(oldStr: string, newStr: string): string {
 
 /** สรุปการ write — จำนวนบรรทัด/ตัวอักษร + ถ้าเขียนทับ บอก before→after */
 export function summarizeWrite(content: string, previous?: string): string {
-  const lines = content === '' ? 0 : content.split('\n').length;
+  const lines = countLogicalLines(content);
   if (previous === undefined) return `เขียนใหม่ ${lines} บรรทัด (${content.length} ตัวอักษร)`;
-  const prevLines = previous === '' ? 0 : previous.split('\n').length;
+  const prevLines = countLogicalLines(previous);
   return `เขียนทับ ${prevLines} → ${lines} บรรทัด (${content.length} ตัวอักษร)`;
+}
+
+function countLogicalLines(content: string): number {
+  if (content === '') return 0;
+  const lines = content.split(/\r\n|\n|\r/);
+  if (/(\r\n|\n|\r)$/.test(content)) lines.pop();
+  return lines.length;
 }

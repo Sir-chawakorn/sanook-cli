@@ -14,14 +14,19 @@ describe('Banner', () => {
     expect(frame).toContain('model openai:gpt-5.5');
     expect(frame).toContain('mode ask');
     expect(frame).toContain('cwd /tmp/sanook-cli');
-    expect(frame).toContain('สนุกกับงานหนัก');
+    expect(frame).toContain('งานหนักให้เบาลง');
     expect(frame).toContain('Flow plan -> patch -> prove -> remember');
     expect(frame).toContain('Promise readable · recoverable · remembered');
-    expect(frame).toContain('Launchpad');
+    expect(frame).toContain('Routes 1 Code | 2 Brain | 3 Connect | 4 Ship');
     expect(frame).toContain('/tools');
-    expect(frame).toContain('code: @file · /tools · /diff');
-    expect(frame).toContain('brain: sanook brain context · /compress');
-    expect(frame).toContain('ship: /cost · /undo · sanook mcp search');
+    expect(frame).toContain('1 Code');
+    expect(frame).toContain('@file · /tools · /diff');
+    expect(frame).toContain('2 Brain');
+    expect(frame).toContain('brain context · /skills · /compress');
+    expect(frame).toContain('3 Connect');
+    expect(frame).toContain('/mcp · serve · webhooks');
+    expect(frame).toContain('4 Ship');
+    expect(frame).toContain('/cost · /copy · /undo');
     unmount();
   });
 
@@ -33,7 +38,9 @@ describe('Banner', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('SANOOK AI v9.9.9');
     expect(frame).toContain('Flow plan -> patch -> prove -> remember');
-    expect(frame).toContain('brain: sanook brain context');
+    expect(frame).toContain('routes: Code · Brain · Connect · Ship');
+    expect(frame).toContain('connect: /mcp · serve');
+    expect(frame).toContain('ship: /copy · /cost · /undo');
     expect(frame).not.toContain('███████');
     unmount();
   });
@@ -46,7 +53,7 @@ describe('Banner', () => {
     const frame = lastFrame() ?? '';
     expect(frame).toContain('SANOOK AI v9.9.9');
     expect(frame).toContain('sonnet · ask');
-    expect(frame).toContain('/help · @file · /status');
+    expect(frame).toContain('/help · /tools · /mcp');
     expect(frame).not.toContain('local-first BYOK');
     expect(frame).not.toContain('███████');
     unmount();

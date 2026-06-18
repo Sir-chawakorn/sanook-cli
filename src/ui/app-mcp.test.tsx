@@ -7,7 +7,11 @@ vi.mock('../mcp.js', async (importOriginal) => {
     ...actual,
     probeMcpServer: vi.fn(async () => ({
       ok: true,
-      tools: [{ name: 'issues_list', description: 'List repository issues' }],
+      tools: [
+        { name: 'issues_list', description: 'List repository issues' },
+        { name: 'issues_get', description: 'Get one repository issue' },
+        { name: 'issues_create', description: 'Create a repository issue' },
+      ],
       transport: 'http',
     })),
   };
@@ -61,6 +65,12 @@ describe('App MCP hub overlay', () => {
     await waitFor(() => (lastFrame() ?? '').includes('test: PASS'));
 
     expect(lastFrame()).toContain('issues_list');
+    expect(lastFrame()).toContain('catalog: 3 tools');
+
+    stdin.write('j');
+    await tick();
+
+    expect(lastFrame()).toContain('> issues_get');
     unmount();
   });
 

@@ -34,6 +34,21 @@ describe('tool trail', () => {
     expect(lines.every((line) => line.length <= 36)).toBe(true);
   });
 
+  it('can render compact rows without tool detail payloads', () => {
+    const lines = toolTrailLines(
+      [
+        { detail: 'secret detail should stay hidden here', id: 1, name: 'read_file', status: 'done' },
+        { detail: 'still running', id: 2, name: 'run_bash', status: 'running' },
+      ],
+      80,
+      'compact',
+    );
+
+    expect(lines).toContain('view: compact | 1 done / 1 running | Ctrl+T / /trail');
+    expect(lines.join('\n')).toContain('tools: +read_file >run_bash');
+    expect(lines.join('\n')).not.toContain('secret detail');
+  });
+
   it('keeps only the latest visible tool rows', () => {
     let items: ToolTrailItem[] = [];
     let nextId = 0;

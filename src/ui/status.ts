@@ -1,6 +1,7 @@
 export interface FooterStatusInput {
   branch?: string | null;
   columns: number;
+  contextCompression?: 'headroom' | 'off' | 'selective';
   contextLimit?: number;
   contextTokens?: number;
   costHint?: string;
@@ -24,6 +25,7 @@ export interface StatusRuleWidths {
 }
 
 export interface StatusSegments {
+  compression: boolean;
   contextBar: boolean;
   cost: boolean;
   cwd: boolean;
@@ -36,6 +38,7 @@ export interface StatusSegments {
 export function statusSegments(columns: number): StatusSegments {
   const width = Math.max(20, Math.floor(columns || 80));
   return {
+    compression: width >= 88,
     contextBar: width >= 96,
     cost: width >= 78,
     cwd: width >= 64,
@@ -65,6 +68,7 @@ export function footerStatus({
   branch,
   busy = false,
   columns,
+  contextCompression,
   contextLimit = 100_000,
   contextTokens,
   costHint = '',
@@ -82,6 +86,7 @@ export function footerStatus({
   if (contextTokens != null && width >= 52) {
     parts.push(contextSegment(contextTokens, contextLimit, segments.contextBar));
   }
+  if (contextCompression && segments.compression) parts.push(compressionSegment(contextCompression));
   if (busy && elapsedSeconds != null && segments.elapsed) parts.push(`time ${formatElapsed(elapsedSeconds)}`);
   if (queuedCount > 0 && segments.queue) parts.push(`q ${queuedCount}`);
   if (costHint && segments.cost) parts.push(`cost ${costHint}`);
@@ -121,6 +126,12 @@ function contextSegment(tokens: number, limit: number, showBar: boolean): string
 function ctxBar(percent: number, width = 6): string {
   const filled = Math.max(0, Math.min(width, Math.round((percent / 100) * width)));
   return `${'#'.repeat(filled)}${'-'.repeat(width - filled)}`;
+}
+
+function compressionSegment(mode: 'headroom' | 'off' | 'selective'): string {
+  if (mode === 'headroom') return 'cmp hdr';
+  if (mode === 'off') return 'cmp off';
+  return 'cmp sel';
 }
 
 function formatTokens(tokens: number): string {

@@ -17,18 +17,35 @@ export interface CompletionResult {
 
 const PATH_TOKEN_RE = /((?:\.{1,2}\/|~\/?|\/|@|[^"'`\s]+\/)[^"'`\s]*)$/;
 const MAX_PATH_COMPLETIONS = 40;
+const DETAIL_SECTIONS: CompletionItem[] = [
+  { text: 'thinking ', display: 'thinking', meta: 'details section' },
+  { text: 'tools ', display: 'tools', meta: 'details section' },
+];
+const DETAIL_MODES: CompletionItem[] = [
+  { text: 'hidden', display: 'hidden', meta: 'details mode' },
+  { text: 'collapsed', display: 'collapsed', meta: 'details mode' },
+  { text: 'expanded', display: 'expanded', meta: 'details mode' },
+];
+const TRAIL_MODES: CompletionItem[] = [
+  { text: 'compact', display: 'compact', meta: 'trail mode' },
+  { text: 'expanded', display: 'expanded', meta: 'trail mode' },
+];
+const COPY_TARGETS: CompletionItem[] = [{ text: 'last', display: 'last', meta: 'copy target' }];
 
 const BUILTIN_SLASH_COMPLETIONS: CompletionItem[] = [
   { text: '/help', display: '/help', meta: 'command list + pager' },
   { text: '/hotkeys', display: '/hotkeys', meta: 'keyboard shortcuts' },
+  { text: '/details', display: '/details', meta: 'thinking/tool trail visibility' },
   { text: '/model', display: '/model', meta: 'pick or switch model' },
   { text: '/mcp', display: '/mcp', meta: 'browse MCP servers' },
   { text: '/skills', display: '/skills', meta: 'browse loaded skills' },
   { text: '/sessions', display: '/sessions', meta: 'resume saved sessions' },
   { text: '/status', display: '/status', meta: 'session/model status' },
   { text: '/platforms', display: '/platforms', meta: 'providers + gateways' },
+  { text: '/trail', display: '/trail', meta: 'toggle tool trail detail' },
   { text: '/tools', display: '/tools', meta: 'agent tools' },
   { text: '/diff', display: '/diff', meta: 'git diff stat' },
+  { text: '/copy', display: '/copy', meta: 'copy latest assistant response' },
   { text: '/retry', display: '/retry', meta: 'rerun last prompt' },
   { text: '/stop', display: '/stop', meta: 'stop current turn' },
   { text: '/undo', display: '/undo', meta: 'stash recent file edits' },
@@ -55,10 +72,49 @@ export function completionForInput(input: string, cwd = process.cwd()): Completi
   const slash = slashCompletionItems(input);
   if (slash.length) return { items: slash, replaceFrom: 0 };
 
+  const slashArgs = slashArgumentCompletion(input);
+  if (slashArgs.items.length) return slashArgs;
+
   const path = pathCompletion(input, cwd);
   if (path.items.length) return path;
 
   return { items: [], replaceFrom: 0 };
+}
+
+function slashArgumentCompletion(input: string): CompletionResult {
+  const commandMatch = /^\/([a-z0-9-?]+)\s+/i.exec(input);
+  if (!commandMatch) return { items: [], replaceFrom: 0 };
+
+  const command = commandMatch[1].toLowerCase();
+  const rawArgs = input.slice(commandMatch[0].length);
+  const hasTrailingSpace = /\s$/.test(input);
+  const args = rawArgs.trim() ? rawArgs.trim().split(/\s+/) : [];
+  const activeIndex = hasTrailingSpace ? args.length : Math.max(0, args.length - 1);
+  const prefix = hasTrailingSpace ? '' : (args.at(-1) ?? '');
+  const replaceFrom = input.length - prefix.length;
+
+  if (command === 'trail' && activeIndex === 0) {
+    return { items: filterArgumentItems(TRAIL_MODES, prefix), replaceFrom };
+  }
+
+  if (command === 'copy' && activeIndex === 0) {
+    return { items: filterArgumentItems(COPY_TARGETS, prefix), replaceFrom };
+  }
+
+  if (command === 'details') {
+    if (activeIndex === 0) return { items: filterArgumentItems(DETAIL_SECTIONS, prefix), replaceFrom };
+    const section = args[0]?.toLowerCase();
+    if (activeIndex === 1 && (section === 'thinking' || section === 'tools')) {
+      return { items: filterArgumentItems(DETAIL_MODES, prefix), replaceFrom };
+    }
+  }
+
+  return { items: [], replaceFrom: 0 };
+}
+
+function filterArgumentItems(items: CompletionItem[], prefix: string): CompletionItem[] {
+  const query = prefix.toLowerCase();
+  return items.filter((item) => item.text.toLowerCase().startsWith(query));
 }
 
 function pathCompletion(input: string, cwd: string): CompletionResult {
