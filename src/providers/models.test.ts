@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mergeModelOptions, listRemoteModels } from './models.js';
 import { PROVIDERS } from './registry.js';
 
@@ -19,8 +19,45 @@ describe('mergeModelOptions', () => {
 });
 
 describe('listRemoteModels', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
   it('delegate provider (codex) → [] โดยไม่ยิง network', async () => {
     expect(await listRemoteModels(PROVIDERS.codex, 'whatever')).toEqual([]);
+  });
+
+  it('trims OpenAI-compatible base URL env config before requesting models', async () => {
+    const seen: { authorization?: string; url?: string } = {};
+    vi.stubEnv('OPENAI_BASE_URL', '  https://models.example.test/v1/  ');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        seen.url = String(url);
+        seen.authorization = (init?.headers as Record<string, string> | undefined)?.authorization;
+        return new Response(JSON.stringify({ data: [{ id: 'remote-model' }] }));
+      }),
+    );
+
+    await expect(listRemoteModels(PROVIDERS.openai, 'sk-test')).resolves.toEqual(['remote-model']);
+    expect(seen.url).toBe('https://models.example.test/v1/models');
+    expect(seen.authorization).toBe('Bearer sk-test');
+  });
+
+  it('falls back to provider base URL when base URL env config is blank', async () => {
+    const seen: { url?: string } = {};
+    vi.stubEnv('OPENAI_BASE_URL', '   ');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        seen.url = String(url);
+        return new Response(JSON.stringify({ data: [{ id: 'fallback-model' }] }));
+      }),
+    );
+
+    await expect(listRemoteModels(PROVIDERS.openai, 'sk-test')).resolves.toEqual(['fallback-model']);
+    expect(seen.url).toBe('https://api.openai.com/v1/models');
   });
 });
 
@@ -38,7 +75,6 @@ describe('fastSibling', () => {
   });
 });
 
-import { vi } from 'vitest';
 import { consoleUrl, detectEnvProvider } from './registry.js';
 describe('consoleUrl', () => {
   it('returns a key-console URL for cloud providers, undefined for local', () => {

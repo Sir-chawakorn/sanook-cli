@@ -118,6 +118,7 @@ sanook dump                     # support snapshot; raw secrets are never printe
 | **Hooks** | Run your own command before/after any tool. A non-zero `PreToolUse` exit blocks the tool — enforce lint, format, or policy. |
 | **Plan mode** | `--plan` restricts the agent to read-only tools and asks it to produce a plan before touching anything. |
 | **Auto-compaction** | A token-aware sliding window keeps long sessions under the context limit with zero extra LLM cost. |
+| **Prompt budget inspectability** | `sanook prompt-size [--json]` reports the offline size of Sanook's system prompt, personality overlay, auto-memory, skills index, second-brain context, project memory, repo map, git context, and built-in tool schemas. |
 | **Second brain** | `sanook brain init` scaffolds a structured Obsidian "second-brain" workspace (folders + `_Index` + a portable AI operating constitution) for organising work and giving the agent durable, cross-session memory. |
 
 ## Providers
@@ -165,6 +166,7 @@ sanook sessions stats [--all]
 sanook sessions prune --keep N [--all] [--yes]
 sanook sessions rm <id>
 sanook dump [--show-keys] support dump (keys are still redacted)
+sanook prompt-size [--json] inspect system/brain/skill/tool context budget
 sanook -c "<task>"       resume the latest session for this project
 sanook --resume <id>     resume a specific saved session
 sanook --continue-any    resume the newest session across all projects

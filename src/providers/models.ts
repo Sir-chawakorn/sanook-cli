@@ -34,7 +34,7 @@ export async function listRemoteModels(
         .filter(Boolean);
     }
 
-    const base = process.env[`${cfg.id.toUpperCase()}_BASE_URL`] ?? cfg.baseURL;
+    const base = process.env[`${cfg.id.toUpperCase()}_BASE_URL`]?.trim() || cfg.baseURL?.trim();
     if (!base) return []; // ไม่มี baseURL = ดึงไม่ได้
     const headers: Record<string, string> =
       cfg.id === 'anthropic'

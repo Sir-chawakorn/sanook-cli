@@ -32,5 +32,6 @@ parent: "[[Home]]"
 - [[Research/2026-06-18-hermes-tui-parity-map]] — inventory Hermes Agent TUI ทั้งชุด + parity/port plan สำหรับ rebrand เป็น Sanook
 - [[Research/2026-06-18-sanook-mcp-ecosystem-and-ux-roadmap]] — MCP ecosystem scan + Sanook CLI registry/install/test roadmap
 - [[Research/2026-06-18-ai-token-reduction-frameworks]] — compare LLMLingua, Selective Context, and Headroom for Sanook token reduction
+- [[Research/2026-06-19-hermes-python-architecture-for-sanook]] — Hermes Python backend scan + Sanook-native prompt budget diagnostic choice
 
 up:: [[Home]]

@@ -17,6 +17,7 @@
 
 ### Token reduction — selective context compression for stale tool output
 
+- **`sanook prompt-size [--json]`** — Hermes-inspired offline prompt budget diagnostic. It reports the current system prompt, personality overlay, auto-memory, skills index, second-brain context, project memory, repo map, git context, built-in tool schemas, and total rough token/byte footprint without calling a model or spawning MCP servers, so users can tune large second-brain/skill setups before context cost becomes invisible.
 - **`contextCompression: "selective" | "headroom" | "off"`** (env `SANOOK_CONTEXT_COMPRESSION`) — default `"selective"` is a zero-LLM, per-step compressor inspired by Selective Context, LongLLMLingua-style query awareness, and Headroom-style context pruning. It keeps the latest tool results full, but compresses older huge tool outputs with recency-aware budgets and preserves anchors plus high-information lines (current-query matches, errors, paths, diffs, code structure, rare terms) before the next model request. `"headroom"` optionally wraps the Vercel AI SDK model with the `headroom-ai` GitHub/npm framework when a Headroom proxy/cloud setup is available; `"off"` disables compression.
 
 ### MCP registry UX — discover, install, and diagnose servers

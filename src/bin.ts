@@ -130,6 +130,7 @@ usage:
   ${BRAND.cliName} sessions             list/resume-audit saved conversation sessions
   ${BRAND.cliName} insights             local usage/session insights
   ${BRAND.cliName} dump [--show-keys]   support snapshot (secrets redacted)
+  ${BRAND.cliName} prompt-size [--json]  inspect prompt/context budget without calling a model
   ${BRAND.cliName} update              update ${BRAND.cliName} to the latest npm release
   ${BRAND.cliName} doctor              ตรวจการติดตั้ง + วิธีแก้ PATH (เมื่อพิมพ์ "${BRAND.cliName}" แล้วไม่เจอ)
 
@@ -189,6 +190,7 @@ config & mcp:
   ${BRAND.cliName} sessions [list|latest|show|rm] จัดการ saved sessions
   ${BRAND.cliName} insights [--days N] [--all]    ดู usage/session insights ในเครื่อง
   ${BRAND.cliName} dump [--show-keys]             diagnostic/support dump แบบไม่โชว์ raw secret
+  ${BRAND.cliName} prompt-size [--json]            ดู system prompt / skills / brain / tools token budget แบบ offline
   ${BRAND.cliName} tools                          ดู tool surface ที่ agent ใช้ได้
   ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/budgetUsd/permissionMode/cacheTtl/compaction/contextCompression/thinking/embeddingModel)
   ${BRAND.cliName} mcp [search|info|install|test|doctor|preset|list|add|remove]   จัดการ MCP servers
@@ -263,6 +265,20 @@ async function runTools(_args: string[] = []): Promise<void> {
   console.log(`${BRAND.productName} tools (${names.length})`);
   console.log(names.map((n) => `  ${n}`).join('\n'));
   console.log(`\nจัดการ MCP เพิ่มเติม: ${BRAND.cliName} mcp add <name> <command> [args...]`);
+}
+
+async function runPromptSize(args: string[] = []): Promise<void> {
+  const allowed = new Set(['--json']);
+  const unknown = args.find((arg) => !allowed.has(arg));
+  if (unknown) {
+    console.error(`ไม่รู้จัก option: ${unknown}`);
+    console.error(`ใช้: ${BRAND.cliName} prompt-size [--json]`);
+    process.exit(1);
+  }
+  const { buildPromptSizeBreakdown, renderPromptSizeBreakdown } = await import('./prompt-size.js');
+  const report = await buildPromptSizeBreakdown();
+  if (args.includes('--json')) console.log(JSON.stringify(report, null, 2));
+  else process.stdout.write(renderPromptSizeBreakdown(report));
 }
 
 async function runAgentSetupSummary(): Promise<void> {
@@ -3748,6 +3764,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'sessions' || argv[0] === 'session') return runSessions(argv.slice(1));
   if (argv[0] === 'insights') return runInsights(argv.slice(1));
   if (argv[0] === 'dump') return runDump(argv.slice(1));
+  if (argv[0] === 'prompt-size' && (argv.length === 1 || argv[1].startsWith('--'))) return runPromptSize(argv.slice(1));
   if (argv[0] === 'tools' && (argv.length === 1 || argv[1].startsWith('--'))) return runTools(argv.slice(1));
   if (argv[0] === 'send') return runSend(argv.slice(1));
   if (argv[0] === 'webhook' || argv[0] === 'webhooks') return runWebhook(argv.slice(1));

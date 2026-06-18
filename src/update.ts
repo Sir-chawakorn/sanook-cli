@@ -48,14 +48,28 @@ interface InstallOptions {
   spawnImpl?: SpawnLike;
 }
 
-interface NpmPackageResponse {
-  'dist-tags'?: {
-    latest?: string;
-  };
+const SEMVER_NUMERIC_IDENTIFIER = '(?:0|[1-9]\\d*)';
+const SEMVER_NON_NUMERIC_PRERELEASE_IDENTIFIER = '\\d*[A-Za-z-][0-9A-Za-z-]*';
+const SEMVER_PRERELEASE_IDENTIFIER = `(?:${SEMVER_NUMERIC_IDENTIFIER}|${SEMVER_NON_NUMERIC_PRERELEASE_IDENTIFIER})`;
+const NPM_VERSION_PATTERN = new RegExp(
+  `^v?${SEMVER_NUMERIC_IDENTIFIER}\\.${SEMVER_NUMERIC_IDENTIFIER}\\.${SEMVER_NUMERIC_IDENTIFIER}` +
+    `(?:-${SEMVER_PRERELEASE_IDENTIFIER}(?:\\.${SEMVER_PRERELEASE_IDENTIFIER})*)?` +
+    `(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$`,
+);
+
+function isAbortError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'name' in err && (err as { name?: unknown }).name === 'AbortError';
+}
+
+function readLatestDistTag(body: unknown): unknown {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const distTags = (body as { 'dist-tags'?: unknown })['dist-tags'];
+  if (typeof distTags !== 'object' || distTags === null) return undefined;
+  return (distTags as { latest?: unknown }).latest;
 }
 
 function packageUrl(registry: string, packageName: string): string {
-  const base = registry.replace(/\/+$/, '') || DEFAULT_REGISTRY;
+  const base = registry.trim().replace(/\/+$/, '') || DEFAULT_REGISTRY;
   const encoded = encodeURIComponent(packageName).replace(/^%40/, '@');
   return `${base}/${encoded}`;
 }
@@ -137,7 +151,8 @@ export function shouldCheckForUpdate(
 export async function fetchLatestVersion(meta: PackageMeta, opts: CheckOptions = {}): Promise<string> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 8000);
+  const timeoutMs = opts.timeoutMs ?? 8000;
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetchImpl(packageUrl(opts.registry ?? process.env.npm_config_registry ?? DEFAULT_REGISTRY, meta.name), {
       headers: { accept: 'application/vnd.npm.install-v1+json' },
@@ -146,10 +161,15 @@ export async function fetchLatestVersion(meta: PackageMeta, opts: CheckOptions =
     if (!res.ok) {
       throw new Error(`npm registry ตอบ ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`);
     }
-    const body = (await res.json()) as NpmPackageResponse;
-    const latest = body['dist-tags']?.latest;
-    if (!latest) throw new Error('npm registry ไม่มี dist-tag "latest"');
-    return latest;
+    const body = await res.json();
+    const latest = readLatestDistTag(body);
+    if (typeof latest !== 'string' || !latest.trim()) throw new Error('npm registry ไม่มี dist-tag "latest"');
+    const trimmedLatest = latest.trim();
+    if (!NPM_VERSION_PATTERN.test(trimmedLatest)) throw new Error('npm registry dist-tag "latest" ไม่ใช่ semver');
+    return trimmedLatest;
+  } catch (err) {
+    if (ctrl.signal.aborted && isAbortError(err)) throw new Error(`npm registry timeout after ${timeoutMs}ms`);
+    throw err;
   } finally {
     clearTimeout(timer);
   }

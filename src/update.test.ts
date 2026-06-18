@@ -64,6 +64,102 @@ describe('CLI update', () => {
     expect(check.isOutdated).toBe(false);
   });
 
+  it('checkForUpdate rejects malformed latest dist-tags before version comparison', async () => {
+    await expect(
+      checkForUpdate(
+        { name: 'sanook-cli', version: '0.5.0' },
+        {
+          fetchImpl: async () => ({
+            ok: true,
+            status: 200,
+            json: async () => null,
+          }),
+        },
+      ),
+    ).rejects.toThrow('dist-tag "latest"');
+
+    await expect(
+      checkForUpdate(
+        { name: 'sanook-cli', version: '0.5.0' },
+        {
+          fetchImpl: async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({ 'dist-tags': null }),
+          }),
+        },
+      ),
+    ).rejects.toThrow('dist-tag "latest"');
+
+    await expect(
+      checkForUpdate(
+        { name: 'sanook-cli', version: '0.5.0' },
+        {
+          fetchImpl: async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({ 'dist-tags': { latest: 42 } }),
+          }),
+        },
+      ),
+    ).rejects.toThrow('dist-tag "latest"');
+
+    await expect(
+      checkForUpdate(
+        { name: 'sanook-cli', version: '0.5.0' },
+        {
+          fetchImpl: async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({ 'dist-tags': { latest: '   ' } }),
+          }),
+        },
+      ),
+    ).rejects.toThrow('dist-tag "latest"');
+
+    await expect(
+      checkForUpdate(
+        { name: 'sanook-cli', version: '0.5.0' },
+        {
+          fetchImpl: async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({ 'dist-tags': { latest: 'banana' } }),
+          }),
+        },
+      ),
+    ).rejects.toThrow('dist-tag "latest"');
+
+    await expect(
+      checkForUpdate(
+        { name: 'sanook-cli', version: '0.5.0' },
+        {
+          fetchImpl: async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({ 'dist-tags': { latest: '1.0.0-alpha.01' } }),
+          }),
+        },
+      ),
+    ).rejects.toThrow('dist-tag "latest"');
+  });
+
+  it('checkForUpdate accepts valid prerelease and build metadata latest dist-tags', async () => {
+    const check = await checkForUpdate(
+      { name: 'sanook-cli', version: '1.0.0-alpha.9' },
+      {
+        fetchImpl: async () => ({
+          ok: true,
+          status: 200,
+          json: async () => ({ 'dist-tags': { latest: '1.0.0-alpha.10+build.01' } }),
+        }),
+      },
+    );
+
+    expect(check.latestVersion).toBe('1.0.0-alpha.10+build.01');
+    expect(check.isOutdated).toBe(true);
+  });
+
   it('checkForUpdate encodes scoped package names for npm registry lookups', async () => {
     const seen: { url?: string } = {};
     await checkForUpdate(
@@ -82,6 +178,69 @@ describe('CLI update', () => {
     );
 
     expect(seen.url).toBe('https://registry.example.test/@scope%2Fsanook-cli');
+  });
+
+  it('checkForUpdate trims registry config before composing lookup URLs', async () => {
+    const seen: { url?: string } = {};
+    await checkForUpdate(
+      { name: 'sanook-cli', version: '0.4.0' },
+      {
+        registry: '  https://registry.example.test/custom/  ',
+        fetchImpl: async (url) => {
+          seen.url = url;
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ 'dist-tags': { latest: '0.5.0' } }),
+          };
+        },
+      },
+    );
+
+    expect(seen.url).toBe('https://registry.example.test/custom/sanook-cli');
+  });
+
+  it('checkForUpdate falls back to the default registry when registry config is blank', async () => {
+    const seen: { url?: string } = {};
+    await checkForUpdate(
+      { name: 'sanook-cli', version: '0.4.0' },
+      {
+        registry: '   ',
+        fetchImpl: async (url) => {
+          seen.url = url;
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ 'dist-tags': { latest: '0.5.0' } }),
+          };
+        },
+      },
+    );
+
+    expect(seen.url).toBe('https://registry.npmjs.org/sanook-cli');
+  });
+
+  it('checkForUpdate reports registry timeouts when the fetch is aborted', async () => {
+    await expect(
+      checkForUpdate(
+        { name: 'sanook-cli', version: '0.5.0' },
+        {
+          timeoutMs: 1,
+          fetchImpl: async (_url, init) =>
+            new Promise<never>((_resolve, reject) => {
+              init?.signal?.addEventListener(
+                'abort',
+                () => {
+                  const err = new Error('operation aborted');
+                  err.name = 'AbortError';
+                  reject(err);
+                },
+                { once: true },
+              );
+            }),
+        },
+      ),
+    ).rejects.toThrow('npm registry timeout after 1ms');
   });
 
   it('shouldCheckForUpdate throttles interactive notifier checks', () => {
