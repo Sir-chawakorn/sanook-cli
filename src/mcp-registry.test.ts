@@ -7,6 +7,7 @@ import {
   formatRegistrySearch,
   getMcpRegistryServer,
   parseKeyValueList,
+  parseMcpRegistrySearchArgs,
   searchMcpRegistry,
   type McpRegistryServer,
 } from './mcp-registry.js';
@@ -28,6 +29,65 @@ describe('mcp registry helpers', () => {
     expect(aliasFromRegistryName('ai.smithery/smithery-ai-github')).toBe('github');
     expect(parseKeyValueList(['TOKEN=abc', 'A=b=c'])).toEqual({ TOKEN: 'abc', A: 'b=c' });
     expect(() => parseKeyValueList(['NOPE'])).toThrow(/KEY=value/);
+  });
+
+  it('parses mcp search options without consuming following flags as values', () => {
+    expect(parseMcpRegistrySearchArgs(['github', '--limit', '5', '--cursor', 'next'])).toEqual({
+      ok: true,
+      value: { query: 'github', limit: 5, cursor: 'next' },
+    });
+    expect(parseMcpRegistrySearchArgs(['--limit=7', '--cursor=abc', '--', '--literal', 'query'])).toEqual({
+      ok: true,
+      value: { query: '--literal query', limit: 7, cursor: 'abc' },
+    });
+    expect(parseMcpRegistrySearchArgs(['github', '--cursor=-next'])).toEqual({
+      ok: true,
+      value: { query: 'github', limit: 10, cursor: '-next' },
+    });
+
+    const missingLimit = parseMcpRegistrySearchArgs(['github', '--limit', '--cursor', 'next']);
+    const missingCursor = parseMcpRegistrySearchArgs(['github', '--cursor', '--limit', '5']);
+    const shortFlagCursor = parseMcpRegistrySearchArgs(['github', '--cursor', '-next']);
+
+    expect(missingLimit.ok).toBe(false);
+    if (!missingLimit.ok) expect(missingLimit.message).toContain('--limit');
+    expect(missingCursor.ok).toBe(false);
+    if (!missingCursor.ok) expect(missingCursor.message).toContain('--cursor');
+    expect(shortFlagCursor.ok).toBe(false);
+    if (!shortFlagCursor.ok) expect(shortFlagCursor.message).toContain('--cursor');
+  });
+
+  it('validates mcp search limit and cursor edge cases', () => {
+    expect(parseMcpRegistrySearchArgs(['github', '--limit', '50'])).toEqual({
+      ok: true,
+      value: { query: 'github', limit: 50 },
+    });
+    expect(parseMcpRegistrySearchArgs(['github', '--cursor', ' next '])).toEqual({
+      ok: true,
+      value: { query: 'github', limit: 10, cursor: 'next' },
+    });
+    expect(parseMcpRegistrySearchArgs(['github', '--limit', '5', '--limit=7'])).toEqual({
+      ok: true,
+      value: { query: 'github', limit: 7 },
+    });
+
+    for (const args of [
+      ['github', '--limit', '0'],
+      ['github', '--limit', '51'],
+      ['github', '--limit', '5.5'],
+      ['github', '--limit='],
+    ]) {
+      const parsed = parseMcpRegistrySearchArgs(args);
+      expect(parsed.ok).toBe(false);
+      if (!parsed.ok) expect(parsed.message).toContain('--limit');
+    }
+
+    const emptyCursor = parseMcpRegistrySearchArgs(['github', '--cursor=']);
+    const whitespaceCursor = parseMcpRegistrySearchArgs(['github', '--cursor', '   ']);
+    expect(emptyCursor.ok).toBe(false);
+    if (!emptyCursor.ok) expect(emptyCursor.message).toContain('--cursor');
+    expect(whitespaceCursor.ok).toBe(false);
+    if (!whitespaceCursor.ok) expect(whitespaceCursor.message).toContain('--cursor');
   });
 
   it('searches registry and filters older duplicate versions', async () => {

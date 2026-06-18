@@ -1,4 +1,5 @@
 import type { McpServerConfig } from './mcp.js';
+import { inlineValue, takeValue } from './cli-option-values.js';
 
 export const MCP_REGISTRY_BASE_URL = 'https://registry.modelcontextprotocol.io/v0';
 
@@ -58,6 +59,16 @@ export interface McpRegistrySearchResult {
   servers: McpRegistryServer[];
   nextCursor?: string;
 }
+
+export interface ParsedMcpRegistrySearchArgs {
+  query: string;
+  limit: number;
+  cursor?: string;
+}
+
+export type McpRegistrySearchArgsResult =
+  | { ok: true; value: ParsedMcpRegistrySearchArgs }
+  | { ok: false; message: string };
 
 export interface McpRegistryInstallOptions {
   alias?: string;
@@ -143,6 +154,45 @@ export function parseKeyValueList(values: string[]): Record<string, string> {
     out[key] = value.slice(idx + 1);
   }
   return out;
+}
+
+function parseRegistrySearchLimit(raw: string | undefined): number | undefined {
+  if (!raw || !/^[1-9]\d*$/.test(raw)) return undefined;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) && n <= 50 ? n : undefined;
+}
+
+export function parseMcpRegistrySearchArgs(args: string[]): McpRegistrySearchArgsResult {
+  const query: string[] = [];
+  let limit = 10;
+  let cursor: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') {
+      query.push(...args.slice(i + 1));
+      break;
+    }
+    if (a === '--limit' || a.startsWith('--limit=')) {
+      const next = a === '--limit' ? takeValue(args, i) : undefined;
+      const raw = next ? next.value : inlineValue('--limit', a);
+      if (next) i = next.nextIndex;
+      const parsed = parseRegistrySearchLimit(raw);
+      if (parsed === undefined) return { ok: false, message: '--limit ต้องเป็นจำนวนเต็ม 1-50' };
+      limit = parsed;
+    } else if (a === '--cursor' || a.startsWith('--cursor=')) {
+      const next = a === '--cursor' ? takeValue(args, i) : undefined;
+      const raw = next ? next.value : inlineValue('--cursor', a);
+      if (next) i = next.nextIndex;
+      const parsed = raw?.trim();
+      if (!parsed) return { ok: false, message: '--cursor ต้องระบุค่า' };
+      cursor = parsed;
+    } else {
+      query.push(a);
+    }
+  }
+
+  return { ok: true, value: { query: query.join(' ').trim(), limit, cursor } };
 }
 
 export function aliasFromRegistryName(name: string): string {

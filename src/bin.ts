@@ -3300,23 +3300,13 @@ async function runMcp(args: string[]): Promise<void> {
   };
 
   if (action === 'search') {
-    const { searchMcpRegistry, formatRegistrySearch } = await import('./mcp-registry.js');
-    let limit = 10;
-    let cursor: string | undefined;
-    const query: string[] = [];
-    for (let i = 0; i < rest.length; i++) {
-      const a = rest[i];
-      if (a === '--limit') limit = Number(rest[++i]);
-      else if (a.startsWith('--limit=')) limit = Number(a.slice('--limit='.length));
-      else if (a === '--cursor') cursor = rest[++i];
-      else if (a.startsWith('--cursor=')) cursor = a.slice('--cursor='.length);
-      else query.push(a);
-    }
-    if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
-      console.error('--limit ต้องเป็นจำนวนเต็ม 1-50');
+    const { searchMcpRegistry, formatRegistrySearch, parseMcpRegistrySearchArgs } = await import('./mcp-registry.js');
+    const parsed = parseMcpRegistrySearchArgs(rest);
+    if (!parsed.ok) {
+      console.error(parsed.message);
       process.exit(1);
     }
-    const result = await searchMcpRegistry(query.join(' '), { limit, cursor });
+    const result = await searchMcpRegistry(parsed.value.query, { limit: parsed.value.limit, cursor: parsed.value.cursor });
     console.log(formatRegistrySearch(result));
     return;
   }
