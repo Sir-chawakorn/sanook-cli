@@ -16,6 +16,14 @@ template ไว้ instantiate (session/bug/handoff/project)
 ## ไม่ใส่ที่นี่
 โน้ตจริง
 
+## Templates
+
+- [[Templates/session]] — session log หลังจบงานหรือ checkpoint สำคัญ
+- [[Templates/handoff]] — ส่งต่องานค้างให้ session/agent ถัดไป
+- [[Templates/project]] — project overview
+- [[Templates/bug]] — bug report
+- [[Templates/final]] — final gate ก่อนบอกว่าเสร็จแล้ว; checklist ต้องมี evidence
+
 ## AI Routing Contract
 
 - ก่อนเขียน: เช็กว่าเนื้อหาตรง "ใส่ที่นี่" และไม่เข้า "ไม่ใส่ที่นี่"; ถ้าก้ำกึ่งอ่าน [[Vault Structure Map]] ก่อน

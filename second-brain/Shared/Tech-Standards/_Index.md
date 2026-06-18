@@ -25,6 +25,8 @@ MCP/stack/DoD/verification rulebook
 
 > รายละเอียดทุกโฟลเดอร์ + decision rules → [[Vault Structure Map]]
 
-_(ยังว่าง — โน้ตในโฟลเดอร์นี้จะถูกลิงก์ที่นี่)_
+## Standards
+
+- [[Shared/Tech-Standards/verification-standard]] — verification ladder, evidence format, and final gate contract
 
 up:: [[Shared/_Index]]

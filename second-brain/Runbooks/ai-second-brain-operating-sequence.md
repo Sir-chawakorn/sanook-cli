@@ -56,10 +56,11 @@ evidence:: [[Research/2026-06-17-ai-second-brain-method-experiment]]
    - งานไม่ trivial ให้รัน [[Runbooks/eval-loop]] แบบย่อ:
      - retrieval hit?
      - grounded?
-     - verification passed?
-     - มี distractor หรือ stale note ไหม?
+   - verification passed?
+   - มี distractor หรือ stale note ไหม?
    - ก่อน/หลังแก้ framework ให้ใช้ [[Evals/second-brain-benchmarks]] เป็น regression check.
    - บันทึกผลใน [[Evals/quality-ledger]] เมื่อเป็นงาน framework/ระบบ/หลาย session.
+   - ก่อนตอบว่าเสร็จแล้วในงานไม่ trivial ให้ instantiate [[Templates/final]] เพื่อทำ final gate: objective/DoD, evidence matrix, residual risk, final-answer draft, และ memory closeout.
 
 8. **Consolidate**
    - อย่า consolidate กลางงานถ้าไม่จำเป็น.

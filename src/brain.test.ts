@@ -61,6 +61,7 @@ describe('scaffoldBrain', () => {
       'Shared/AI-Context-Index.md',
       'Shared/Operating-State/current-state.md',
       'Templates/session.md',
+      'Templates/final.md',
       '.obsidian/app.json',
     ]) {
       expect((await stat(join(target, f))).isFile()).toBe(true);
@@ -240,6 +241,7 @@ describe('scaffoldBrain', () => {
     const aiContext = await readFile(join(target, 'Shared', 'AI-Context-Index.md'), 'utf8');
     expect(aiContext).toContain('## Default Write Path');
     expect(aiContext).toContain('AI Routing Contract');
+    expect(aiContext).toContain('[[Templates/final]]');
     expect(aiContext).toContain('priority/current focus เปลี่ยน');
     expect(aiContext).toContain('session checkpoint / งานจบ');
     for (const f of ['Home.md', 'README.md', 'CLAUDE.md', 'GEMINI.md', 'AGENTS.md', 'SANOOK.md']) {
@@ -247,6 +249,27 @@ describe('scaffoldBrain', () => {
       expect(content, `${f} ไม่บอกให้ใช้ target _Index`).toContain('_Index');
       expect(content, `${f} ไม่บอก AI Routing Contract`).toContain('AI Routing Contract');
     }
+  });
+
+  it('final gate template ครบ 8 logic หลักและผูกกับ evidence', async () => {
+    const templateRoot = join(process.cwd(), 'second-brain');
+    const final = await readFile(join(templateRoot, 'Templates', 'final.md'), 'utf8');
+    for (const heading of [
+      '## 1. Objective / DoD Lock',
+      '## 2. Evidence-Backed Checklist',
+      '## 3. Status Matrix',
+      '## 4. Evidence Matrix',
+      '## 5. Residual Risk',
+      '## 6. Change Summary Audit',
+      '## 7. Final Answer Draft',
+      '## 8. Second-Brain Routing / Memory Closeout',
+    ]) {
+      expect(final, `final.md missing ${heading}`).toContain(heading);
+    }
+    expect(final).toContain('If a row has no evidence');
+    expect(final).toContain('PASS');
+    expect(final).toContain('PARTIAL');
+    expect(final).toContain('BLOCKED');
   });
 
   it('ทุกโฟลเดอร์จาก manifest มี _Index.md ที่บอก role และ routing ครบ', async () => {

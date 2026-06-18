@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,10 +10,37 @@ const WS = mkdtempSync(join(tmpdir(), 'sanook-ws-'));
 const HOME = mkdtempSync(join(tmpdir(), 'sanook-home-'));
 const REPO = process.cwd();
 const opt = {} as never; // tool.execute options (ไม่ใช้ใน test)
+let loopbackAvailable = false;
 
-beforeAll(() => {
+async function canListenOnLoopback(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = createServer();
+    server.once('error', () => resolve(false));
+    server.listen(0, '127.0.0.1', () => server.close(() => resolve(true)));
+  });
+}
+
+async function unusedLoopbackPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      server.close(() => {
+        if (address && typeof address === 'object') {
+          resolve(address.port);
+        } else {
+          reject(new Error('loopback port unavailable'));
+        }
+      });
+    });
+  });
+}
+
+beforeAll(async () => {
   vi.stubEnv('HOME', HOME);
   vi.stubEnv('SANOOK_ALLOW_OUTSIDE_WORKSPACE', '1');
+  loopbackAvailable = await canListenOnLoopback();
 });
 afterAll(() => {
   vi.unstubAllEnvs();
@@ -271,29 +299,81 @@ describe('cost + compaction + git + hooks', () => {
 });
 
 describe('gateway HTTP (spawn server จริง)', () => {
-  it('startGateway → /health public + /tasks 401 + token-gated', async () => {
+  it('startGateway → /health public + /tasks 401 + token-gated', async ({ skip }) => {
+    if (!loopbackAvailable) skip('loopback sockets unavailable in this environment');
     const { startGateway } = await import('./gateway/serve.js');
     const { readFileSync } = await import('node:fs');
-    const stop = await startGateway({ port: 8911, model: 'sonnet', onLog: () => {} });
+    const port = await unusedLoopbackPort();
+    const baseUrl = `http://127.0.0.1:${port}`;
+    const stop = await startGateway({ port, model: 'sonnet', onLog: () => {} });
     try {
       await new Promise((r) => setTimeout(r, 250));
-      const health = (await fetch('http://127.0.0.1:8911/health').then((r) => r.json())) as { ok: boolean };
+      const health = (await fetch(`${baseUrl}/health`).then((r) => r.json())) as { ok: boolean };
       expect(health.ok).toBe(true);
-      const noToken = await fetch('http://127.0.0.1:8911/tasks');
+      const noToken = await fetch(`${baseUrl}/tasks`);
       expect(noToken.status).toBe(401);
       const token = readFileSync(join(HOME, '.sanook', 'gateway', 'token'), 'utf8').trim();
-      const withToken = await fetch('http://127.0.0.1:8911/tasks', { headers: { authorization: `Bearer ${token}` } });
+      const withToken = await fetch(`${baseUrl}/tasks`, { headers: { authorization: `Bearer ${token}` } });
       expect(withToken.status).toBe(200);
     } finally {
       stop();
     }
   });
 
-  it('/v1/chat/completions stream:true returns SSE chunks', async () => {
+  it('/tasks rejects explicit non-string task fields', async ({ skip }) => {
+    if (!loopbackAvailable) skip('loopback sockets unavailable in this environment');
+    const { startServer } = await import('./gateway/server.js');
+    const port = await unusedLoopbackPort();
+    const stop = startServer({ port, token: 'tok', defaultModel: 'sonnet' });
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      const cases = [
+        [{ spec: 0 }, 'spec ต้องเป็นข้อความ'],
+        [{ spec: 'ship the build', schedule: 0 }, 'schedule ไม่ถูกต้อง: ต้องเป็นข้อความ'],
+        [{ spec: 'ship the build', model: [] }, 'model ต้องเป็นข้อความ'],
+        [{ spec: 'ship the build', deliver: false }, 'deliver ต้องเป็นข้อความ'],
+      ] as const;
+
+      for (const [body, error] of cases) {
+        const res = await fetch(`http://127.0.0.1:${port}/tasks`, {
+          method: 'POST',
+          headers: { authorization: 'Bearer tok', 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ error });
+      }
+    } finally {
+      stop();
+    }
+  });
+
+  it('/v1/chat/completions rejects explicit non-string model', async ({ skip }) => {
+    if (!loopbackAvailable) skip('loopback sockets unavailable in this environment');
+    const { startServer } = await import('./gateway/server.js');
+    const port = await unusedLoopbackPort();
+    const stop = startServer({ port, token: 'tok', defaultModel: 'sonnet' });
+    try {
+      await new Promise((r) => setTimeout(r, 100));
+      const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { authorization: 'Bearer tok', 'content-type': 'application/json' },
+        body: JSON.stringify({ model: [], messages: [{ role: 'user', content: 'hi' }] }),
+      });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: 'model ต้องเป็นข้อความ' });
+    } finally {
+      stop();
+    }
+  });
+
+  it('/v1/chat/completions stream:true returns SSE chunks', async ({ skip }) => {
+    if (!loopbackAvailable) skip('loopback sockets unavailable in this environment');
     const { startServer } = await import('./gateway/server.js');
     const { CostMeter } = await import('./cost.js');
+    const port = await unusedLoopbackPort();
     const stop = startServer({
-      port: 8912,
+      port,
       token: 'tok',
       defaultModel: 'sonnet',
       runner: async (opts) => {
@@ -304,7 +384,7 @@ describe('gateway HTTP (spawn server จริง)', () => {
     });
     try {
       await new Promise((r) => setTimeout(r, 100));
-      const res = await fetch('http://127.0.0.1:8912/v1/chat/completions', {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
         method: 'POST',
         headers: { authorization: 'Bearer tok', 'content-type': 'application/json' },
         body: JSON.stringify({ stream: true, messages: [{ role: 'user', content: 'hi' }] }),

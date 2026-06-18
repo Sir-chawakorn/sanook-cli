@@ -20,11 +20,13 @@ ai_surface: starter
 - 2026-06-18: วิจัย Hermes CLI second-brain expansion ไว้เป็น reference; เจ้าของ clarify ว่าเป้าจริงคือทำใน Sanook CLI
 - 2026-06-18: Sanook-native P0 implemented: `sanook brain doctor`, `sanook brain context`, `sanook brain eval`
 - 2026-06-18: เพิ่ม `sanook brain review` เป็น curator review แบบ read-only สำหรับ inbox/context-packs/sessions/evals/note hygiene
+- 2026-06-18: เพิ่ม [[Templates/final]] เป็น final gate / evidence matrix ก่อนปิดงาน non-trivial
 
 ## Active Bets
 
 - Scientific Loop Sequence: single retrieval path + JIT task rules + explicit write routing + eval/consolidation loop
 - AI จะเก่งขึ้นแบบวัดได้เมื่อมี benchmark + taste examples + reusable context packs
+- Final gate ที่มี evidence จะลดการ claim done เกินจริงตอนปิดงาน
 
 ## Blockers
 
@@ -33,6 +35,7 @@ _(ติดอะไรอยู่)_
 ## Next Actions
 
 - [ ] Review remaining worktree diff before commit/release
+- [ ] Dogfood [[Templates/final]] ในงาน implementation ถัดไป
 - [ ] ถ้าจะต่อ second-brain CLI: ทำ `sanook brain pack list|show`, `sanook brain new <type>`, หรือ `sanook brain repair`
 - [ ] เพิ่ม good/bad examples ใหม่ใน [[Shared/User-Memory/response-examples]] เมื่อมี feedback จริงรอบถัดไป
 

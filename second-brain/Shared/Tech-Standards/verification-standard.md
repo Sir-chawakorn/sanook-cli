@@ -31,6 +31,23 @@ Verification:
 - Smoke: <command/result>
 ```
 
+## Final Gate
+
+For non-trivial work, multi-file changes, framework changes, releases, or anything the owner may later audit, instantiate [[Templates/final]] before the final owner-facing answer.
+
+The final gate must prove all eight closeout requirements:
+
+1. Objective / DoD is restated and matched.
+2. Checklist items have evidence, not only checked boxes.
+3. Status uses `PASS`, `PARTIAL`, `FAIL`, `N/A`, or `BLOCKED`.
+4. Evidence matrix lists commands, files, artifacts, and sources.
+5. Residual risk and skipped checks are explicit.
+6. Change summary distinguishes changed vs untouched work.
+7. Final answer draft does not overclaim beyond evidence.
+8. Second-brain routing / memory closeout is handled.
+
+If a row has no evidence, it cannot be `PASS`.
+
 ## Never Claim Done If
 
 - Tests were skipped without saying why.

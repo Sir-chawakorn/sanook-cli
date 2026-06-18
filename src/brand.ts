@@ -42,7 +42,7 @@ export function appTempPath(name: string): string {
 }
 
 export function envFlag(name: string): boolean {
-  const v = process.env[name];
+  const v = process.env[name]?.trim();
   return v === '1' || v?.toLowerCase() === 'true' || v?.toLowerCase() === 'yes';
 }
 

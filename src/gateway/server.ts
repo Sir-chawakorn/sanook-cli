@@ -61,15 +61,29 @@ export function parseOptionalSchedule(
   value: unknown,
   now: number,
 ): { schedule: ReturnType<typeof parseSchedule>; invalid?: string } {
-  const scheduleText = optionalString(value);
-  const hasScheduleInput = typeof value === 'string' ? scheduleText !== undefined : Boolean(value);
-  if (!hasScheduleInput) return { schedule: null };
+  if (value == null) return { schedule: null };
+  if (typeof value !== 'string') return { schedule: null, invalid: 'ต้องเป็นข้อความ' };
 
-  const schedule = scheduleText ? parseSchedule(scheduleText, now) : null;
-  return schedule ? { schedule } : { schedule: null, invalid: String(value) };
+  const scheduleText = optionalString(value);
+  if (!scheduleText) return { schedule: null };
+  const schedule = parseSchedule(scheduleText, now);
+  return schedule ? { schedule } : { schedule: null, invalid: scheduleText };
+}
+
+type RequiredTaskSpec = { spec: string } | { invalid: string };
+
+export function parseRequiredTaskSpec(value: unknown): RequiredTaskSpec {
+  if (typeof value !== 'string') {
+    return value == null ? { invalid: 'ต้องมี spec' } : { invalid: 'spec ต้องเป็นข้อความ' };
+  }
+
+  const spec = value.trim();
+  return spec ? { spec } : { invalid: 'ต้องมี spec' };
 }
 
 export function parseOptionalDeliverTarget(value: unknown): { deliver?: string; invalid?: string } {
+  if (value == null) return {};
+  if (typeof value !== 'string') return { invalid: 'deliver ต้องเป็นข้อความ' };
   const deliverText = optionalString(value);
   if (!deliverText) return {};
   try {
@@ -77,6 +91,13 @@ export function parseOptionalDeliverTarget(value: unknown): { deliver?: string; 
   } catch (e) {
     return { invalid: (e as Error).message };
   }
+}
+
+export function parseOptionalTaskModel(value: unknown): { model?: string; invalid?: string } {
+  if (value == null) return {};
+  if (typeof value !== 'string') return { invalid: 'model ต้องเป็นข้อความ' };
+  const model = optionalString(value);
+  return model ? { model } : {};
 }
 
 const MAX_BODY = 1_000_000; // 1MB กัน memory blowup
@@ -260,7 +281,9 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
     const history = msgs
       .slice(0, lastUserIdx)
       .map((m) => ({ role: m.role, content: m.content as string })) as ModelMessage[];
-    const model = optionalString(body.model) ?? opts.defaultModel;
+    const { model: requestedModel, invalid: invalidModel } = parseOptionalTaskModel(body.model);
+    if (invalidModel) return send(res, 400, { error: invalidModel });
+    const model = requestedModel ?? opts.defaultModel;
     const runner = opts.runner ?? runAgent;
     if (body.stream === true) {
       res.writeHead(200, {
@@ -321,17 +344,19 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: ServerOpt
 
   if (req.method === 'POST' && url.pathname === '/tasks') {
     const body = await readBody(req);
-    const spec = String(body.spec ?? '').trim();
-    if (!spec) return send(res, 400, { error: 'ต้องมี spec' });
+    const specInput = parseRequiredTaskSpec(body.spec);
+    if ('invalid' in specInput) return send(res, 400, { error: specInput.invalid });
     const { schedule: sched, invalid } = parseOptionalSchedule(body.schedule, Date.now());
     if (invalid) return send(res, 400, { error: `schedule ไม่ถูกต้อง: ${invalid}` });
+    const { model, invalid: invalidModel } = parseOptionalTaskModel(body.model);
+    if (invalidModel) return send(res, 400, { error: invalidModel });
     const { deliver, invalid: invalidDeliver } = parseOptionalDeliverTarget(body.deliver);
     if (invalidDeliver) return send(res, 400, { error: invalidDeliver });
     const task = await enqueueTask({
       kind: sched?.recurring ? 'cron' : 'once',
-      spec,
+      spec: specInput.spec,
       schedule: sched?.recurring ? sched.normalized : undefined,
-      model: optionalString(body.model),
+      model,
       deliver,
       runAt: sched?.runAt ?? Date.now(),
     });
