@@ -204,6 +204,7 @@ config & mcp:
   ${BRAND.cliName} auth [list|status|add|remove]  จัดการ API keys ของ providers (BYOK, redacted)
   ${BRAND.cliName} sessions [list|latest|show|rm] จัดการ saved sessions
   ${BRAND.cliName} insights [--days N] [--all]    ดู usage/session insights ในเครื่อง
+  ${BRAND.cliName} memory [stats|log "<q>"]       ดู memory: สถิติ + วิวัฒนาการของ belief (เคยเชื่ออะไร ถูก supersede ตอนไหน)
   ${BRAND.cliName} dump [--show-keys]             diagnostic/support dump แบบไม่โชว์ raw secret
   ${BRAND.cliName} prompt-size [--json]            ดู system prompt / skills / brain / tools token budget แบบ offline
   ${BRAND.cliName} runtimes [--json]               ดู Python/Rust optional runtime + บทบาทใน Sanook

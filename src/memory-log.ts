@@ -20,11 +20,13 @@ export interface MemoryStats {
 }
 
 function relevance(query: string, fact: Fact): number {
-  const q = tokens(query);
-  if (!q.size) return 0;
-  const ft = tokens(fact.text);
+  const q = [...tokens(query)];
+  if (!q.length) return 0;
+  const ft = [...tokens(fact.text)];
+  // forgiving match for a human-facing viewer: exact OR a shared prefix (deploy↔deploys↔deployment)
+  const matches = (t: string): boolean => ft.some((w) => w === t || (t.length >= 3 && (w.startsWith(t) || t.startsWith(w))));
   let overlap = 0;
-  for (const t of q) if (ft.has(t)) overlap++;
+  for (const t of q) if (matches(t)) overlap++;
   return overlap;
 }
 
