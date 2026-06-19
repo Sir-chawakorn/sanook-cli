@@ -2,7 +2,7 @@ import { chmod, readFile, writeFile, mkdir, readdir, realpath, rm } from 'node:f
 import { join, resolve } from 'node:path';
 import type { ModelMessage } from 'ai';
 import { appHomePath, persistenceEnabled } from './brand.js';
-import { redactKey } from './providers/keys.js';
+import { redactKey, redactUnknown } from './providers/keys.js';
 
 // session store — จำ conversation + ความคืบหน้า เพื่อ "ทำงานต่อได้" ไม่ลืมว่าทำถึงไหน
 const SESSION_DIR = appHomePath('sessions');
@@ -60,15 +60,6 @@ function sessionFilePath(id: string): string {
     throw new Error(`session id ไม่ถูกต้อง: ${id}`);
   }
   return join(SESSION_DIR, `${id}.json`);
-}
-
-function redactUnknown(value: unknown): unknown {
-  if (typeof value === 'string') return redactKey(value);
-  if (Array.isArray(value)) return value.map(redactUnknown);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactUnknown(v)]));
-  }
-  return value;
 }
 
 function sanitizeSession(s: Session): Session {

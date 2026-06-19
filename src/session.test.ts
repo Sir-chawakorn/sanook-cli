@@ -126,14 +126,55 @@ describe('session store management', () => {
       updated: '2026-06-14T00:00:00.000Z',
       model: 'sonnet',
       cwd: project,
-      messages: [{ role: 'user', content: 'key sk-test1234567890abcdef' }],
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'key sk-test1234567890abcdef',
+              'sk-test1234567890abcdef': 'key sk-test1234567890abcdef',
+            } as never,
+          ],
+        },
+      ],
     });
-    expect(JSON.stringify(safe)).toContain('sk-t…ef');
-    expect(JSON.stringify(safe)).not.toContain('sk-test1234567890abcdef');
+    const safeJson = JSON.stringify(safe);
+    expect(safeJson).toContain('sk-t…ef');
+    expect(safeJson).not.toContain('sk-test1234567890abcdef');
 
     const pruned = await pruneSessions({ cwd: null, keep: 1 });
     expect(pruned.map((s) => s.id)).toEqual(['other-project']);
     expect((await listSessions({ cwd: null })).map((s) => s.id)).toEqual(['new-project']);
+  });
+
+  it('redacts API keys in persisted session message object keys', async () => {
+    const { loadSession, saveSession } = await import('./session.js');
+    const project = join(home, 'project');
+
+    await saveSession({
+      id: 'secret-session',
+      created: '2026-06-14T00:00:00.000Z',
+      updated: '2026-06-14T00:00:00.000Z',
+      model: 'sonnet',
+      cwd: project,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'key sk-test1234567890abcdef',
+              'sk-test1234567890abcdef': 'key sk-test1234567890abcdef',
+            } as never,
+          ],
+        },
+      ],
+    });
+
+    const safeJson = JSON.stringify(await loadSession('secret-session'));
+    expect(safeJson).toContain('sk-t…ef');
+    expect(safeJson).not.toContain('sk-test1234567890abcdef');
   });
 
   it('skips malformed session files when listing sessions for a cwd', async () => {

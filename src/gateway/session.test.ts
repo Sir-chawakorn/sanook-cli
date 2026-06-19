@@ -70,6 +70,36 @@ describe('gateway chat sessions', () => {
     expect((await loadGatewaySession(platform, 'target'))?.id).toBe(id);
   });
 
+  it('redacts API keys in gateway session message object keys before persistence', async () => {
+    const { gatewaySessionId, loadGatewaySession, saveGatewaySession } = await import('./session.js');
+    const id = gatewaySessionId('telegram', 'secret-chat');
+
+    await saveGatewaySession({
+      id,
+      platform: 'telegram',
+      target: 'secret-chat',
+      created: '2026-06-18T00:00:00.000Z',
+      updated: '2026-06-18T00:00:00.000Z',
+      model: 'sonnet',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'key sk-test1234567890abcdef',
+              'sk-test1234567890abcdef': 'key sk-test1234567890abcdef',
+            } as never,
+          ],
+        },
+      ],
+    });
+
+    const safeJson = JSON.stringify(await loadGatewaySession('telegram', 'secret-chat'));
+    expect(safeJson).toContain('sk-t…ef');
+    expect(safeJson).not.toContain('sk-test1234567890abcdef');
+  });
+
   it('skips malformed gateway session files when loading and listing sessions', async () => {
     const { gatewaySessionId, listGatewaySessions, loadGatewaySession, saveGatewaySession } = await import('./session.js');
     const validId = gatewaySessionId('telegram', '111');

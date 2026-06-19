@@ -1,4 +1,5 @@
 import { inspect } from 'node:util';
+import { redactKey, redactUnknown } from './providers/keys.js';
 
 // ============================================================================
 // src/orchestrate.ts — subagent ORCHESTRATION (parallel fan-out + background).
@@ -34,16 +35,17 @@ export interface SubagentOutcome {
 }
 
 export function formatSubagentError(e: unknown): string {
-  if (e instanceof Error) return e.message || e.name;
-  if (typeof e === 'string') return e;
+  if (e instanceof Error) return redactKey(e.message || e.name);
+  if (typeof e === 'string') return redactKey(e);
   if (e == null) return String(e);
+  const safe = redactUnknown(e);
   try {
-    const json = JSON.stringify(e);
+    const json = JSON.stringify(safe);
     if (json) return json;
   } catch {
-    return inspect(e, { breakLength: Infinity, depth: 2 });
+    return inspect(safe, { breakLength: Infinity, depth: 2 });
   }
-  return String(e);
+  return redactKey(String(e));
 }
 
 /** the thing that actually runs a subagent. Real impl wraps runAgent; tests pass a fake. */

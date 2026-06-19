@@ -53,3 +53,20 @@ export function redactKey(s: string): string {
     (m) => (m.length > 8 ? `${m.slice(0, 4)}…${m.slice(-2)}` : '…'),
   );
 }
+
+export function redactUnknown(value: unknown): unknown {
+  const visiting = new WeakSet<object>();
+  const visit = (current: unknown): unknown => {
+    if (typeof current === 'string') return redactKey(current);
+    if (!current || typeof current !== 'object') return current;
+    if (visiting.has(current)) return '[Circular]';
+    visiting.add(current);
+    try {
+      if (Array.isArray(current)) return current.map(visit);
+      return Object.fromEntries(Object.entries(current).map(([k, v]) => [redactKey(k), visit(v)]));
+    } finally {
+      visiting.delete(current);
+    }
+  };
+  return visit(value);
+}

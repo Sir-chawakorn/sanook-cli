@@ -34,6 +34,17 @@ describe('tool trail', () => {
     expect(lines.every((line) => line.length <= 36)).toBe(true);
   });
 
+  it('keeps circular object details useful after stringify fails', () => {
+    const detail: { path: string; self?: unknown } = { path: 'src/app.tsx' };
+    detail.self = detail;
+
+    const text = compactToolDetail(detail, 80);
+
+    expect(text).toContain('path');
+    expect(text).toContain('Circular');
+    expect(text).not.toBe('[object Object]');
+  });
+
   it('can render compact rows without tool detail payloads', () => {
     const lines = toolTrailLines(
       [

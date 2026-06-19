@@ -1,3 +1,5 @@
+import { inspect } from 'node:util';
+
 export type ToolTrailStatus = 'done' | 'error' | 'running';
 export type ToolTrailDisplayMode = 'compact' | 'expanded' | 'hidden';
 
@@ -40,7 +42,7 @@ export function compactToolDetail(detail: unknown, width = 64): string {
           try {
             return JSON.stringify(detail);
           } catch {
-            return String(detail);
+            return inspect(detail, { breakLength: Infinity, depth: 2 });
           }
         })();
   return clip(normalizeWhitespace(text), width);

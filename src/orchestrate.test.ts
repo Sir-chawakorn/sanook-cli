@@ -56,6 +56,19 @@ describe('runParallel', () => {
     expect(out[1]).toMatchObject({ ok: false, error: '{"code":"E_SUBAGENT","detail":"object"}' });
   });
 
+  it('redacts API keys from subagent errors', async () => {
+    const runner: SubagentRunner = async (s) => {
+      if (s.description === 'error') throw new Error('boom sk-test1234567890abcdef');
+      throw { 'sk-test1234567890abcdef': 'value sk-test1234567890abcdef' };
+    };
+
+    const out = await runParallel([spec('error'), spec('object')], runner);
+    const errors = out.map((result) => result.error).join('\n');
+
+    expect(errors).toContain('sk-t…ef');
+    expect(errors).not.toContain('sk-test1234567890abcdef');
+  });
+
   it('keeps circular thrown values debuggable', async () => {
     const circular: { self?: unknown } = {};
     circular.self = circular;

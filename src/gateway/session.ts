@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import type { ModelMessage } from 'ai';
 import { appHomePath, persistenceEnabled } from '../brand.js';
 import { runAgent } from '../loop.js';
-import { redactKey } from '../providers/keys.js';
+import { redactKey, redactUnknown } from '../providers/keys.js';
 import { canonicalSpec, parseSpec, PROVIDERS } from '../providers/registry.js';
 import { autoCompact, estimateTokens } from '../compaction.js';
 import { patchGlobalConfig } from '../config.js';
@@ -84,15 +84,6 @@ function isGatewaySession(value: unknown): value is GatewaySession {
     Array.isArray(value.messages) &&
     value.messages.every(isModelMessage)
   );
-}
-
-function redactUnknown(value: unknown): unknown {
-  if (typeof value === 'string') return redactKey(value);
-  if (Array.isArray(value)) return value.map(redactUnknown);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactUnknown(v)]));
-  }
-  return value;
 }
 
 export function shouldSuppressDelivery(text: string): boolean {

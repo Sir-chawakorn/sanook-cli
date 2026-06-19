@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { assertDirectApiKey, redactKey, resolveKeyFromEnv } from './keys.js';
+import { assertDirectApiKey, redactKey, redactUnknown, resolveKeyFromEnv } from './keys.js';
 
 const anthropic = { label: 'Anthropic', keyFormat: /^sk-ant-api\d{2}-/, oauthRejectPrefixes: ['sk-ant-oat'] };
 
@@ -42,5 +42,37 @@ describe('redactKey (กัน key รั่วใน log/error/telegram)', () =
   });
   it('ไม่ทำลาย prose ปกติ', () => {
     expect(redactKey('hello world this task failed')).toBe('hello world this task failed');
+  });
+  it('redacts nested object keys and values', () => {
+    const redacted = redactUnknown({
+      safe: ['keep', { 'sk-test1234567890abcdef': 'key sk-test1234567890abcdef' }],
+    });
+    const safeJson = JSON.stringify(redacted);
+
+    expect(safeJson).toContain('sk-t…ef');
+    expect(safeJson).not.toContain('sk-test1234567890abcdef');
+  });
+  it('redacts circular object graphs without recursing forever', () => {
+    const circular: Record<string, unknown> = {
+      'sk-test1234567890abcdef': 'key sk-test1234567890abcdef',
+    };
+    circular.self = circular;
+
+    const safeJson = JSON.stringify(redactUnknown(circular));
+
+    expect(safeJson).toContain('[Circular]');
+    expect(safeJson).toContain('sk-t…ef');
+    expect(safeJson).not.toContain('sk-test1234567890abcdef');
+  });
+  it('does not treat repeated acyclic objects as circular references', () => {
+    const shared = {
+      'sk-test1234567890abcdef': 'key sk-test1234567890abcdef',
+    };
+
+    const safeJson = JSON.stringify(redactUnknown({ first: shared, second: shared }));
+
+    expect(safeJson).not.toContain('[Circular]');
+    expect(safeJson).toContain('sk-t…ef');
+    expect(safeJson).not.toContain('sk-test1234567890abcdef');
   });
 });

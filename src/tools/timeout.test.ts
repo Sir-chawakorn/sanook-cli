@@ -69,6 +69,32 @@ describe('wrapToolsWithTimeout', () => {
     await expect(exec(wrapped, 'objectFail')({}, {})).resolves.toBe('ERROR: {"code":"E_TOOL","retry":false}');
   });
 
+  it('redacts API keys from thrown errors and object payloads', async () => {
+    const wrapped = wrapToolsWithTimeout(
+      mk({
+        errorFail: {
+          execute: async () => {
+            throw new Error('boom sk-test1234567890abcdef');
+          },
+        },
+        objectFail: {
+          execute: async () => {
+            throw { 'sk-test1234567890abcdef': 'value sk-test1234567890abcdef' };
+          },
+        },
+      }),
+      1000,
+    );
+
+    const error = String(await exec(wrapped, 'errorFail')({}, {}));
+    const object = String(await exec(wrapped, 'objectFail')({}, {}));
+
+    expect(error).toContain('sk-t…ef');
+    expect(error).not.toContain('sk-test1234567890abcdef');
+    expect(object).toContain('sk-t…ef');
+    expect(object).not.toContain('sk-test1234567890abcdef');
+  });
+
   it('แสดง thrown object ที่ stringify ไม่ได้ให้พอ debug ได้', async () => {
     const circular: { self?: unknown } = {};
     circular.self = circular;
