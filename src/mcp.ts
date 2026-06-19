@@ -94,6 +94,9 @@ class StdioTransport implements Transport {
       // Windows: `npx`/`npm`/JS bins เป็น .cmd shim → spawn ตรงๆ = ENOENT. shell=true ให้ผ่าน PATHEXT.
       // (config นี้ user เป็นเจ้าของ/trust แล้ว — bare-name resolution เท่านั้น)
       shell: process.platform === 'win32',
+      // POSIX: own process group → close() can SIGTERM the whole tree (npx/uvx/docker wrappers
+      // spawn the real server as a grandchild; killing only the wrapper would orphan it).
+      detached: process.platform !== 'win32',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.proc.stdout?.on('data', (d: Buffer) => this.onData(d.toString()));
@@ -166,10 +169,17 @@ class StdioTransport implements Transport {
   }
 
   close(): void {
+    const pid = this.proc.pid;
     try {
-      this.proc.kill();
+      // POSIX: negative pid = the whole process group (kills npx/uvx/docker + the real server child).
+      if (pid && process.platform !== 'win32') process.kill(-pid, 'SIGTERM');
+      else this.proc.kill();
     } catch {
-      /* ตายแล้ว */
+      try {
+        this.proc.kill();
+      } catch {
+        /* already dead */
+      }
     }
   }
 }

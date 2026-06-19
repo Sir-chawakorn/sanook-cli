@@ -21,6 +21,13 @@ describe('parseArgs', () => {
     });
   });
 
+  it('flags an invalid --budget instead of silently dropping the cap', () => {
+    expect(parseArgs(['-b', '0.5O', 'task'])).toMatchObject({ budget: undefined, budgetInvalid: true, prompt: 'task' });
+    expect(parseArgs(['--budget=-5', 'task'])).toMatchObject({ budget: undefined, budgetInvalid: true });
+    expect(parseArgs(['-b', '0.25', 'task'])).toMatchObject({ budget: 0.25, budgetInvalid: false });
+    expect(parseArgs(['task'])).toMatchObject({ budgetInvalid: false });
+  });
+
   it('consumes resume flags without turning them into prompts', () => {
     expect(parseArgs(['--continue-any']).prompt).toBe('');
     expect(parseArgs(['-c']).prompt).toBe('');

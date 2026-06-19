@@ -44,6 +44,8 @@ export interface InboundEmail {
   autoSubmitted?: string;
   precedence?: string;
   listUnsubscribe?: string;
+  /** topmost Authentication-Results header (added by the receiving MTA) — used to verify the sender */
+  authResults?: string;
 }
 
 export interface EmailReceiveConfig extends EmailSendConfig {
@@ -53,6 +55,9 @@ export interface EmailReceiveConfig extends EmailSendConfig {
   allowAllUsers?: boolean;
   pollIntervalSeconds?: number;
   homeAddress?: string;
+  /** opt out of SPF/DKIM verification for allowlisted senders (only if your MTA doesn't stamp
+   *  Authentication-Results). Default false = fail closed, since From is trivially spoofable. */
+  allowUnauthenticatedSenders?: boolean;
 }
 
 export interface EmailGatewayOpts extends EmailReceiveConfig {
@@ -306,7 +311,28 @@ export function parseRawEmail(uid: number, raw: string): InboundEmail {
     autoSubmitted: headerValue(headers, 'Auto-Submitted'),
     precedence: headerValue(headers, 'Precedence'),
     listUnsubscribe: headerValue(headers, 'List-Unsubscribe'),
+    authResults: headerValue(headers, 'Authentication-Results'),
   };
+}
+
+function domainMatches(claimed: string, fromDomain: string): boolean {
+  const c = claimed.toLowerCase().replace(/^.*@/, '').replace(/[>\s]+$/, '').trim();
+  const f = fromDomain.toLowerCase().trim();
+  if (!c || !f) return false;
+  return c === f || f.endsWith(`.${c}`) || c.endsWith(`.${f}`);
+}
+
+/** True only if Authentication-Results shows SPF or DKIM = pass, aligned to the From domain (DMARC-style). */
+export function senderPassesAuth(authResults: string | undefined, fromDomain: string): boolean {
+  if (!authResults || !fromDomain) return false;
+  const ar = authResults.toLowerCase();
+  for (const m of ar.matchAll(/dkim=pass[^;]*?header\.d=([a-z0-9.\-]+)/g)) {
+    if (domainMatches(m[1], fromDomain)) return true;
+  }
+  for (const m of ar.matchAll(/spf=pass[^;]*?(?:smtp\.mailfrom|envelope-from)=([^;\s]+)/g)) {
+    if (domainMatches(m[1], fromDomain)) return true;
+  }
+  return false;
 }
 
 export function shouldProcessEmail(email: InboundEmail, config: EmailReceiveConfig): boolean {
@@ -319,7 +345,11 @@ export function shouldProcessEmail(email: InboundEmail, config: EmailReceiveConf
   if (email.listUnsubscribe) return false;
   if (config.allowAllUsers) return true;
   const allowed = new Set((config.allowedUsers ?? []).map((s) => s.toLowerCase()));
-  return allowed.has(from);
+  if (!allowed.has(from)) return false;
+  // From is trivially spoofable — an allowlisted address must also pass SPF/DKIM aligned to its
+  // domain. Fail closed unless the operator explicitly opted out (MTA doesn't stamp auth results).
+  if (config.allowUnauthenticatedSenders) return true;
+  return senderPassesAuth(email.authResults, from.split('@')[1] ?? '');
 }
 
 function imapQuote(raw: string): string {

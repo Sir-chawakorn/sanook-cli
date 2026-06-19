@@ -923,18 +923,54 @@ function readsProtectedEnvFile(cmd: string): boolean {
   return false;
 }
 
+// Rebuild `cmd` with each segment's COMMAND token de-quoted/de-escaped (e.g. `r\m`, `'rm'`, `g\it`
+// → `rm`, `git`), leaving every other token byte-identical so the literal-search-pattern exemption
+// (e.g. `grep 'rm -rf'`) still holds. Lets the matchers below see the real command name.
+function deobfuscateCommandTokens(cmd: string): string {
+  const entries = shellishTokenEntries(cmd);
+  if (entries.length === 0) return cmd;
+  const bySegment = new Map<number, ShellTokenEntry[]>();
+  for (const entry of entries) {
+    const seg = bySegment.get(entry.segment);
+    if (seg) seg.push(entry);
+    else bySegment.set(entry.segment, [entry]);
+  }
+  const replacements: Array<{ start: number; end: number; text: string }> = [];
+  for (const segEntries of bySegment.values()) {
+    const ci = shellSegmentCommandIndex(segEntries);
+    if (ci < 0) continue;
+    const entry = segEntries[ci];
+    const cleaned = cleanShellToken(entry.raw);
+    if (cleaned && cleaned !== entry.raw) replacements.push({ start: entry.start, end: entry.end, text: cleaned });
+  }
+  if (replacements.length === 0) return cmd;
+  replacements.sort((a, b) => b.start - a.start); // right-to-left so offsets stay valid
+  let out = cmd;
+  for (const r of replacements) out = out.slice(0, r.start) + r.text + out.slice(r.end);
+  return out;
+}
+
 export function checkBash(cmd: string, depth = 0): GateResult {
-  if (hasRmRecursiveForce(cmd) || hasDangerousGitOperation(cmd) || hasDestructiveCommand(cmd)) {
-    return { ok: false, reason: `คำสั่งทำลายล้าง/irreversible ถูกปฏิเสธ: "${cmd}"` };
+  // Also test a de-obfuscated copy so a backslash/quote-mangled command name can't slip past.
+  const deob = deobfuscateCommandTokens(cmd);
+  const variants = deob === cmd ? [cmd] : [cmd, deob];
+  for (const c of variants) {
+    if (hasRmRecursiveForce(c) || hasDangerousGitOperation(c) || hasDestructiveCommand(c)) {
+      return { ok: false, reason: `คำสั่งทำลายล้าง/irreversible ถูกปฏิเสธ: "${cmd}"` };
+    }
   }
-  if (PROTECTED_CMD_PATH.test(cmd) || mentionsProtectedEnvPath(cmd) || readsProtectedEnvFile(cmd)) {
-    return { ok: false, reason: `คำสั่งที่อ่าน/แตะ path ลับถูกปฏิเสธ: "${cmd}"` };
+  for (const c of variants) {
+    if (PROTECTED_CMD_PATH.test(c) || mentionsProtectedEnvPath(c) || readsProtectedEnvFile(c)) {
+      return { ok: false, reason: `คำสั่งที่อ่าน/แตะ path ลับถูกปฏิเสธ: "${cmd}"` };
+    }
   }
-  if (nestedShellCommandDenied(cmd, depth)) {
-    return { ok: false, reason: `คำสั่ง nested shell ที่อันตรายถูกปฏิเสธ: "${cmd}"` };
-  }
-  if (envWrappedCommandDenied(cmd, depth)) {
-    return { ok: false, reason: `คำสั่ง env wrapper ที่อันตรายถูกปฏิเสธ: "${cmd}"` };
+  for (const c of variants) {
+    if (nestedShellCommandDenied(c, depth)) {
+      return { ok: false, reason: `คำสั่ง nested shell ที่อันตรายถูกปฏิเสธ: "${cmd}"` };
+    }
+    if (envWrappedCommandDenied(c, depth)) {
+      return { ok: false, reason: `คำสั่ง env wrapper ที่อันตรายถูกปฏิเสธ: "${cmd}"` };
+    }
   }
   return { ok: true };
 }

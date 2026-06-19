@@ -72,6 +72,14 @@ export async function indexVaultFiles(
   const diff: VaultDiff = { added: 0, updated: 0, removed: 0, skipped: 0 };
 
   const paths = await fs.listMarkdown();
+  // Guard against a momentarily-unreadable vault (unmounted drive / perms blip / wrong cwd): walk()
+  // swallows readdir errors and returns [], which would otherwise evict the ENTIRE persisted index
+  // via the deletion sweep below. If a non-empty manifest just lost >50% of its files, treat it as a
+  // transient read failure and keep the existing index+manifest untouched (recovers on the next pass).
+  const manifestSize = Object.keys(manifest).length;
+  if (manifestSize > 0 && paths.length < Math.ceil(manifestSize * 0.5)) {
+    return { manifest, diff: { added: 0, updated: 0, removed: 0, skipped: manifestSize } };
+  }
   const seenExisting = new Set<string>();
   for (const rel of paths) {
     const fp = await fs.fingerprint(rel);

@@ -51,6 +51,19 @@ describe('loadConfig layering', () => {
     expect(c.model).toBeDefined();
   });
 
+  it('malformed config FIELDS degrade to defaults instead of throwing on boot', async () => {
+    // valid JSON, but several fields violate the schema (would have crashed ConfigSchema.parse)
+    await writeFile(
+      join(dir, '.sanook', 'config.json'),
+      JSON.stringify({ model: 'keep-me', maxSteps: 'abc', permissionMode: 'banana', budgetUsd: -3 }),
+    );
+    const c = await loadConfig({}, dir);
+    expect(c.model).toBe('keep-me'); // good field preserved
+    expect(c.maxSteps).toBe(20); // bad field → default
+    expect(c.permissionMode).toBe('ask'); // bad field → default
+    expect(c.budgetUsd).toBeUndefined(); // bad budget dropped (no silent cap), surfaced via stderr warn
+  });
+
   it('budgetUsd ผ่าน CLI override', async () => {
     expect((await loadConfig({ budgetUsd: 0.5 }, dir)).budgetUsd).toBe(0.5);
   });

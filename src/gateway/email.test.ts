@@ -137,11 +137,25 @@ describe('email send adapter', () => {
       smtpHost: 'smtp.example.com',
       imapHost: 'imap.example.com',
       allowedUsers: ['owner@example.com'],
+      allowUnauthenticatedSenders: true,
     };
     expect(shouldProcessEmail(base, config)).toBe(true);
     expect(shouldProcessEmail({ ...base, from: 'other@example.com' }, config)).toBe(false);
     expect(shouldProcessEmail({ ...base, autoSubmitted: 'auto-generated' }, config)).toBe(false);
     expect(shouldProcessEmail({ ...base, from: 'bot@example.com' }, config)).toBe(false);
+  });
+
+  it('fails closed on a spoofable From unless SPF/DKIM passes (aligned) or the operator opts out', () => {
+    const base = { uid: 1, from: 'owner@example.com', subject: 'hello', text: 'body' };
+    const config = { address: 'bot@example.com', password: 'pw', smtpHost: 'smtp.example.com', imapHost: 'imap.example.com', allowedUsers: ['owner@example.com'] };
+    // allowlisted but unauthenticated → rejected (default fail-closed)
+    expect(shouldProcessEmail(base, config)).toBe(false);
+    // DKIM pass aligned to the From domain → accepted
+    expect(shouldProcessEmail({ ...base, authResults: 'mx.google.com; dkim=pass header.d=example.com; spf=pass smtp.mailfrom=owner@example.com' }, config)).toBe(true);
+    // pass for a DIFFERENT domain (not aligned) → still rejected
+    expect(shouldProcessEmail({ ...base, authResults: 'mx; dkim=pass header.d=evil.com; spf=pass smtp.mailfrom=x@evil.com' }, config)).toBe(false);
+    // explicit operator opt-out → accepted without auth
+    expect(shouldProcessEmail(base, { ...config, allowUnauthenticatedSenders: true })).toBe(true);
   });
 
   it('polls allowed inbound mail, runs the agent, replies, and marks seen', async () => {
@@ -155,6 +169,7 @@ describe('email send adapter', () => {
       smtpHost: 'smtp.example.com',
       imapHost: 'imap.example.com',
       allowedUsers: ['owner@example.com'],
+      allowUnauthenticatedSenders: true,
       pollIntervalSeconds: 60,
       model: 'sonnet',
       poller,
@@ -179,6 +194,7 @@ describe('email send adapter', () => {
       smtpHost: 'smtp.example.com',
       imapHost: 'imap.example.com',
       allowedUsers: ['owner@example.com'],
+      allowUnauthenticatedSenders: true,
       pollIntervalSeconds: 60,
       model: 'sonnet',
       poller: vi.fn(async () => [email]),

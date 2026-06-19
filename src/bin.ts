@@ -3285,7 +3285,9 @@ async function runBrain(args: string[]): Promise<void> {
   }
 
   const { scaffoldBrain, BRAIN_DEFAULTS, expandHome, wireBrainMcp } = await import('./brain.js');
-  const target = expandHome(pathArg ?? join(homedir(), 'Documents', BRAIN_DEFAULTS.vaultName));
+  // resolve to absolute before persisting — getBrainPath() is later read from an arbitrary cwd,
+  // so a relative path (e.g. "./vault") would resolve differently per run
+  const target = resolve(expandHome(pathArg ?? join(homedir(), 'Documents', BRAIN_DEFAULTS.vaultName)));
   const today = new Date().toISOString().slice(0, 10);
   try {
     const res = await scaffoldBrain(target, { ...BRAIN_DEFAULTS, today });
@@ -3366,6 +3368,10 @@ async function runConfig(args: string[]): Promise<void> {
     } else if (key === 'contextCompression' && raw !== 'off' && raw !== 'selective' && raw !== 'headroom') {
       console.error('contextCompression ต้องเป็น off, selective หรือ headroom');
       process.exit(1);
+    } else if (key === 'brainPath') {
+      // store absolute — getBrainPath() is read from arbitrary cwd, so a relative path drifts
+      const { expandHome } = await import('./brain.js');
+      value = resolve(expandHome(raw.trim()));
     } else if (key === 'thinking') {
       // เก็บเป็น number (budget) หรือ boolean ให้ตรง ConfigSchema (ไม่เก็บ string)
       value = parseThinkingConfigValue(raw);
@@ -3559,14 +3565,17 @@ async function runMcp(args: string[]): Promise<void> {
     }
     let targetPath = mcpPath;
     if (project) {
-      const { projectConfigPathIfTrusted, projectRoot } = await import('./trust.js');
+      // Use trust status (not projectConfigPathIfTrusted, which requires a PRE-EXISTING file) so the
+      // FIRST project-scoped install into a trusted project can create .sanook/mcp.json.
+      const { projectTrustStatus, projectRoot } = await import('./trust.js');
+      const { appProjectPath } = await import('./brand.js');
       const root = await projectRoot(process.cwd());
-      const projectPath = await projectConfigPathIfTrusted('mcp.json', root);
-      if (!projectPath) {
+      const trust = await projectTrustStatus(root);
+      if (!trust.trusted) {
         console.error(`project MCP ต้อง trust ก่อน: ${BRAND.cliName} trust add`);
         process.exit(1);
       }
-      targetPath = projectPath;
+      targetPath = appProjectPath(root, 'mcp.json'); // may not exist yet — writeConfig creates it
     }
     cfg = await readConfig(targetPath);
     cfg.mcpServers[plan.alias] = plan.config;
@@ -3885,11 +3894,15 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const argv = process.argv.slice(2);
-  if (argv.length === 1 && (argv[0] === '-v' || argv[0] === '--version')) {
+  // --version/--help win in ANY position before `--` (so `sanook --help foo`, `-m x -h` work),
+  // not only as the sole argument. (Quoted prompts like `sanook "explain --help"` are one token → unaffected.)
+  const optArgsEnd = argv.indexOf('--');
+  const topOpts = optArgsEnd === -1 ? argv : argv.slice(0, optArgsEnd);
+  if (topOpts.includes('-v') || topOpts.includes('--version')) {
     console.log(VERSION);
     return;
   }
-  if (argv.length === 1 && (argv[0] === '-h' || argv[0] === '--help')) {
+  if (topOpts.includes('-h') || topOpts.includes('--help')) {
     console.log(HELP);
     return;
   }
@@ -3940,7 +3953,17 @@ async function main(): Promise<void> {
   if (argv[0] === 'mcp' && ['add', 'list', 'remove', 'rm', 'search', 'info', 'install', 'test', 'doctor', 'preset', undefined].includes(argv[1])) return runMcp(argv.slice(1));
   if (argv[0] === 'trust' && ['status', 'add', 'remove', 'rm', undefined].includes(argv[1])) return runTrust(argv.slice(1));
 
-  const { model, budget, json, quiet, prompt: argPrompt, planMode, yes, resume } = parseArgs(argv);
+  // A management command word whose subcommand didn't match any route above → don't silently
+  // fall through and run it as an LLM task (costly + confusing). These words intentionally
+  // require a valid subcommand; an NL prompt starting with one can still be quoted as a single arg.
+  const MANAGEMENT_WORDS = new Set(['config', 'mcp', 'brain', 'web', 'trust', 'cron', 'skill']);
+  if (argv[0] && MANAGEMENT_WORDS.has(argv[0]) && argv[1] && !argv[1].startsWith('-')) {
+    console.error(`${BRAND.cliName}: ไม่รู้จัก subcommand "${argv[0]} ${argv[1]}" — ดูวิธีใช้: ${BRAND.cliName} --help`);
+    process.exit(1);
+  }
+
+  const { model, budget, budgetInvalid, json, quiet, prompt: argPrompt, planMode, yes, resume } = parseArgs(argv);
+  if (budgetInvalid) process.stderr.write(`${BRAND.cliName}: ⚠ --budget ไม่ถูกต้อง (ต้องเป็นจำนวนบวก) — รันต่อโดยไม่มี spend cap\n`);
   const resumeSession = await requestedResumeSession(argv, resume);
   const budgetUsd = Number.isFinite(budget) ? budget : undefined;
   // stdin piping: `git diff | sanook "review this"` → ผนวก stdin เข้า prompt (headless/CI)

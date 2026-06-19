@@ -66,6 +66,15 @@ describe('permission gate', () => {
     expect(checkBash('rm --recursive --force /tmp/x').ok).toBe(false);
     expect(checkBash('rm --force --recursive /tmp/x').ok).toBe(false);
   });
+  it('blocks destructive commands whose NAME is obfuscated by backslashes/quotes', () => {
+    expect(checkBash('r\\m -rf /tmp/x').ok).toBe(false);
+    expect(checkBash("'rm' -rf /tmp/x").ok).toBe(false);
+    expect(checkBash('g\\it push --force origin main').ok).toBe(false);
+    expect(checkBash("'git' reset --hard HEAD").ok).toBe(false);
+    expect(checkBash('s\\udo rm -rf /').ok).toBe(false);
+    // a legitimate grep for the literal text is still allowed (command name not obfuscated)
+    expect(checkBash("grep 'rm -rf' README.md").ok).toBe(true);
+  });
   it('allows literal rm -rf text in single-quoted search patterns only', () => {
     expect(checkBash("grep 'rm -rf' README.md").ok).toBe(true);
     expect(checkBash("grep -R -e 'rm -rf' .").ok).toBe(true);

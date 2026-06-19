@@ -122,6 +122,29 @@ export async function agentTuning(): Promise<AgentTuning> {
   return { cacheTtl, thinkingBudget, compaction, contextCompression, summaryModel };
 }
 
+const warnedBadConfigKeys = new Set<string>();
+
+/**
+ * Validate the merged config, but degrade gracefully: a malformed strict field (bad model/maxSteps/
+ * permissionMode/budgetUsd/pricing in a hand-edited config.json) is dropped to its default with a
+ * one-time stderr warning instead of throwing and crashing boot. Security-sensitive fields drop to
+ * the SAFE default (budgetUsd→no cap is still surfaced by the warning; pricing→none).
+ */
+function parseConfigGraceful(merged: Record<string, unknown>): Config {
+  const first = ConfigSchema.safeParse(merged);
+  if (first.success) return first.data;
+  const badKeys = [...new Set(first.error.issues.map((i) => String(i.path[0])).filter(Boolean))];
+  const cleaned = { ...merged };
+  for (const k of badKeys) delete cleaned[k];
+  const fresh = badKeys.filter((k) => !warnedBadConfigKeys.has(k));
+  if (fresh.length) {
+    fresh.forEach((k) => warnedBadConfigKeys.add(k));
+    process.stderr.write(`${BRAND.cliName}: ⚠ ละเลย config ที่ค่าผิด (ใช้ค่า default แทน): ${fresh.join(', ')}\n`);
+  }
+  const second = ConfigSchema.safeParse(cleaned);
+  return second.success ? second.data : ConfigSchema.parse({});
+}
+
 async function readJson(path: string): Promise<Record<string, unknown>> {
   try {
     const parsed: unknown = JSON.parse(await readFile(path, 'utf8'));
@@ -169,7 +192,7 @@ export async function loadConfig(
   }
 
   const merged = { ...global, ...project, ...envConfig, ...cleanOverrides };
-  const config = ConfigSchema.parse(merged);
+  const config = parseConfigGraceful(merged);
   // pricing override: config.pricing + env SANOOK_PRICING (JSON) → ลงทะเบียนเข้า cost table
   registerPricing(config.pricing);
   registerPricing(parseEnvPricing());
