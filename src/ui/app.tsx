@@ -32,7 +32,7 @@ import { useGitBranch } from './useGitBranch.js';
 import { loadHistory, appendHistory } from './history.js';
 import { expandMentions } from './mentions.js';
 import { BRAND } from '../brand.js';
-import { Banner } from './banner.js';
+import { Banner, type BannerSignal } from './banner.js';
 import { CompletionOverlay, FloatingOverlay, type OverlayState } from './overlay.js';
 import { clampQueueActiveIndex, compactPreview, getQueueWindow, queueActiveIndexAfterDelete } from './queue.js';
 import { MarkdownText, StreamingMarkdownText } from './markdown.js';
@@ -63,6 +63,17 @@ interface LastRun extends Mark {
   promptText: string;
   images: string[];
 }
+
+interface StartupReadiness {
+  brain: 'checking' | 'missing' | 'ready';
+  mcp: 'checking' | number;
+  skills: 'checking' | number;
+}
+
+const startupCount = (value: 'checking' | number): string => (value === 'checking' ? 'checking' : value ? `${value}` : 'none');
+
+const shortSignal = (value: string, max = 18): string =>
+  value.length > max ? `…${value.slice(Math.max(0, value.length - max + 1))}` : value;
 
 export interface AppProps {
   initialModel: string;
@@ -111,6 +122,12 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const checkpoints = useRef<Checkpoint[]>([]);
   const lastRun = useRef<LastRun | null>(null);
   const editor = useEditor(replHistory.current);
+  const cwd = process.cwd();
+  const [startupReadiness, setStartupReadiness] = useState<StartupReadiness>({
+    brain: 'checking',
+    mcp: 'checking',
+    skills: 'checking',
+  });
   // real-time steering: หยุด turn ที่กำลังรัน (abort) + คิวข้อความที่พิมพ์ระหว่าง busy
   const abortRef = useRef<AbortController | null>(null);
   const queueRef = useRef<string[]>([]);
@@ -228,7 +245,6 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     setHistory((h) => h.filter(predicate));
   };
 
-  const cwd = process.cwd();
   const gitBranch = useGitBranch(cwd);
   const busyElapsedSeconds = useBusyElapsedSeconds(busy);
   const columns = Math.max(20, stdout?.columns ?? 80);
@@ -250,6 +266,28 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    void Promise.allSettled([getBrainPath(), loadMcpHubEntries(cwd), loadSkills(cwd)]).then(([brain, mcp, skills]) => {
+      if (!alive) return;
+      setStartupReadiness({
+        brain: brain.status === 'fulfilled' && brain.value ? 'ready' : 'missing',
+        mcp: mcp.status === 'fulfilled' ? mcp.value.entries.length : 0,
+        skills: skills.status === 'fulfilled' ? skills.value.length : 0,
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [cwd]);
+
+  const bannerSignals: BannerSignal[] = [
+    { label: 'brain', tone: startupReadiness.brain === 'ready' ? 'ready' : startupReadiness.brain === 'checking' ? 'muted' : 'warn', value: startupReadiness.brain },
+    { label: 'mcp', tone: startupReadiness.mcp === 'checking' ? 'muted' : startupReadiness.mcp ? 'ready' : 'warn', value: startupCount(startupReadiness.mcp) },
+    { label: 'skills', tone: startupReadiness.skills === 'checking' ? 'muted' : startupReadiness.skills ? 'ready' : 'warn', value: startupCount(startupReadiness.skills) },
+    ...(gitBranch ? [{ label: 'git', tone: 'ready' as const, value: shortSignal(gitBranch) }] : []),
+  ];
 
   const applyCompletion = (): boolean => {
     const next = completionReplaceValue(editor.value, completions[selectedCompletion], completion.replaceFrom);
@@ -937,7 +975,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     <Box flexDirection="column">
       {history.length === 0 ? (
         <>
-          <Banner columns={columns} model={model} mode={permissionMode === 'ask' ? 'ask' : 'auto'} />
+          <Banner columns={columns} model={model} mode={permissionMode === 'ask' ? 'ask' : 'auto'} signals={bannerSignals} />
           <SessionPanel columns={columns} model={model} mode={permissionMode === 'ask' ? 'ask' : 'auto'} />
         </>
       ) : null}

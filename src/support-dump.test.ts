@@ -172,6 +172,8 @@ describe('support dump', () => {
     expect(out).toContain('mode=graph');
     expect(out).toContain('graphToken=yes');
     expect(out).toContain('webhooks: enabled via config');
+    expect(out).toContain('web search:');
+    expect(out).toContain('local search internet: no');
     expect(out).not.toContain(rawKey);
     expect(out).not.toContain(rawTelegram);
     expect(out).not.toContain(rawLineToken);

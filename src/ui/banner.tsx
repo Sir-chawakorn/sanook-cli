@@ -9,7 +9,7 @@ import { BRAND } from '../brand.js';
 const SANOOK_GRADIENT = ['#22C55E', '#F97316', '#38BDF8'];
 const BANNER_TITLE = BRAND.bannerWide.toUpperCase();
 const COMMAND_HINTS = ['/help', '/tools', '/mcp', '/status'];
-const BRAND_LINE = 'งานหนักให้เบาลง · local-first BYOK · second-brain + MCP workflows';
+const BRAND_LINE = 'งานหนักให้เบาลง · ไม่เบาความรับผิดชอบ · local-first memory';
 const WORKFLOW = ['plan', 'patch', 'prove', 'remember'] as const;
 const PROMISE = ['readable', 'recoverable', 'remembered'] as const;
 const SERVICE_ROUTES = [
@@ -35,6 +35,13 @@ export interface BannerProps {
   cwd?: string;
   mode?: string;
   columns?: number;
+  signals?: BannerSignal[];
+}
+
+export interface BannerSignal {
+  label: string;
+  tone?: 'ready' | 'warn' | 'muted';
+  value: string;
 }
 
 const clip = (text: string, width: number): string => {
@@ -42,9 +49,30 @@ const clip = (text: string, width: number): string => {
   return text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text;
 };
 
-function bannerLines({ account, dir, model, mode, version }: { account: string; dir: string; model: string; mode: string; version: string }, columns: number): string[] {
+function signalText(signals: readonly BannerSignal[]): string {
+  return signals
+    .filter((signal) => signal.label.trim() && signal.value.trim())
+    .map((signal) => {
+      const prefix = signal.tone === 'warn' ? '!' : signal.tone === 'muted' ? '-' : '+';
+      return `${prefix} ${signal.label} ${signal.value}`;
+    })
+    .join(' · ');
+}
+
+function bannerLines(
+  {
+    account,
+    dir,
+    model,
+    mode,
+    signals,
+    version,
+  }: { account: string; dir: string; model: string; mode: string; signals: readonly BannerSignal[]; version: string },
+  columns: number,
+): string[] {
   const title = `${BANNER_TITLE} v${version} · terminal AI agent · ${account}`;
   const status = `● model ${model} · mode ${mode} · cwd ${dir}`;
+  const signalLine = signalText(signals);
   const flow = `Flow ${WORKFLOW.join(' -> ')} · Promise ${PROMISE.join(' · ')}`;
   const routeLine = `Routes ${SERVICE_ROUTES.map(([num, label]) => `${num} ${label}`).join(' | ')} · ${COMMAND_HINTS.join(' · ')}`;
 
@@ -52,6 +80,7 @@ function bannerLines({ account, dir, model, mode, version }: { account: string; 
     return [
       title,
       `● ${model} · ${mode}`,
+      ...(signalLine ? [`Signals ${signalLine}`] : []),
       '› /help · /tools · /mcp',
     ];
   }
@@ -60,6 +89,7 @@ function bannerLines({ account, dir, model, mode, version }: { account: string; 
     return [
       title,
       status,
+      ...(signalLine ? [`Signals ${signalLine}`] : []),
       `◆ ${BRAND_LINE}`,
       `Flow ${WORKFLOW.join(' -> ')}`,
       '› routes: Code · Brain · Connect · Ship',
@@ -73,6 +103,7 @@ function bannerLines({ account, dir, model, mode, version }: { account: string; 
   return [
     title,
     status,
+    ...(signalLine ? [`Signals ${signalLine}`] : []),
     `◆ ${BRAND_LINE}`,
     flow,
     routeLine,
@@ -81,14 +112,14 @@ function bannerLines({ account, dir, model, mode, version }: { account: string; 
 }
 
 /** welcome banner — Hermes-style responsive wordmark + compact Sanook launchpad. */
-export function Banner({ model, version = VERSION, account = 'BYOK', cwd, mode = 'auto', columns }: BannerProps) {
+export function Banner({ model, version = VERSION, account = 'BYOK', cwd, mode = 'auto', columns, signals = [] }: BannerProps) {
   const { stdout } = useStdout();
   const dir = (cwd ?? process.cwd()).replace(homedir(), '~');
   const terminalColumns = Math.max(1, Math.floor(columns ?? stdout?.columns ?? MAX_PANEL_COLUMNS));
   const showWordmark = terminalColumns >= WIDE_WORDMARK_MIN_COLUMNS;
   const panelWidth = Math.max(28, Math.min(terminalColumns, MAX_PANEL_COLUMNS));
   const innerWidth = Math.max(1, panelWidth - 4);
-  const lines = bannerLines({ account, dir, model, mode, version }, terminalColumns);
+  const lines = bannerLines({ account, dir, model, mode, signals, version }, terminalColumns);
 
   return (
     <Box flexDirection="column" marginBottom={1}>

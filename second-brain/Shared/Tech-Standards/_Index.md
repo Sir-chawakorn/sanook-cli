@@ -30,5 +30,6 @@ MCP/stack/DoD/verification rulebook
 - [[Shared/Tech-Standards/verification-standard]] — verification ladder, evidence format, and final gate contract
 - [[Shared/Tech-Standards/mcp-integration-roadmap]] — MCP registry/install/test UX roadmap
 - [[Shared/Tech-Standards/polyglot-runtime-strategy]] — TypeScript/Python/Rust role split and optional runtime rules
+- [[Shared/Tech-Standards/web-search-grounding-policy]] — local vs true web search, citation, and prompt-injection policy
 
 up:: [[Shared/_Index]]

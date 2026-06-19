@@ -133,6 +133,8 @@ Microsoft Teams ตอนนี้รองรับ proactive delivery/cron ผ
 - **BYOK + 9 providers** — Anthropic, Google, OpenAI, xAI, Mistral, Groq, Ollama, LM Studio, Codex
 - **Familiar CLI** — `sanook setup`, `sanook model`, `sanook auth`, `sanook chat -q`, `sanook gateway`, `sanook status`, `sanook sessions`, `sanook dump`, `sanook tools`, `sanook send`
 - **Second brain** — `sanook brain init` สร้าง workspace Obsidian ให้ AI จำงานข้ามวัน
+- **Startup cockpit** — เปิด `sanook` แล้วเห็น wordmark, service routes (Code, Brain, Connect, Ship), และสัญญาณ readiness จริงของ second-brain, MCP, skills, git branch ทันที
+- **Web grounding** — `sanook web status` แยก local brain search ออกจาก true internet search, ตรวจ MCP web/search/fetch ที่ตั้งไว้, และโชว์ policy เรื่อง citation + prompt-injection จากเว็บ
 - **Tools** — อ่าน/เขียน/แก้ไฟล์ · รัน bash/Python/Rust แบบ approval-gated · git · grep/glob พร้อม permission gate
 - **Polyglot runtime** — TypeScript เป็น control plane หลัก; Python ใช้กับ data/document/ML helper ผ่าน `run_python`; Rust ใช้กับ helper ที่ต้องเร็ว/type-safe ผ่าน `run_rust`; ไม่มี runtime ก็ไม่ทำให้ Sanook install พัง
 - **Gateway + cron** — `sanook gateway run` (alias: `sanook serve`) รัน 24/7 + ตั้งงานล่วงหน้า + ต่อ Telegram/Discord/Slack/Mattermost/Home Assistant/Email/LINE/SMS/ntfy/Signal/WhatsApp/Matrix/Google Chat/BlueBubbles/Teams/Webhooks; task ใช้ `--to` เพื่อส่งผลลัพธ์กลับไปยัง messaging target ได้
@@ -158,6 +160,8 @@ sanook sessions rm <id>        # ลบ session
 sanook dump [--show-keys]      # support dump; key ยังถูก redact
 sanook prompt-size             # ดู context/prompt budget แบบ offline
 sanook runtimes                # ดู Python/Rust optional runtime ที่ Sanook ใช้ได้
+sanook web status              # ดู true web-search/fetch readiness ผ่าน MCP
+sanook web doctor              # probe MCP web/search/fetch candidates
 ```
 
 ตั้งค่า default model ได้ด้วย:

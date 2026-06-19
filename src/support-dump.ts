@@ -129,6 +129,9 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
   const polyglot = await import('./polyglot.js')
     .then((m) => m.inspectPolyglotRuntimes({ cwd }))
     .catch((e: unknown) => e as Error);
+  const webSurface = await import('./web-surface.js')
+    .then((m) => m.inspectWebSurface({ cwd, loadConfig: async () => mcp }))
+    .catch((e: unknown) => e as Error);
 
   lines.push(`${BRAND.productName} support dump`);
   lines.push(`version: ${options.version ?? '(dev)'}`);
@@ -203,6 +206,19 @@ export async function buildSupportDump(options: SupportDumpOptions = {}): Promis
   }
   if (mcpEntries.length > 20) lines.push(`  ... ${mcpEntries.length - 20} more`);
   for (const log of mcpLogs) lines.push(`  note: ${redactKey(log)}`);
+  lines.push('');
+
+  lines.push('web search:');
+  if (webSurface instanceof Error) {
+    lines.push(`  load error: ${redactKey(webSurface.message)}`);
+  } else {
+    lines.push(`  local search internet: ${yesNo(webSurface.localSearch.internet)}`);
+    lines.push(`  web candidates: ${webSurface.webCandidates.length}`);
+    for (const candidate of webSurface.webCandidates.slice(0, 10)) {
+      lines.push(`  ${candidate.name}: ${candidate.transport} ${candidate.reasons.join(' · ')}`);
+    }
+    if (webSurface.webCandidates.length > 10) lines.push(`  ... ${webSurface.webCandidates.length - 10} more`);
+  }
   lines.push('');
 
   lines.push('inventory:');

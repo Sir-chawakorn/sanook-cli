@@ -90,6 +90,7 @@ sanook chat -q "fix the failing test" --provider anthropic
 sanook -z "summarise the diff"  # one-shot, final output only
 sanook --json "..."             # JSONL output for CI / scripts
 sanook status                   # redacted provider/key/brain/gateway status
+sanook web status               # true web-search/fetch readiness + grounding policy
 sanook sessions                 # list saved sessions for this project
 sanook --resume <session_id> "continue here"
 sanook dump                     # support snapshot; raw secrets are never printed
@@ -107,6 +108,8 @@ sanook dump                     # support snapshot; raw secrets are never printe
 | **Checkpoint** | A shadow-git snapshot is taken before each turn; `/rewind` restores the files **and** truncates the conversation — recoverable (it stashes the current state first). |
 | **Memory** | The agent writes its own notes (`remember`), recalls them across past sessions (`recall`), `--continue` resumes the latest run for the current project, `--resume <id>` resumes a specific run, and `sanook sessions` audits/exports/renames/prunes saved conversations. |
 | **Familiar CLI surfaces** | `sanook setup`, `sanook model`, `sanook auth`, `sanook chat -q`, `sanook gateway`, `sanook status`, `sanook sessions`, `sanook dump`, `sanook tools`, and `sanook send` provide familiar management entry points, all Sanook-branded. |
+| **Startup cockpit** | The interactive REPL opens with a Sanook-branded wordmark, service routes (Code, Brain, Connect, Ship), and live readiness signals for second-brain, MCP servers, installed skills, and the current git branch. |
+| **Web grounding** | `sanook web status` separates local brain search from true internet search, detects configured MCP web/search/fetch candidates, and prints Sanook's citation + prompt-injection policy for current external facts. |
 | **Repo map** | A lightweight symbol map of the repo (zero-dep, git-aware) is injected at session start so the agent picks the right files without blind grepping. |
 | **Skills** | Built-in skills + install your own from a GitHub repo, URL, or local path. The agent can also author new skills after a repeatable task. |
 | **Custom commands** | Drop a `.sanook/commands/<name>.md` prompt template and call it as `/<name>` (project commands require trust). Arguments replace `$ARGUMENTS` or `{{ args }}`; without a placeholder they are appended. |
@@ -169,6 +172,8 @@ sanook sessions rm <id>
 sanook dump [--show-keys] support dump (keys are still redacted)
 sanook prompt-size [--json] inspect system/brain/skill/tool context budget
 sanook runtimes [--json]   inspect optional Python/Rust runtime surface
+sanook web status [--json] inspect true web-search/fetch readiness
+sanook web doctor [--json] probe web/search/fetch MCP candidates
 sanook -c "<task>"       resume the latest session for this project
 sanook --resume <id>     resume a specific saved session
 sanook --continue-any    resume the newest session across all projects
@@ -467,13 +472,16 @@ sanook mcp search gitlab
 sanook mcp info com.gitlab/mcp
 sanook mcp install com.gitlab/mcp --name gitlab
 sanook mcp preset dev
+sanook mcp preset research
 sanook mcp test gitlab
 sanook mcp doctor
+sanook web status
+sanook web doctor
 ```
 
 Use `--env KEY=value` or `--header KEY=value` when a registry entry requires secrets, and `--project` to write to a trusted project `.sanook/mcp.json`. Some hosted MCP endpoints may return `401 Unauthorized` until you pass an auth header, even when the registry entry does not declare it yet. You can still add servers manually: `sanook mcp add fs npx -y @modelcontextprotocol/server-filesystem /path` (stdio) or `sanook mcp add remote https://example.com/mcp` (a URL is detected as remote HTTP).
 
-Their tools are merged into the agent's toolset automatically. `/tools` in the REPL lists everything currently available.
+Their tools are merged into the agent's toolset automatically. `/tools` in the REPL lists everything currently available. `sanook search` is local retrieval over the second brain, sessions, memory, and skills; true internet search comes from configured MCP web/search/fetch servers. Use `sanook web status` to see which web candidates are configured, and `sanook web doctor` to probe their advertised tools.
 
 sanook is also an MCP **server**: `sanook mcp serve` exposes your brain (`sanook_search` / `sanook_recall` / `sanook_remember` / `sanook_index` / `sanook_stats`) over stdio, so Claude Desktop, Cursor, or any MCP host can query it:
 

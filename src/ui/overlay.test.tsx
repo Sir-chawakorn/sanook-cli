@@ -147,8 +147,9 @@ describe('FloatingOverlay', () => {
   });
 
   it('renders a tools hub overlay list and details', () => {
-    const list = toolsOverlayLines({ detail: false, kind: 'tools', selected: 4, tools: TOOL_CATALOG }, 82);
-    const detail = toolsOverlayLines({ detail: true, kind: 'tools', selected: 4, tools: TOOL_CATALOG }, 82);
+    const selected = TOOL_CATALOG.findIndex((tool) => tool.group === 'Agents');
+    const list = toolsOverlayLines({ detail: false, kind: 'tools', selected, tools: TOOL_CATALOG }, 82);
+    const detail = toolsOverlayLines({ detail: true, kind: 'tools', selected, tools: TOOL_CATALOG }, 82);
 
     expect(list).toContain('Sanook tools hub');
     expect(list.join('\n')).toContain('agent orchestration');

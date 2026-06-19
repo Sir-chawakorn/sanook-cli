@@ -25,6 +25,12 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     summary: 'remember/recall/find_skills/create_skill',
   },
   {
+    detail: 'Use local brain search for vault/session/skill retrieval, and configured MCP web/search/fetch servers for current external facts with citations.',
+    group: 'Research',
+    name: 'local + web grounding',
+    summary: 'sanook search + web MCP readiness',
+  },
+  {
     detail: 'Schedule recurring or future tasks for the Sanook gateway service to run later.',
     group: 'Gateway',
     name: 'scheduled tasks',

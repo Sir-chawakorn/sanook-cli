@@ -45,6 +45,29 @@ describe('Banner', () => {
     unmount();
   });
 
+  it('renders live brand signals when the app passes readiness state', () => {
+    const { lastFrame, unmount } = render(
+      <Banner
+        columns={96}
+        model="sonnet"
+        version="9.9.9"
+        account="BYOK"
+        cwd="/tmp/sanook-cli"
+        mode="ask"
+        signals={[
+          { label: 'brain', tone: 'ready', value: 'ready' },
+          { label: 'mcp', tone: 'warn', value: 'none' },
+          { label: 'skills', tone: 'ready', value: '42' },
+          { label: 'git', tone: 'ready', value: 'main' },
+        ]}
+      />,
+    );
+
+    const frame = lastFrame() ?? '';
+    expect(frame).toContain('Signals + brain ready · ! mcp none · + skills 42 · + git main');
+    unmount();
+  });
+
   it('keeps a tiny terminal readable with a text-only launchpad', () => {
     const { lastFrame, unmount } = render(
       <Banner columns={36} model="sonnet" version="9.9.9" account="BYOK" cwd="/tmp/sanook-cli" mode="ask" />,
