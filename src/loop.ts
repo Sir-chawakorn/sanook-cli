@@ -4,7 +4,7 @@ import { resolveModel, specKey, parseSpec, PROVIDERS } from './providers/registr
 import { CostMeter, SharedBudget, type Usage } from './cost.js';
 import { tools } from './tools/index.js';
 import { loadMemory, loadAutoMemory, loadBrainContext } from './memory.js';
-import { buildTurnRetrieval } from './turn-retrieval.js';
+import { buildTurnRetrieval, PROJECT_SOURCES } from './turn-retrieval.js';
 import { loadSkills, renderAvailableSkills } from './skills.js';
 import { maybeWrapHooks } from './hooks.js';
 import { agentContext } from './agentContext.js';
@@ -267,7 +267,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   // โหลด context: auto-memory + skills + git state + repo map + project SANOOK.md → system prompt
   // sub-agent (opts.tools) ข้าม repo map (มี subset tool + prompt เฉพาะอยู่แล้ว — ประหยัด context)
-  const [memory, autoMemory, skills, git, brain, repoMap, tuning, config, recalled] = await Promise.all([
+  const [memory, autoMemory, skills, git, brain, repoMap, tuning, config] = await Promise.all([
     loadMemory(),
     loadAutoMemory(),
     loadSkills(),
@@ -276,12 +276,26 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     opts.tools ? Promise.resolve('') : loadRepoMap(),
     agentTuning(), // cache TTL + thinking budget (อ่านจาก config/env)
     loadConfig({}, opts.cwd ?? process.cwd()),
-    // self-retrieving brain: proactively surface vault/memory/session notes relevant to THIS prompt
-    // (sub-agents skip it like repoMap — they get a focused tool/prompt subset already). Default BM25
-    // (fast/free/no-network per turn); opt-in SANOOK_TURN_SEMANTIC=1 uses hybrid semantic retrieval
-    // (the H5 lever for paraphrase queries — needs an embeddingModel; degrades to BM25 safely).
-    opts.tools ? Promise.resolve('') : buildTurnRetrieval(opts.prompt, envFlag('SANOOK_TURN_SEMANTIC') ? { searchImpl: semanticRecallHits } : {}),
   ]);
+  // self-retrieving brain: proactively surface vault/memory/session notes relevant to THIS prompt.
+  // Runs AFTER the gather so it can DEDUP against what's already statically injected (auto_memory +
+  // brain hot-files) — H8 showed memory hits were otherwise 100% duplicated. Sub-agents skip it like
+  // repoMap. Default BM25 (fast/free, no per-turn network); opt-in SANOOK_TURN_SEMANTIC=1 = hybrid
+  // semantic (the H5 lever for paraphrase queries; needs an embeddingModel, degrades to BM25 safely).
+  const recentTexts = (opts.history ?? []).slice(-2).map((m) =>
+    typeof m.content === 'string'
+      ? m.content
+      : Array.isArray(m.content)
+        ? m.content.map((p) => (p && typeof p === 'object' && 'text' in p && typeof (p as { text?: unknown }).text === 'string' ? (p as { text: string }).text : '')).join(' ')
+        : '',
+  );
+  const recalled = opts.tools
+    ? ''
+    : await buildTurnRetrieval(opts.prompt, {
+        excludeText: `${autoMemory}\n${brain}`,
+        recentTexts, // H10: bridge anaphoric follow-ups to the recent topic
+        ...(envFlag('SANOOK_TURN_SEMANTIC') ? { searchImpl: (q: string, l: number) => semanticRecallHits(q, l, [...PROJECT_SOURCES]) } : {}),
+      });
   const model = tuning.contextCompression === 'headroom' ? await maybeWrapWithHeadroom(rawModel) : rawModel;
   const planSuffix = opts.planMode
     ? '\n\nPLAN MODE: สำรวจและวางแผนเท่านั้น — ห้ามแก้ไฟล์หรือรันคำสั่งที่เปลี่ยน state. จบด้วยแผนเป็นขั้นตอนให้ user อนุมัติก่อนลงมือ.'

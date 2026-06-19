@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTurnRetrieval, type TurnSearch } from './turn-retrieval.js';
+import { buildTurnRetrieval, buildRetrievalQuery, PROJECT_SOURCES, type TurnSearch } from './turn-retrieval.js';
 import type { SearchHit } from './search/engine.js';
 
 function hit(over: Partial<SearchHit> & { id: string; score: number }): SearchHit {
@@ -7,7 +7,35 @@ function hit(over: Partial<SearchHit> & { id: string; score: number }): SearchHi
 }
 const fake = (hits: SearchHit[]): TurnSearch => async () => hits;
 
+describe('PROJECT_SOURCES (H6)', () => {
+  it('targets project knowledge and excludes skills (already injected via renderAvailableSkills)', () => {
+    expect([...PROJECT_SOURCES]).toEqual(['vault', 'memory', 'session']);
+    expect([...PROJECT_SOURCES]).not.toContain('skill');
+  });
+});
+
+describe('buildRetrievalQuery (H10)', () => {
+  it('returns the prompt unchanged when there is no recent context', () => {
+    expect(buildRetrievalQuery('fix the auth bug', [])).toBe('fix the auth bug');
+  });
+  it('folds recent context in, repeating the prompt so it stays BM25-dominant', () => {
+    const q = buildRetrievalQuery('optimize that', ['the orders query on customer_id is slow']);
+    expect(q).toContain('orders query');
+    expect(q.match(/optimize that/g)?.length).toBe(2);
+  });
+});
+
 describe('buildTurnRetrieval (self-retrieving brain)', () => {
+  it('H10: feeds the context-augmented query to search (anaphoric follow-up reaches the topic)', async () => {
+    let received = '';
+    const spy: TurnSearch = async (q) => {
+      received = q;
+      return [hit({ id: 'm1', score: 9, source: 'memory', snippet: 'orders query slow on customer_id' })];
+    };
+    await buildTurnRetrieval('optimize that', { recentTexts: ['the orders query on customer_id is slow'], searchImpl: spy });
+    expect(received).toContain('orders query'); // recent context reached the search
+  });
+
   it('renders top hits into a non-instruction <recalled_context> block', async () => {
     const out = await buildTurnRetrieval('deploy sanook to production on vercel', {
       searchImpl: fake([
@@ -57,6 +85,26 @@ describe('buildTurnRetrieval (self-retrieving brain)', () => {
     const out = await buildTurnRetrieval('how do we ship to prod here', { searchImpl: semantic });
     expect(out).toContain('deploy to production');
     expect(out).toContain('(Notes/release.md)');
+  });
+
+  it('H8 dedup: drops hits already in the statically-injected context, keeps NEW context', async () => {
+    const out = await buildTurnRetrieval('which ORM are we using for the database layer', {
+      excludeText: 'We decided to use Drizzle ORM, not Prisma, for the database layer.', // already in <auto_memory>
+      searchImpl: fake([
+        hit({ id: 'm1', score: 10, source: 'memory', snippet: 'We decided to use Drizzle ORM, not Prisma, for the database layer' }),
+        hit({ id: 'v1', score: 8, source: 'vault', title: 'Schema', path: 'Notes/schema.md', snippet: 'the orders table uses a composite primary key' }),
+      ]),
+    });
+    expect(out).not.toContain('Drizzle'); // already injected statically → deduped out
+    expect(out).toContain('composite primary key'); // genuinely new context survives
+  });
+
+  it('returns empty when every hit is already statically injected (no redundant block)', async () => {
+    const out = await buildTurnRetrieval('which ORM are we using here', {
+      excludeText: 'We decided to use Drizzle ORM, not Prisma, for the database layer.',
+      searchImpl: fake([hit({ id: 'm1', score: 10, source: 'memory', snippet: 'We decided to use Drizzle ORM, not Prisma, for the database layer' })]),
+    });
+    expect(out).toBe('');
   });
 
   it('caps at limit', async () => {

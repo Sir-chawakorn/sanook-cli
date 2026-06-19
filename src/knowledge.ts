@@ -3,7 +3,7 @@ import { loadSkills } from './skills.js';
 import { loadIndex } from './search/store.js';
 import { foldFacts, foldSessions, foldSkills, loadRecentSessions } from './search/indexer.js';
 import { rankSearch, search, type SearchHit } from './search/engine.js';
-import { termList, SEARCH_SOURCES } from './search/index-core.js';
+import { termList, SEARCH_SOURCES, type SearchSource } from './search/index-core.js';
 
 // recall = ค้น knowledge ที่สะสม (auto-memory + vault + skills + session เก่า) แบบ BM25
 // เดิมเป็น substring term-count (ไม่มี ranking/IDF) → อัปเกรดเป็น real BM25 inverted index
@@ -40,35 +40,43 @@ export function formatHit(h: SearchHit): string {
  * Loads the persisted index then folds LIVE corpora so a just-remembered fact is found
  * immediately without a reindex. Shared by the recall tool and per-turn auto-retrieval.
  */
-export async function recallHits(query: string, limit = 8): Promise<SearchHit[]> {
+export async function recallHits(query: string, limit = 8, sources?: SearchSource[]): Promise<SearchHit[]> {
   const now = Date.now();
+  const want = sources ? new Set(sources) : undefined; // undefined = all sources
   const { index } = await loadIndex(); // persisted (vault chunks); empty ok
 
-  // fold live corpora สด — memory/session/skill ล่าสุด (ไม่แตะไฟล์ persisted)
-  try {
-    foldFacts(index, activeFacts(await loadStore(now)), now);
-  } catch {
-    /* ยังไม่มี memory */
+  // fold live corpora สด — memory/session/skill ล่าสุด (ไม่แตะไฟล์ persisted). Skip a corpus when
+  // it's filtered out (saves folding 100+ skills when callers only want project sources).
+  if (!want || want.has('memory')) {
+    try {
+      foldFacts(index, activeFacts(await loadStore(now)), now);
+    } catch {
+      /* ยังไม่มี memory */
+    }
   }
-  try {
-    foldSessions(index, await loadRecentSessions());
-  } catch {
-    /* ยังไม่มี session */
+  if (!want || want.has('session')) {
+    try {
+      foldSessions(index, await loadRecentSessions());
+    } catch {
+      /* ยังไม่มี session */
+    }
   }
-  try {
-    foldSkills(
-      index,
-      (await loadSkills()).map((s) => ({
-        id: `skill:${s.name}`,
-        name: s.name,
-        text: `${s.description} ${s.whenToUse ?? ''}`.trim(),
-      })),
-    );
-  } catch {
-    /* ยังไม่มี skill */
+  if (!want || want.has('skill')) {
+    try {
+      foldSkills(
+        index,
+        (await loadSkills()).map((s) => ({
+          id: `skill:${s.name}`,
+          name: s.name,
+          text: `${s.description} ${s.whenToUse ?? ''}`.trim(),
+        })),
+      );
+    } catch {
+      /* ยังไม่มี skill */
+    }
   }
 
-  return rankSearch(index, query, { mode: 'fts', limit }).hits;
+  return rankSearch(index, query, { mode: 'fts', limit, sources }).hits;
 }
 
 /**
@@ -77,8 +85,8 @@ export async function recallHits(query: string, limit = 8): Promise<SearchHit[]>
  * vectors are configured (never throws). Covers INDEXED content (run `sanook index`); just-remembered
  * facts still surface via the default BM25 recallHits path. Opt-in per-turn (network/latency cost).
  */
-export async function semanticRecallHits(query: string, limit = 8): Promise<SearchHit[]> {
-  const res = await search(query, { mode: 'hybrid', limit, sources: [...SEARCH_SOURCES] });
+export async function semanticRecallHits(query: string, limit = 8, sources?: SearchSource[]): Promise<SearchHit[]> {
+  const res = await search(query, { mode: 'hybrid', limit, sources: sources ?? [...SEARCH_SOURCES] });
   return res.hits;
 }
 
