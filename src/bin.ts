@@ -102,6 +102,15 @@ async function runHeadless(
     if (brain) {
       await appendBrainWorklog(brain, { prompt, summary: cost.summary(), model, today: now.slice(0, 10) }).catch(() => {});
     }
+    // opt-in (experimental, default OFF): auto-distill durable decisions/gotchas/preferences from this
+    // session into the compounding memory store so the self-retrieving brain surfaces them next time.
+    // Off by default per experiment H5 — extraction is high-precision (~0.88) but end-to-end recall is
+    // gated by retrieval quality (semantic helps). Enable with SANOOK_AUTO_DISTILL=1.
+    if (envFlag('SANOOK_AUTO_DISTILL')) {
+      const { distilledFactsFromMessages } = await import('./session-distill.js');
+      const { appendMemory } = await import('./memory.js');
+      for (const fact of distilledFactsFromMessages(messages)) await appendMemory(fact).catch(() => {});
+    }
   } catch (err) {
     const msg = redactKey((err as Error).message);
     if (json) process.stdout.write(`${JSON.stringify({ type: 'error', message: msg })}\n`);

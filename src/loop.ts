@@ -4,6 +4,7 @@ import { resolveModel, specKey, parseSpec, PROVIDERS } from './providers/registr
 import { CostMeter, SharedBudget, type Usage } from './cost.js';
 import { tools } from './tools/index.js';
 import { loadMemory, loadAutoMemory, loadBrainContext } from './memory.js';
+import { buildTurnRetrieval } from './turn-retrieval.js';
 import { loadSkills, renderAvailableSkills } from './skills.js';
 import { maybeWrapHooks } from './hooks.js';
 import { agentContext } from './agentContext.js';
@@ -14,7 +15,8 @@ import { gitContext } from './git.js';
 import { loadRepoMap } from './repomap.js';
 import { autoCompact, selectivelyCompressStaleToolResults } from './compaction.js';
 import { agentTuning, loadConfig } from './config.js';
-import { BRAND } from './brand.js';
+import { BRAND, envFlag } from './brand.js';
+import { semanticRecallHits } from './knowledge.js';
 import { personalityPrompt } from './personality.js';
 
 // auto-compact เมื่อ context ใกล้เต็ม — conservative (safe สำหรับ model 200K, เผื่อ output)
@@ -265,7 +267,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   // โหลด context: auto-memory + skills + git state + repo map + project SANOOK.md → system prompt
   // sub-agent (opts.tools) ข้าม repo map (มี subset tool + prompt เฉพาะอยู่แล้ว — ประหยัด context)
-  const [memory, autoMemory, skills, git, brain, repoMap, tuning, config] = await Promise.all([
+  const [memory, autoMemory, skills, git, brain, repoMap, tuning, config, recalled] = await Promise.all([
     loadMemory(),
     loadAutoMemory(),
     loadSkills(),
@@ -274,6 +276,11 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     opts.tools ? Promise.resolve('') : loadRepoMap(),
     agentTuning(), // cache TTL + thinking budget (อ่านจาก config/env)
     loadConfig({}, opts.cwd ?? process.cwd()),
+    // self-retrieving brain: proactively surface vault/memory/session notes relevant to THIS prompt
+    // (sub-agents skip it like repoMap — they get a focused tool/prompt subset already). Default BM25
+    // (fast/free/no-network per turn); opt-in SANOOK_TURN_SEMANTIC=1 uses hybrid semantic retrieval
+    // (the H5 lever for paraphrase queries — needs an embeddingModel; degrades to BM25 safely).
+    opts.tools ? Promise.resolve('') : buildTurnRetrieval(opts.prompt, envFlag('SANOOK_TURN_SEMANTIC') ? { searchImpl: semanticRecallHits } : {}),
   ]);
   const model = tuning.contextCompression === 'headroom' ? await maybeWrapWithHeadroom(rawModel) : rawModel;
   const planSuffix = opts.planMode
@@ -327,6 +334,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     },
   ];
   if (git) systemMessages.push({ role: 'system', content: git });
+  // per-turn auto-retrieval — VOLATILE (changes per prompt) so it goes AFTER the cached static
+  // system message; placing it here keeps the Anthropic prompt-cache breakpoint intact.
+  if (recalled) systemMessages.push({ role: 'system', content: recalled });
   const messages: ModelMessage[] = [...systemMessages, ...(opts.history ?? []), userForModel];
 
   // plan mode → เหลือเฉพาะ tool ที่ไม่เปลี่ยน state (read/search)
