@@ -2,6 +2,7 @@ import { BRAND } from './brand.js';
 import { mcpHubEntriesFromConfig, type McpHubEntry } from './mcp-hub.js';
 import { MCP_PRESETS } from './mcp-registry.js';
 import { loadMcpConfig, probeMcpServer, type McpProbeResult, type McpServerConfig } from './mcp.js';
+import { WEB_FETCH_LADDER } from './web-fetch.js';
 
 const WEB_PATTERNS = [
   /\bweb\b/i,
@@ -46,6 +47,13 @@ export interface WebCandidate {
   };
 }
 
+export interface FetchTierReadiness {
+  tier: number;
+  name: string;
+  available: boolean;
+  detail: string;
+}
+
 export interface WebSurfaceReport {
   cwd: string;
   localSearch: WebSurfaceLocalSearch;
@@ -57,6 +65,7 @@ export interface WebSurfaceReport {
     servers: string[];
   };
   webCandidates: WebCandidate[];
+  fetchLadder: FetchTierReadiness[];
   policy: WebSurfacePolicy;
   recommendations: string[];
 }
@@ -134,13 +143,34 @@ function mergeProbe(entry: McpHubEntry, candidate: WebCandidate | undefined, pro
   };
 }
 
-function recommendations(candidates: WebCandidate[]): string[] {
+function tavilyKeyAvailable(config: Record<string, McpServerConfig>): boolean {
+  if (process.env.TAVILY_API_KEY?.trim()) return true;
+  return Object.values(config).some((server) => server.env?.TAVILY_API_KEY?.trim());
+}
+
+function fetchLadderReadiness(config: Record<string, McpServerConfig>): FetchTierReadiness[] {
+  const tavilyReady = tavilyKeyAvailable(config);
+  return WEB_FETCH_LADDER.map((tier) => {
+    if (tier.name === 'tavily') {
+      return {
+        tier: tier.tier,
+        name: tier.name,
+        available: tavilyReady,
+        detail: tavilyReady ? 'TAVILY_API_KEY detected' : `optional — ${BRAND.cliName} web setup tavily`,
+      };
+    }
+    return { tier: tier.tier, name: tier.name, available: true, detail: tier.solves };
+  });
+}
+
+function recommendations(candidates: WebCandidate[], tavilyReady: boolean): string[] {
   const out = [
+    `${BRAND.cliName} web fetch <url>   # ดึง+สรุปหน้าเว็บผ่าน fallback ladder ที่ถูกกติกา`,
     `${BRAND.cliName} mcp preset research`,
     `${BRAND.cliName} mcp search brave`,
-    `${BRAND.cliName} mcp search tavily`,
     `${BRAND.cliName} mcp list --tools`,
   ];
+  if (!tavilyReady) out.splice(1, 0, `${BRAND.cliName} web setup tavily   # เปิด tier search/extract ถ้ามี Tavily key`);
   if (!candidates.length) {
     out.unshift(`ยังไม่มี web/search/fetch MCP ที่ตรวจเจอ — เริ่มด้วย ${BRAND.cliName} mcp preset research`);
   } else if (candidates.every((candidate) => candidate.probe && !candidate.probe.ok)) {
@@ -179,8 +209,9 @@ export async function inspectWebSurface(options: InspectWebSurfaceOptions = {}):
     notes,
     preset,
     webCandidates,
+    fetchLadder: fetchLadderReadiness(config),
     policy: WEB_GROUNDING_POLICY,
-    recommendations: recommendations(webCandidates),
+    recommendations: recommendations(webCandidates, tavilyKeyAvailable(config)),
   };
 }
 
@@ -207,6 +238,10 @@ export function renderWebSurfaceReport(report: WebSurfaceReport): string {
         );
       }
     }
+  }
+  lines.push('', 'fetch ladder (sanook web fetch <url>):');
+  for (const tier of report.fetchLadder) {
+    lines.push(`  ${tier.available ? '✓' : '·'} tier ${tier.tier} ${tier.name} — ${tier.detail}`);
   }
   lines.push('', `research preset: ${report.preset.description}`);
   for (const server of report.preset.servers) lines.push(`  - ${server}`);

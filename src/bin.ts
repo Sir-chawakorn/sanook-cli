@@ -185,6 +185,9 @@ search (BM25 + optional BYOK semantic เหนือ vault + memory + sessions 
   ${BRAND.cliName} search "<query>" [--mode auto|fts|semantic|hybrid] [--limit N] [--source vault,memory]
   ${BRAND.cliName} web status [--json] [--probe]  ตรวจ true web/search readiness ผ่าน MCP (local search ไม่ใช่ internet)
   ${BRAND.cliName} web doctor [--json]             probe web/search/fetch MCP candidates
+  ${BRAND.cliName} web fetch <url> [--json]        ดึงหน้าเว็บสาธารณะ + สรุปโครงสร้าง (fallback ladder ที่ถูกกติกา)
+  ${BRAND.cliName} web search "<q>" [--limit N]    ค้นเว็บผ่าน Tavily (ต้องมี TAVILY_API_KEY)
+  ${BRAND.cliName} web setup tavily [--api-key K]  ตั้งค่า Tavily (เขียน MCP + เก็บ key 0600)
   ${BRAND.cliName} mcp serve                       expose brain เป็น MCP server (stdio) ให้ Claude Desktop/Cursor
 
 config & mcp:
@@ -302,13 +305,22 @@ async function runRuntimes(args: string[] = []): Promise<void> {
 
 async function runWeb(args: string[] = []): Promise<void> {
   const action = args[0] && !args[0].startsWith('--') ? args[0] : 'status';
-  const flags = action === args[0] ? args.slice(1) : args;
+  const rest = action === args[0] ? args.slice(1) : args;
+
+  if (action === 'fetch') return runWebFetch(rest);
+  if (action === 'search') return runWebSearch(rest);
+  if (action === 'setup') return runWebSetup(rest);
+
+  const flags = rest;
   const allowed = new Set(['--json', '--probe']);
   const unknown = flags.find((arg) => !allowed.has(arg));
   if (!['status', 'doctor'].includes(action) || unknown) {
     if (unknown) console.error(`ไม่รู้จัก option: ${unknown}`);
     console.error(`ใช้: ${BRAND.cliName} web status [--json] [--probe]`);
     console.error(`     ${BRAND.cliName} web doctor [--json]`);
+    console.error(`     ${BRAND.cliName} web fetch <url> [--json] [--no-reader] [--no-archive] [--no-robots] [--allow-private]`);
+    console.error(`     ${BRAND.cliName} web search "<query>" [--json] [--limit N]`);
+    console.error(`     ${BRAND.cliName} web setup tavily [--api-key <key>]`);
     process.exit(1);
   }
   const { inspectWebSurface, renderWebSurfaceReport } = await import('./web-surface.js');
@@ -316,6 +328,118 @@ async function runWeb(args: string[] = []): Promise<void> {
   if (flags.includes('--json')) console.log(JSON.stringify(report, null, 2));
   else process.stdout.write(renderWebSurfaceReport(report));
   if (action === 'doctor' && report.webCandidates.some((candidate) => candidate.probe && !candidate.probe.ok)) process.exit(1);
+}
+
+/** TAVILY_API_KEY from env first, then any MCP server env in ~/.sanook/mcp.json. */
+async function resolveTavilyKey(): Promise<string | undefined> {
+  const fromEnv = process.env.TAVILY_API_KEY?.trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const { loadMcpConfig } = await import('./mcp.js');
+    const cfg = await loadMcpConfig();
+    for (const server of Object.values(cfg)) {
+      const key = server.env?.TAVILY_API_KEY?.trim();
+      if (key) return key;
+    }
+  } catch {
+    /* no mcp config */
+  }
+  return undefined;
+}
+
+async function runWebFetch(args: string[]): Promise<void> {
+  const url = args.find((a) => !a.startsWith('--'));
+  if (!url) {
+    console.error(`ใช้: ${BRAND.cliName} web fetch <url> [--json] [--no-reader] [--no-archive] [--no-robots] [--allow-private]`);
+    process.exit(1);
+  }
+  const { fetchWeb, renderWebFetchResult } = await import('./web-fetch.js');
+  const result = await fetchWeb(url, {
+    allowReader: !args.includes('--no-reader'),
+    allowArchive: !args.includes('--no-archive'),
+    respectRobots: !args.includes('--no-robots'),
+    allowPrivateHosts: args.includes('--allow-private'),
+    tavilyApiKey: await resolveTavilyKey(),
+  });
+  if (args.includes('--json')) console.log(JSON.stringify(result, null, 2));
+  else process.stdout.write(`${renderWebFetchResult(result)}\n`);
+  if (!result.ok) process.exit(1);
+}
+
+async function runWebSearch(args: string[]): Promise<void> {
+  let limit = 5;
+  const terms: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--json') continue;
+    if (a === '--limit') {
+      limit = Number(args[++i]) || limit;
+      continue;
+    }
+    if (a.startsWith('--limit=')) {
+      limit = Number(a.slice('--limit='.length)) || limit;
+      continue;
+    }
+    if (a.startsWith('--')) continue;
+    terms.push(a);
+  }
+  const query = terms.join(' ').trim();
+  if (!query) {
+    console.error(`ใช้: ${BRAND.cliName} web search "<query>" [--json] [--limit N]`);
+    process.exit(1);
+  }
+  const apiKey = await resolveTavilyKey();
+  if (!apiKey) {
+    console.error(`web search ต้องมี Tavily API key — ตั้งค่า: ${BRAND.cliName} web setup tavily`);
+    process.exit(1);
+  }
+  const { tavilySearch } = await import('./web-fetch.js');
+  try {
+    const hits = await tavilySearch(query, { apiKey, maxResults: Math.min(Math.max(limit, 1), 20) });
+    if (args.includes('--json')) {
+      console.log(JSON.stringify(hits, null, 2));
+      return;
+    }
+    if (!hits.length) {
+      console.log('(no results)');
+      return;
+    }
+    for (const h of hits) console.log(`- ${h.title}\n  ${h.url}\n  ${h.content.slice(0, 200)}`);
+  } catch (e) {
+    console.error(`web search ล้มเหลว: ${(e as Error).message}`);
+    process.exit(1);
+  }
+}
+
+async function runWebSetup(args: string[]): Promise<void> {
+  const provider = args.find((a) => !a.startsWith('--'));
+  if (provider !== 'tavily') {
+    console.error(`ใช้: ${BRAND.cliName} web setup tavily [--api-key <key>]`);
+    process.exit(1);
+  }
+  let apiKey = (argValue(args, '--api-key') ?? process.env.TAVILY_API_KEY ?? '').trim();
+  if (!apiKey) apiKey = (await askText('Tavily API key (tvly-...): ')).trim();
+  if (!apiKey) {
+    console.error('ต้องระบุ Tavily API key');
+    process.exit(1);
+  }
+  const mcpPath = appHomePath('mcp.json');
+  type McpFile = { mcpServers: Record<string, { command?: string; args?: string[]; url?: string; env?: Record<string, string> }> };
+  let cfg: McpFile;
+  try {
+    const parsed = JSON.parse(await readFile(mcpPath, 'utf8')) as Partial<McpFile>;
+    cfg = { mcpServers: parsed.mcpServers ?? {} };
+  } catch {
+    cfg = { mcpServers: {} };
+  }
+  cfg.mcpServers.tavily = { command: 'npx', args: ['-y', 'tavily-mcp'], env: { TAVILY_API_KEY: apiKey } };
+  await mkdir(dirname(mcpPath), { recursive: true });
+  await writeFile(mcpPath, `${JSON.stringify(cfg, null, 2)}\n`, { mode: 0o600 });
+  await chmod(mcpPath, 0o600).catch(() => {});
+  console.log(`ตั้งค่า Tavily แล้ว → ${mcpPath} (chmod 600; key เก็บแบบ env ไม่ echo ออกจอ)`);
+  console.log(`  • agent runtime ใช้ผ่าน MCP "tavily" (search/extract)`);
+  console.log(`  • ${BRAND.cliName} web fetch <url> และ ${BRAND.cliName} web search "<q>" จะหยิบ key นี้อัตโนมัติ`);
+  console.log(`ทดสอบ: ${BRAND.cliName} mcp test tavily`);
 }
 
 async function runAgentSetupSummary(): Promise<void> {
@@ -3794,7 +3918,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'dump') return runDump(argv.slice(1));
   if (argv[0] === 'prompt-size' && (argv.length === 1 || argv[1].startsWith('--'))) return runPromptSize(argv.slice(1));
   if (argv[0] === 'runtimes' && (argv.length === 1 || argv[1].startsWith('--'))) return runRuntimes(argv.slice(1));
-  if (argv[0] === 'web' && ['status', 'doctor', undefined].includes(argv[1])) return runWeb(argv.slice(1));
+  if (argv[0] === 'web' && ['status', 'doctor', 'fetch', 'search', 'setup', undefined].includes(argv[1])) return runWeb(argv.slice(1));
   if (argv[0] === 'tools' && (argv.length === 1 || argv[1].startsWith('--'))) return runTools(argv.slice(1));
   if (argv[0] === 'send') return runSend(argv.slice(1));
   if (argv[0] === 'webhook' || argv[0] === 'webhooks') return runWebhook(argv.slice(1));
