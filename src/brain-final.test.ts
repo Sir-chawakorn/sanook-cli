@@ -19,6 +19,8 @@ describe('parseBrainFinalArgs', () => {
 
   it('rejects ambiguous task input and unknown flags', () => {
     expect(parseBrainFinalArgs(['--task', 'one', 'two']).ok).toBe(false);
+    expect(parseBrainFinalArgs(['--task', 'one', '--task', 'two']).ok).toBe(false);
+    expect(parseBrainFinalArgs(['--output', 'Sessions/one.md', '--output=Sessions/two.md']).ok).toBe(false);
     expect(parseBrainFinalArgs(['--json']).ok).toBe(false);
     expect(parseBrainFinalArgs(['--task=']).ok).toBe(false);
   });

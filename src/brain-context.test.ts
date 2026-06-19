@@ -63,6 +63,20 @@ describe('parseBrainContextArgs', () => {
     expect(source.ok).toBe(false);
     if (!source.ok) expect(source.message).toContain('--source');
   });
+
+  it('rejects ambiguous task input instead of dropping positional text', () => {
+    const parsed = parseBrainContextArgs(['--task', 'ship release', 'extra', 'words']);
+
+    expect(parsed.ok).toBe(false);
+    if (!parsed.ok) expect(parsed.message).toContain('ใช้ positional หรือ --task');
+  });
+
+  it('rejects duplicate task flags instead of overwriting the first task', () => {
+    const parsed = parseBrainContextArgs(['--task', 'ship release', '--task', 'prepare hotfix']);
+
+    expect(parsed.ok).toBe(false);
+    if (!parsed.ok) expect(parsed.message).toContain('ใช้ --task เพียงครั้งเดียว');
+  });
 });
 
 describe('inspectBrainContext', () => {

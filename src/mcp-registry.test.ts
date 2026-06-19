@@ -67,10 +67,12 @@ describe('mcp registry helpers', () => {
       ok: true,
       value: { query: 'github', limit: 10, cursor: 'next' },
     });
-    expect(parseMcpRegistrySearchArgs(['github', '--limit', '5', '--limit=7'])).toEqual({
-      ok: true,
-      value: { query: 'github', limit: 7 },
-    });
+    const duplicateLimit = parseMcpRegistrySearchArgs(['github', '--limit', '5', '--limit=7']);
+    const duplicateCursor = parseMcpRegistrySearchArgs(['github', '--cursor', 'next', '--cursor=after']);
+    expect(duplicateLimit.ok).toBe(false);
+    if (!duplicateLimit.ok) expect(duplicateLimit.message).toContain('--limit');
+    expect(duplicateCursor.ok).toBe(false);
+    if (!duplicateCursor.ok) expect(duplicateCursor.message).toContain('--cursor');
 
     for (const args of [
       ['github', '--limit', '0'],
@@ -147,6 +149,9 @@ describe('mcp registry helpers', () => {
     const missingTransport = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--transport', '--project']);
     const invalidTransport = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--transport', 'websocket']);
     const missingVersion = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--version', '--project']);
+    const duplicateName = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--name', 'gitlab', '--name=gitlab2']);
+    const duplicateTransport = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--transport', 'remote', '--transport=stdio']);
+    const duplicateVersion = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--version', '1.0.0', '--version=2.0.0']);
     const unknownFlag = parseMcpRegistryInstallArgs(['com.gitlab/mcp', '--heder', 'A=b']);
     const extraServerName = parseMcpRegistryInstallArgs(['com.gitlab/mcp', 'app.linear/linear']);
 
@@ -166,6 +171,12 @@ describe('mcp registry helpers', () => {
     if (!invalidTransport.ok) expect(invalidTransport.message).toContain('auto, remote, หรือ stdio');
     expect(missingVersion.ok).toBe(false);
     if (!missingVersion.ok) expect(missingVersion.message).toContain('--version');
+    expect(duplicateName.ok).toBe(false);
+    if (!duplicateName.ok) expect(duplicateName.message).toContain('--name');
+    expect(duplicateTransport.ok).toBe(false);
+    if (!duplicateTransport.ok) expect(duplicateTransport.message).toContain('--transport');
+    expect(duplicateVersion.ok).toBe(false);
+    if (!duplicateVersion.ok) expect(duplicateVersion.message).toContain('--version');
     expect(unknownFlag.ok).toBe(false);
     if (!unknownFlag.ok) expect(unknownFlag.message).toContain('--heder');
     expect(extraServerName.ok).toBe(false);

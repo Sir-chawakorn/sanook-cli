@@ -184,6 +184,7 @@ function parseRegistrySearchLimit(raw: string | undefined): number | undefined {
 export function parseMcpRegistrySearchArgs(args: string[]): McpRegistrySearchArgsResult {
   const query: string[] = [];
   let limit = 10;
+  let limitSet = false;
   let cursor: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
@@ -198,13 +199,16 @@ export function parseMcpRegistrySearchArgs(args: string[]): McpRegistrySearchArg
       if (next) i = next.nextIndex;
       const parsed = parseRegistrySearchLimit(raw);
       if (parsed === undefined) return { ok: false, message: '--limit ต้องเป็นจำนวนเต็ม 1-50' };
+      if (limitSet) return { ok: false, message: 'ใช้ --limit เพียงครั้งเดียว' };
       limit = parsed;
+      limitSet = true;
     } else if (a === '--cursor' || a.startsWith('--cursor=')) {
       const next = a === '--cursor' ? takeValue(args, i) : undefined;
       const raw = next ? next.value : inlineValue('--cursor', a);
       if (next) i = next.nextIndex;
       const parsed = raw?.trim();
       if (!parsed) return { ok: false, message: '--cursor ต้องระบุค่า' };
+      if (cursor !== undefined) return { ok: false, message: 'ใช้ --cursor เพียงครั้งเดียว' };
       cursor = parsed;
     } else {
       query.push(a);
@@ -242,7 +246,8 @@ export function parseMcpRegistryInstallArgs(args: string[]): McpRegistryInstallA
       if (next.nextIndex !== i) i = next.nextIndex;
       const value = next.value?.trim();
       if (!value) return { ok: false, message: '--name ต้องระบุค่า' };
-      alias ??= value;
+      if (alias !== undefined) return { ok: false, message: 'ใช้ --name เพียงครั้งเดียว' };
+      alias = value;
     } else if (a === '--transport' || a.startsWith('--transport=')) {
       const next = parseInstallOptionValue(args, i, '--transport');
       if (next.nextIndex !== i) i = next.nextIndex;
@@ -251,13 +256,15 @@ export function parseMcpRegistryInstallArgs(args: string[]): McpRegistryInstallA
       if (!['auto', 'remote', 'stdio'].includes(value)) {
         return { ok: false, message: '--transport ต้องเป็น auto, remote, หรือ stdio' };
       }
-      transport ??= value as ParsedMcpRegistryInstallArgs['transport'];
+      if (transport !== undefined) return { ok: false, message: 'ใช้ --transport เพียงครั้งเดียว' };
+      transport = value as ParsedMcpRegistryInstallArgs['transport'];
     } else if (a === '--version' || a.startsWith('--version=')) {
       const next = parseInstallOptionValue(args, i, '--version');
       if (next.nextIndex !== i) i = next.nextIndex;
       const value = next.value?.trim();
       if (!value) return { ok: false, message: '--version ต้องระบุค่า' };
-      version ??= value;
+      if (version !== undefined) return { ok: false, message: 'ใช้ --version เพียงครั้งเดียว' };
+      version = value;
     } else if (a === '--env' || a.startsWith('--env=')) {
       const next = parseInstallOptionValue(args, i, '--env');
       if (next.nextIndex !== i) i = next.nextIndex;

@@ -105,6 +105,7 @@ export function parseBrainContextArgs(args: string[]): BrainContextArgsResult {
       const raw = next ? next.value : inlineValue('--task', a);
       if (next) i = next.nextIndex;
       if (!raw) return { ok: false, message: '--task ต้องระบุข้อความ task' };
+      if (task !== undefined) return { ok: false, message: 'ระบุ task ได้ครั้งเดียว: ใช้ --task เพียงครั้งเดียว' };
       task = raw.trim();
       if (!task) return { ok: false, message: '--task ต้องระบุข้อความ task' };
     } else if (a === '--mode' || a.startsWith('--mode=')) {
@@ -140,6 +141,7 @@ export function parseBrainContextArgs(args: string[]): BrainContextArgsResult {
   }
 
   const positionalTask = taskParts.join(' ').trim();
+  if (task !== undefined && positionalTask) return { ok: false, message: 'ระบุ task ได้ครั้งเดียว: ใช้ positional หรือ --task อย่างใดอย่างหนึ่ง' };
   const finalTask = (task ?? positionalTask).trim();
   return { ok: true, value: { task: finalTask || undefined, mode, limit, sources, showContent } };
 }

@@ -80,16 +80,19 @@ export function parseBrainFinalArgs(args: string[]): BrainFinalArgsResult {
       const value = next ? next.value : inlineValue('--task', arg);
       if (next) i = next.nextIndex;
       if (!value?.trim()) return { ok: false, message: 'ต้องระบุค่าให้ --task' };
+      if (parsed.task) return { ok: false, message: 'ระบุ task ได้ครั้งเดียว: ใช้ --task เพียงครั้งเดียว' };
       parsed.task = value.trim();
     } else if (arg === '--output') {
       const next = takeValue(args, i);
       const value = next.value;
       i = next.nextIndex;
       if (!value?.trim()) return { ok: false, message: 'ต้องระบุค่าให้ --output' };
+      if (parsed.output !== undefined) return { ok: false, message: 'ระบุ output ได้ครั้งเดียว: ใช้ --output เพียงครั้งเดียว' };
       parsed.output = value.trim();
     } else if (arg.startsWith('--output=')) {
       const value = arg.slice('--output='.length).trim();
       if (!value) return { ok: false, message: 'ต้องระบุค่าให้ --output' };
+      if (parsed.output !== undefined) return { ok: false, message: 'ระบุ output ได้ครั้งเดียว: ใช้ --output เพียงครั้งเดียว' };
       parsed.output = value;
     } else if (arg === '--') {
       positional.push(...args.slice(i + 1));

@@ -34,7 +34,9 @@ function inlineSourceValue(value: string): string | undefined {
 export function parseSearchArgs(args: string[]): SearchArgsResult {
   const queryParts: string[] = [];
   let mode: SearchMode = 'auto';
+  let modeSet = false;
   let limit = 8;
+  let limitSet = false;
   let sources: SearchSource[] | undefined;
 
   for (let i = 0; i < args.length; i++) {
@@ -48,7 +50,9 @@ export function parseSearchArgs(args: string[]): SearchArgsResult {
       if (next) i = next.nextIndex;
       if (!v) return { ok: false, message: `--mode ต้องระบุค่าเป็น ${SEARCH_MODES.join('|')}` };
       if (!isSearchMode(v)) return { ok: false, message: `--mode ต้องเป็น ${SEARCH_MODES.join('|')}` };
+      if (modeSet) return { ok: false, message: 'ใช้ --mode เพียงครั้งเดียว' };
       mode = v;
+      modeSet = true;
     } else if (a === '--limit' || a.startsWith('--limit=')) {
       const next = a === '--limit' ? takeValue(args, i) : undefined;
       const raw = next ? next.value : inlineValue('--limit', a);
@@ -56,7 +60,9 @@ export function parseSearchArgs(args: string[]): SearchArgsResult {
       if (!raw) return { ok: false, message: '--limit ต้องระบุค่าเป็น integer บวก เช่น 8' };
       const n = parsePositiveInteger(raw);
       if (n === undefined) return { ok: false, message: '--limit ต้องเป็น integer บวก เช่น 8' };
+      if (limitSet) return { ok: false, message: 'ใช้ --limit เพียงครั้งเดียว' };
       limit = n;
+      limitSet = true;
     } else if (a === '--source' || a === '--sources' || a.startsWith('--source=') || a.startsWith('--sources=')) {
       const next = a === '--source' || a === '--sources' ? takeValue(args, i) : undefined;
       const raw = next ? next.value : inlineSourceValue(a);
