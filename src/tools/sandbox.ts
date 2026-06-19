@@ -30,9 +30,9 @@ function seatbeltProfile(writable: string[]): string {
   ].join('\n');
 }
 
-function bwrapArgs(writable: string[], cmd: string): string[] {
+function bwrapArgs(writable: string[], tail: string[]): string[] {
   const binds = writable.flatMap((w) => ['--bind', w, w]);
-  return ['--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc', ...binds, '/bin/sh', '-c', cmd];
+  return ['--ro-bind', '/', '/', '--dev', '/dev', '--proc', '/proc', ...binds, ...tail];
 }
 
 export interface SandboxExec {
@@ -40,28 +40,53 @@ export interface SandboxExec {
   args: string[];
 }
 
+// writable dirs (cwd + tmp + brain) — or null when sandbox is disabled / unusable
+async function sandboxWritable(cwd: string): Promise<string[] | null> {
+  if (envFlag(BRAND_ENV.allowOutsideWorkspace) || envFlag('SANOOK_NO_SANDBOX')) return null;
+  const writable = [canon(cwd), canon(tmpdir())];
+  const brain = await getBrainPath().catch(() => null);
+  if (brain && existsSync(brain)) writable.push(canon(brain));
+  if (writable.some((w) => w.includes('"'))) return null;
+  return writable;
+}
+
+function sandboxBin(): { os: 'darwin' | 'linux'; bin: string } | null {
+  const os = platform();
+  if (os === 'darwin') {
+    const bin = ['/usr/bin/sandbox-exec', '/usr/sbin/sandbox-exec'].find((p) => existsSync(p));
+    return bin ? { os, bin } : null;
+  }
+  if (os === 'linux') {
+    const bin = ['/usr/bin/bwrap', '/bin/bwrap'].find((p) => existsSync(p));
+    return bin ? { os, bin } : null;
+  }
+  return null;
+}
+
+// wrap an execFile-style argv (already split — no shell) under the sandbox tail
+function wrap(writable: string[], tail: string[]): SandboxExec | null {
+  const sb = sandboxBin();
+  if (!sb) return null;
+  if (sb.os === 'darwin') return { file: sb.bin, args: ['-p', seatbeltProfile(writable), ...tail] };
+  return { file: sb.bin, args: bwrapArgs(writable, tail) };
+}
+
 /**
  * คืน {file,args} สำหรับรัน cmd แบบ sandbox (ผ่าน execFile) — หรือ null ถ้าไม่มี sandbox/ปิดไว้
  * (caller รัน cmd ตรงๆ ตามเดิม). path ที่มี '"' → ข้าม sandbox (กัน profile พัง)
  */
 export async function maybeSandbox(cmd: string, cwd: string = process.cwd()): Promise<SandboxExec | null> {
-  if (envFlag(BRAND_ENV.allowOutsideWorkspace) || envFlag('SANOOK_NO_SANDBOX')) return null;
+  const writable = await sandboxWritable(cwd);
+  if (!writable) return null;
+  return wrap(writable, ['/bin/sh', '-c', cmd]);
+}
 
-  const writable = [canon(cwd), canon(tmpdir())];
-  const brain = await getBrainPath().catch(() => null);
-  if (brain && existsSync(brain)) writable.push(canon(brain));
-  if (writable.some((w) => w.includes('"'))) return null;
-
-  const os = platform();
-  if (os === 'darwin') {
-    const bin = ['/usr/bin/sandbox-exec', '/usr/sbin/sandbox-exec'].find((p) => existsSync(p));
-    if (!bin) return null;
-    return { file: bin, args: ['-p', seatbeltProfile(writable), '/bin/sh', '-c', cmd] };
-  }
-  if (os === 'linux') {
-    const bin = ['/usr/bin/bwrap', '/bin/bwrap'].find((p) => existsSync(p));
-    if (!bin) return null;
-    return { file: bin, args: bwrapArgs(writable, cmd) };
-  }
-  return null;
+/**
+ * เหมือน maybeSandbox แต่สำหรับ "no-shell" exec (run_python/run_rust): ห่อ argv โดยตรง
+ * ผ่าน execFile (ไม่มี shell interpolation) — confine write ให้อยู่ใน cwd+brain+tmp เท่ากับ run_bash.
+ */
+export async function maybeSandboxExec(file: string, argv: string[], cwd: string = process.cwd()): Promise<SandboxExec | null> {
+  const writable = await sandboxWritable(cwd);
+  if (!writable) return null;
+  return wrap(writable, [file, ...argv]);
 }

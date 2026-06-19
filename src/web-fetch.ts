@@ -126,7 +126,24 @@ function resolveOptions(options: WebFetchOptions): ResolvedOptions {
 // Block loopback / private / link-local / metadata hosts by default so an agent
 // fetching an arbitrary URL can't reach internal services.
 export function isPrivateHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  // strip brackets, lowercase, drop a single trailing dot (FQDN form evades endsWith otherwise)
+  const host = hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.$/, '');
+  // IPv4-mapped IPv6 (::ffff:127.0.0.1 or ::ffff:7f00:1) — unwrap and re-check the embedded v4
+  const mapped = host.match(/^::ffff:(.+)$/i);
+  if (mapped) {
+    const inner = mapped[1];
+    if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(inner)) return isPrivateHost(inner);
+    const hex = inner.match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+    if (hex) {
+      const hi = parseInt(hex[1], 16);
+      const lo = parseInt(hex[2], 16);
+      return isPrivateHost(`${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`);
+    }
+    return true; // unrecognised mapped form → fail closed
+  }
   if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return true;
   if (host === '0.0.0.0' || host === '::' || host === '::1') return true;
   // IPv4
@@ -172,25 +189,34 @@ export function isAllowedByRobots(robotsTxt: string, path: string, uaToken = BRA
       lastWasAgent = false;
     }
   }
-  const ua = uaToken.toLowerCase();
-  const specific = groups.find((g) => g.agents.some((a) => a !== '*' && ua.includes(a)));
+  // Match the single product token (e.g. "sanook") against agent lines, not the full
+  // descriptive UA — otherwise a group named "web"/"cli"/"fetch" would falsely apply.
+  const ua = uaToken.toLowerCase().split(/[\s/]/)[0];
+  const specific = groups.find((g) => g.agents.some((a) => a !== '*' && a !== '' && (ua === a || ua.startsWith(a))));
   const wildcard = groups.find((g) => g.agents.includes('*'));
   const group = specific ?? wildcard;
   if (!group) return true;
-  // Longest-match wins; an empty Disallow means "allow all".
+  // Longest matching pattern wins; an empty Disallow means "allow all".
   let decision = true;
   let best = -1;
   for (const rule of group.rules) {
-    if (!rule.path) {
-      if (!rule.allow) continue; // empty Disallow = allow all, no-op
-      continue;
-    }
-    if (path.startsWith(rule.path) && rule.path.length > best) {
+    if (!rule.path) continue; // empty path (e.g. "Disallow:") = no-op / allow all
+    if (rule.path.length > best && robotsRuleToRegex(rule.path).test(path)) {
       best = rule.path.length;
       decision = rule.allow;
     }
   }
   return decision;
+}
+
+// Convert a robots.txt path rule (with * wildcards and optional $ end-anchor) to a regex.
+function robotsRuleToRegex(rule: string): RegExp {
+  const anchored = rule.endsWith('$');
+  const body = (anchored ? rule.slice(0, -1) : rule)
+    .split('*')
+    .map((segment) => segment.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*');
+  return new RegExp(`^${body}${anchored ? '$' : ''}`);
 }
 
 // ── HTML helpers ─────────────────────────────────────────────────────────────
@@ -339,22 +365,27 @@ function buildSummary(parts: { title?: string; description?: string; siteName?: 
 
 // Markers of a bot-challenge / JS-required interstitial. If we see one we treat the
 // tier as a FAILURE and fall through — this is RECOGNISING a block, never bypassing it.
-const CHALLENGE_MARKERS = [
-  'just a moment',
-  'attention required',
+// Unambiguous interstitial markers — if present, it's a challenge page regardless of length.
+const STRONG_CHALLENGE_MARKERS = [
   'cf-browser-verification',
   'challenge-platform',
+  '/cdn-cgi/challenge',
+  'attention required! | cloudflare',
   'checking your browser before accessing',
   'enable javascript and cookies to continue',
-  'verifying you are human',
-  'please verify you are a human',
-  'requiring captcha',
   'ddos protection by',
 ];
+// Phrases that also appear in legit prose — only count them when the page has little real content.
+const WEAK_CHALLENGE_MARKERS = ['just a moment', 'verifying you are human', 'please verify you are a human', 'requiring captcha'];
 
 export function looksBlocked(text: string): boolean {
-  const head = text.slice(0, 3000).toLowerCase();
-  return CHALLENGE_MARKERS.some((marker) => head.includes(marker));
+  const lc = text.toLowerCase(); // scan the whole (already size-capped) body, not just the head
+  if (STRONG_CHALLENGE_MARKERS.some((marker) => lc.includes(marker))) return true;
+  if (WEAK_CHALLENGE_MARKERS.some((marker) => lc.includes(marker))) {
+    const words = text.replace(/<[^>]+>/g, ' ').split(/\s+/).filter((w) => w.length > 1).length;
+    return words < 120; // a real article that merely mentions the phrase has far more content
+  }
+  return false;
 }
 
 function looksHtml(contentType: string | undefined, body: string): boolean {
@@ -363,25 +394,57 @@ function looksHtml(contentType: string | undefined, body: string): boolean {
   return /<html[\s>]|<!doctype html|<head[\s>]|<body[\s>]/i.test(body.slice(0, 4000));
 }
 
-// ── single GET with timeout + size cap ───────────────────────────────────────
+const MAX_REDIRECTS = 5;
+
+function urlGuardError(parsed: URL, opts: ResolvedOptions): string | null {
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return `unsupported protocol: ${parsed.protocol}`;
+  if (!opts.allowPrivateHosts && isPrivateHost(parsed.hostname)) return `blocked internal/loopback host: ${parsed.hostname} (SSRF guard)`;
+  return null;
+}
+
+// ── single GET with timeout, size cap, and SSRF-safe MANUAL redirect handling ─
+// Every redirect hop is re-validated against the SSRF guard, so a public URL that
+// 30x-redirects to a private/loopback/metadata host is rejected, not followed.
 async function doGet(
   url: string,
   opts: ResolvedOptions,
   extraHeaders: Record<string, string> = {},
-): Promise<{ res: FetchHttpResponse; body: string } | { error: string; status?: number; retryAfter?: string }> {
+): Promise<{ res: FetchHttpResponse; body: string; finalUrl: string } | { error: string; status?: number; retryAfter?: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
   try {
-    const res = await opts.fetchImpl(url, {
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: { 'user-agent': opts.userAgent, accept: 'text/html,application/xhtml+xml,text/plain,*/*', ...extraHeaders },
-    });
-    if (!res.ok) {
-      return { error: `${res.status}`, status: res.status, retryAfter: res.headers.get('retry-after') ?? undefined };
+    let currentUrl = url;
+    for (let hop = 0; ; hop++) {
+      let parsed: URL;
+      try {
+        parsed = new URL(currentUrl);
+      } catch {
+        return { error: 'invalid redirect URL' };
+      }
+      const guard = urlGuardError(parsed, opts);
+      if (guard) return { error: guard };
+      const res = await opts.fetchImpl(currentUrl, {
+        redirect: 'manual',
+        signal: controller.signal,
+        headers: { 'user-agent': opts.userAgent, accept: 'text/html,application/xhtml+xml,text/plain,*/*', ...extraHeaders },
+      });
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get('location');
+        if (!location) return { error: `${res.status} redirect without Location`, status: res.status };
+        if (hop >= MAX_REDIRECTS) return { error: `too many redirects (>${MAX_REDIRECTS})`, status: res.status };
+        currentUrl = new URL(location, currentUrl).href; // re-validated at top of next hop
+        continue;
+      }
+      if (!res.ok) {
+        return { error: `${res.status}`, status: res.status, retryAfter: res.headers.get('retry-after') ?? undefined };
+      }
+      const declared = Number(res.headers.get('content-length') ?? '');
+      if (Number.isFinite(declared) && declared > opts.maxBytes) {
+        return { error: `response too large (${declared} bytes > ${opts.maxBytes} cap)`, status: res.status };
+      }
+      const body = (await res.text()).slice(0, opts.maxBytes);
+      return { res, body, finalUrl: currentUrl };
     }
-    const body = (await res.text()).slice(0, opts.maxBytes);
-    return { res, body };
   } catch (e) {
     return { error: (e as Error).name === 'AbortError' ? `timeout >${opts.timeoutMs}ms` : (e as Error).message };
   } finally {
@@ -399,7 +462,7 @@ async function checkRobots(parsed: URL, opts: ResolvedOptions, attempts: FetchAt
     attempts.push({ tier: 'robots', ok: true, detail: `no robots.txt readable (${got.error}) — treated as allowed` });
     return true;
   }
-  const allowed = isAllowedByRobots(got.body, parsed.pathname + parsed.search, opts.userAgent);
+  const allowed = isAllowedByRobots(got.body, parsed.pathname + parsed.search, BRAND.cliName);
   attempts.push({ tier: 'robots', ok: allowed, detail: allowed ? 'allowed by robots.txt' : `disallowed by robots.txt for ${parsed.pathname}` });
   return allowed;
 }
@@ -417,12 +480,12 @@ async function tierDirect(parsed: URL, opts: ResolvedOptions, attempts: FetchAtt
     return null;
   }
   if (looksHtml(contentType, got.body)) {
-    const structure = extractStructure(got.body, got.res.url ?? parsed.href, opts);
+    const structure = extractStructure(got.body, got.finalUrl, opts);
     attempts.push({ tier: 'direct', ok: true, detail: `direct HTML — ${structure.wordCount} words, ${structure.headings.length} headings`, status: got.res.status });
-    return { winningTier: 'direct', finalUrl: got.res.url ?? parsed.href, status: got.res.status, contentType, structure };
+    return { winningTier: 'direct', finalUrl: got.finalUrl, status: got.res.status, contentType, structure };
   }
   attempts.push({ tier: 'direct', ok: true, detail: `direct non-HTML (${contentType ?? 'unknown'}) — returned as text`, status: got.res.status });
-  return { winningTier: 'direct', finalUrl: got.res.url ?? parsed.href, status: got.res.status, contentType, content: stripTags(got.body).slice(0, opts.maxBytes) };
+  return { winningTier: 'direct', finalUrl: got.finalUrl, status: got.res.status, contentType, content: stripTags(got.body).slice(0, opts.maxBytes) };
 }
 
 async function tierReader(parsed: URL, opts: ResolvedOptions, attempts: FetchAttempt[]): Promise<TierOutcome> {

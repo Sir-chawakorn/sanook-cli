@@ -293,6 +293,19 @@ describe('FS boundary: loadStore / saveStore', () => {
     expect(loaded.facts).toHaveLength(0);
   });
 
+  it('saveStore preserves a schema-invalid memory.json to a .corrupt backup before overwriting (no silent data loss)', async () => {
+    await mkdir(M.MEMORY_DIR, { recursive: true });
+    const richButInvalid = JSON.stringify({ version: 999, facts: 'not-an-array', precious: 'do not lose' });
+    await writeFile(M.MEMORY_JSON, richButInvalid);
+    const loaded = await M.loadStore(NOW); // degrades to empty rather than crashing
+    await M.saveStore(M.mergeFact(loaded, { text: 'a brand new fact' }, NOW).store, NOW);
+    // original is recoverable, not clobbered…
+    expect(await readFile(`${M.MEMORY_JSON}.${NOW}.corrupt`, 'utf8')).toBe(richButInvalid);
+    // …and the new valid store was written
+    const onDisk = JSON.parse(await readFile(M.MEMORY_JSON, 'utf8'));
+    expect(onDisk.facts.some((f: { text: string }) => f.text === 'a brand new fact')).toBe(true);
+  });
+
   it('saveStore is a no-op when persistence is disabled', async () => {
     vi.stubEnv('SANOOK_DISABLE_PERSISTENCE', '1');
     try {

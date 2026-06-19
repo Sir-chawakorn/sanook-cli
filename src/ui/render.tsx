@@ -4,6 +4,20 @@ import { App, type AppProps } from './app.js';
 import { SetupWizard, type SetupResult } from './setup.js';
 import { BrainWizard, type BrainAnswers } from './brain-wizard.js';
 import { saveKey, saveGlobalConfig, saveBrainPath } from '../config.js';
+import { BRAND } from '../brand.js';
+
+// Ink needs raw mode; mounting on a non-TTY stdin (piped/redirected/cron/CI) throws
+// 'Raw mode is not supported' deep in react-reconciler and — worse — exits 0, so a
+// script reads success on a fatal crash. Fail fast with a clear message + non-zero exit.
+function requireInteractiveTTY(): void {
+  if (!process.stdin.isTTY) {
+    process.stderr.write(
+      `${BRAND.cliName}: โหมด interactive (REPL/wizard) ต้องใช้ terminal จริง (TTY).\n` +
+        `รันแบบ headless แทน:  ${BRAND.cliName} "<task>"   หรือ   ${BRAND.cliName} -z "<task>"\n`,
+    );
+    process.exit(1);
+  }
+}
 
 type Phase = 'setup' | 'brain' | 'app';
 
@@ -72,16 +86,19 @@ export function Root({ needsSetup, appProps }: RootProps) {
 
 /** เปิดแอป: wizard (ถ้า first-run) → REPL — Ink render ครั้งเดียว (fix: พิมพ์ในช่องแชทไม่ได้) */
 export function startApp(props: RootProps): void {
+  requireInteractiveTTY();
   render(<Root {...props} />);
 }
 
 /** เปิด REPL ตรงๆ (ไม่ผ่าน wizard) — เก็บไว้เผื่อ caller อื่น */
 export function startRepl(appProps: AppProps): void {
+  requireInteractiveTTY();
   render(<App {...appProps} />);
 }
 
 /** standalone `sanook brain init` (interactive): ถาม path + ตัวตน → scaffold + wire MCP — single render, จบแล้ว process ออก */
 export function startBrainSetup(): Promise<void> {
+  requireInteractiveTTY();
   return new Promise((resolve) => {
     let unmount: () => void = () => {};
     const onComplete = (a: BrainAnswers): void => {

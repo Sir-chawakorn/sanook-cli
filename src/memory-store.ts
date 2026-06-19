@@ -549,6 +549,8 @@ export async function loadStore(now: number = Date.now()): Promise<MemoryStore> 
   try {
     const parsed = StoreSchema.safeParse(JSON.parse(await readFile(MEMORY_JSON, 'utf8')));
     if (parsed.success) return parsed.data;
+    // parseable but schema-invalid (version bump / partial write): DON'T lose it — saveStore
+    // preserves the original to a .corrupt backup before the next overwrite (loadStore stays pure).
   } catch {
     /* no json yet, or malformed → fall through */
   }
@@ -580,11 +582,40 @@ async function writeSecure(path: string, content: string): Promise<void> {
  * Both files are 0o600. On the very first json write, the legacy MEMORY.md is backed up
  * to MEMORY.md.bak so raw legacy text is never destroyed. No-op when persistence is disabled.
  */
+/**
+ * If an existing memory.json cannot be validated (schema bump / corruption / partial write),
+ * copy it verbatim to memory.json.<ts>.corrupt before it gets overwritten — so a single schema
+ * mismatch never silently destroys the entire auto-memory. Best-effort, idempotent per `now`.
+ */
+async function preserveUnvalidatableStore(now: number): Promise<void> {
+  let raw: string;
+  try {
+    raw = await readFile(MEMORY_JSON, 'utf8');
+  } catch {
+    return;
+  }
+  try {
+    if (StoreSchema.safeParse(JSON.parse(raw)).success) return; // valid → nothing to rescue
+  } catch {
+    /* unparseable → preserve below */
+  }
+  const backup = `${MEMORY_JSON}.${now}.corrupt`;
+  if (await exists(backup)) return;
+  try {
+    await writeFile(backup, raw, { mode: 0o600 });
+    await chmod(backup, 0o600).catch(() => {});
+  } catch {
+    /* best-effort */
+  }
+}
+
 export async function saveStore(store: MemoryStore, now: number = Date.now()): Promise<void> {
   if (!persistenceEnabled()) return;
   await mkdir(MEMORY_DIR, { recursive: true });
   const firstJson = !(await exists(MEMORY_JSON));
-  if (firstJson && (await exists(AUTO_MEMORY_FILE))) {
+  if (!firstJson) {
+    await preserveUnvalidatableStore(now); // data-loss guard before overwriting an unvalidatable store
+  } else if (await exists(AUTO_MEMORY_FILE)) {
     await copyFile(AUTO_MEMORY_FILE, MEMORY_BAK).catch(() => {});
     await chmod(MEMORY_BAK, 0o600).catch(() => {});
   }

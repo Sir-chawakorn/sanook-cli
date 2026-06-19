@@ -7,9 +7,18 @@ import { findBinary } from '../lsp/servers.js';
 import { runProcess, formatProcessResult } from '../process-runner.js';
 import { agentCwd } from '../agentContext.js';
 import { checkReadPath } from './permission.js';
+import { maybeSandboxExec } from './sandbox.js';
 import { resolveAgentPath } from './util.js';
 
 const MAX_TIMEOUT_MS = 300_000;
+
+// Run a runtime (python/rustc/compiled exe) under the same OS sandbox as run_bash so
+// inline code cannot write outside the workspace (cwd + brain + tmp). No-shell: argv is
+// wrapped directly, so there is no shell interpolation of the code/args.
+async function runConfined(file: string, args: string[], cwd: string, opts: { input?: string; timeoutMs?: number }) {
+  const sb = await maybeSandboxExec(file, args, cwd);
+  return sb ? runProcess(sb.file, sb.args, { cwd, ...opts }) : runProcess(file, args, { cwd, ...opts });
+}
 
 const RuntimeScriptSchema = z
   .object({
@@ -59,8 +68,7 @@ async function runPython(input: RuntimeScriptInput): Promise<string> {
       tempDir = temp.dir;
       scriptPath = temp.path;
     }
-    const result = await runProcess(python, [scriptPath, ...(input.args ?? [])], {
-      cwd,
+    const result = await runConfined(python, [scriptPath, ...(input.args ?? [])], cwd, {
       input: input.stdin,
       timeoutMs: input.timeoutMs,
     });
@@ -90,14 +98,12 @@ async function runRust(input: RuntimeScriptInput): Promise<string> {
     if (!input.path) await writeFile(sourcePath.path, input.code ?? '', 'utf8');
 
     const exe = join(temp, process.platform === 'win32' ? 'sanook-rust-helper.exe' : 'sanook-rust-helper');
-    const compile = await runProcess(rustc, ['--edition=2021', sourcePath.path, '-o', exe], {
-      cwd,
+    const compile = await runConfined(rustc, ['--edition=2021', sourcePath.path, '-o', exe], cwd, {
       timeoutMs: input.timeoutMs,
     });
     if (!compile.ok) return `RUST COMPILE ${formatProcessResult(compile)}`;
 
-    const run = await runProcess(exe, input.args ?? [], {
-      cwd,
+    const run = await runConfined(exe, input.args ?? [], cwd, {
       input: input.stdin,
       timeoutMs: input.timeoutMs,
     });

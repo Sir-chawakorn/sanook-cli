@@ -3,6 +3,8 @@ import { inlineValue, takeValue } from './cli-option-values.js';
 export interface Args {
   model?: string;
   budget?: number;
+  /** true when --budget/-b was given but did not parse to a positive number (so no cap is applied) */
+  budgetInvalid?: boolean;
   json: boolean;
   quiet: boolean; // --output-format final / -q : print แค่คำตอบสุดท้าย (ไม่มี tool/cost chatter)
   prompt: string;
@@ -146,6 +148,7 @@ export function parseServeArgs(argv: string[]): ParsedServeArgs {
 export function parseArgs(argv: string[]): Args {
   let model: string | undefined;
   let budget: number | undefined;
+  let budgetInvalid = false;
   let json = false;
   let quiet = false;
   let planMode = false;
@@ -168,8 +171,10 @@ export function parseArgs(argv: string[]): Args {
     else if (a === '--model' || a === '-m') model = cleanModelValue(takeArgValue(i));
     else if (a.startsWith('--budget=')) {
       budget = parseBudgetUsd(inlineValue('--budget', a));
+      if (budget === undefined) budgetInvalid = true;
     } else if (a === '--budget' || a === '-b') {
       budget = parseBudgetUsd(takeArgValue(i));
+      if (budget === undefined) budgetInvalid = true;
     }
     else if (a === '--json') json = true;
     else if (a === '-q' || a === '--quiet') quiet = true;
@@ -186,5 +191,5 @@ export function parseArgs(argv: string[]): Args {
       /* -p headless flag · -c/--continue/--continue-any resume (handled in main) */
     } else rest.push(a);
   }
-  return { model, budget, json, quiet, prompt: rest.join(' ').trim(), planMode, yes, resume };
+  return { model, budget, budgetInvalid, json, quiet, prompt: rest.join(' ').trim(), planMode, yes, resume };
 }

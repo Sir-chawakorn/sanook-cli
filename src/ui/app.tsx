@@ -182,7 +182,8 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const setToolTrailMode = (mode: ToolTrailDisplayMode): void => {
     toolTrailModeRef.current = mode;
     setToolTrailModeState(mode);
-    setHistoryResetKey((key) => key + 1);
+    // pure view-mode change: TurnView re-renders from props — do NOT remount <Static>
+    // (a key bump replays the entire transcript into scrollback)
   };
 
   const changeToolTrailMode = (mode?: ToolTrailDisplayMode): ToolTrailDisplayMode => {
@@ -202,7 +203,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     if (!section || !mode) return;
     if (section === 'thinking') {
       setThinkingMode(mode);
-      setHistoryResetKey((key) => key + 1);
+      // view-mode toggle only — no <Static> remount (would re-emit the whole transcript)
       addTurn('system', `details thinking → ${mode}`);
       return;
     }

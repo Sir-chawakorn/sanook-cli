@@ -189,7 +189,7 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
           <Text>2. วาง API key ของ {cfg.label}: <Text color="gray">(Esc = กลับ)</Text></Text>
           {consoleUrl(provider) ? <Text color="cyan">   → เอา key ที่: {consoleUrl(provider)}</Text> : null}
           {cfg.keyExample ? <Text color="gray">   รูปแบบ key: {cfg.keyExample}</Text> : null}
-          <Text color="gray">   (API key ตรงจาก console — ห้าม OAuth/subscription token · key จะเก็บแบบเข้ารหัสในเครื่อง)</Text>
+          <Text color="gray">   (API key ตรงจาก console — ห้าม OAuth/subscription token · key เก็บที่ ~/.sanook/auth.json สิทธิ์ 0600 — เจ้าของอ่านได้คนเดียว)</Text>
           <PasswordInput
             placeholder={cfg.envVar}
             onChange={(v) => {

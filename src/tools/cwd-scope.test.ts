@@ -126,6 +126,20 @@ describe('agentCwd scoping of file tools', () => {
     expect(blocked).toContain('นอก workspace');
   });
 
+  it('permission guard blocks writes through a DANGLING leaf symlink pointing outside the cwd', async () => {
+    const cwd = await scopedDir();
+    const outside = await scopedDir();
+    // leaf symlink whose TARGET does not exist yet (parent does) — the escape that slipped past existingAncestor
+    await symlink(join(outside, 'evil.txt'), join(cwd, 'leak.txt'));
+
+    const blocked = await runScoped(cwd, () =>
+      writeFileTool.execute!({ path: 'leak.txt', content: 'secret' }, {} as never),
+    );
+
+    expect(blocked).toContain('BLOCKED');
+    await expect(readFile(join(outside, 'evil.txt'), 'utf8')).rejects.toBeTruthy(); // write never landed outside
+  });
+
   it('permission guard blocks reads through symlinks that resolve outside the threaded cwd', async () => {
     const cwd = await scopedDir();
     const outside = await scopedDir();

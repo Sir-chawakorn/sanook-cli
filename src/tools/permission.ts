@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { realpath, stat } from 'node:fs/promises';
+import { realpath, stat, lstat, readlink } from 'node:fs/promises';
 import { dirname, resolve, join, sep } from 'node:path';
 import { getBrainPath } from '../memory.js';
 import { BRAND_ENV, envFlag } from '../brand.js';
@@ -947,6 +947,20 @@ async function canonicalExisting(path: string): Promise<string> {
   }
 }
 
+// If `path`'s leaf is a symlink, return where it actually points (resolved against its
+// dir). A DANGLING leaf symlink (target missing, parent present) otherwise slips past
+// existingAncestor (which stat()s through the link, fails, and falls back to the parent),
+// letting a write follow the link outside the workspace.
+async function symlinkLeafTarget(path: string): Promise<string | null> {
+  try {
+    const st = await lstat(path);
+    if (!st.isSymbolicLink()) return null;
+    return resolve(dirname(path), await readlink(path));
+  } catch {
+    return null;
+  }
+}
+
 async function existingAncestor(path: string): Promise<string> {
   let dir = resolve(path);
   for (;;) {
@@ -1006,19 +1020,26 @@ export async function checkReadPath(path: string): Promise<GateResult> {
 export async function checkWritePath(path: string): Promise<GateResult> {
   const abs = resolve(path);
   const canonical = await existingAncestor(path);
+  // Where a symlinked leaf would actually write (closes the dangling-leaf-symlink escape).
+  const linkTarget = await symlinkLeafTarget(path);
+  const targetReal = linkTarget ? await existingAncestor(linkTarget) : null;
+  const candidates = [abs, canonical, ...(linkTarget ? [linkTarget, targetReal as string] : [])];
   const inProtectedDir = (p: string): boolean => PROTECTED_DIRS.some((d) => p === d || p.startsWith(d + sep));
-  if (
-    PROTECTED_EXACT.has(abs) ||
-    PROTECTED_EXACT.has(canonical) ||
-    inProtectedDir(abs) ||
-    inProtectedDir(canonical) ||
-    protectedSegment(abs) ||
-    protectedSegment(canonical)
-  ) {
+  if (candidates.some((p) => PROTECTED_EXACT.has(p) || inProtectedDir(p) || protectedSegment(p))) {
     return {
       ok: false,
       reason: `path ที่ป้องกันถูกปฏิเสธ: "${path}" (secrets / shell-rc / .sanook / .git / .env / node_modules)`,
     };
+  }
+  // A symlinked leaf must resolve INSIDE the workspace/brain, not just sit there as a link.
+  if (linkTarget) {
+    const roots = await allowedRoots();
+    if (!roots.some((root) => inside(targetReal as string, root))) {
+      return {
+        ok: false,
+        reason: `symlink ชี้ออกนอก workspace/brain ที่อนุญาต: "${path}" → "${linkTarget}" (ตั้ง ${BRAND_ENV.allowOutsideWorkspace}=1 เพื่อ opt-in)`,
+      };
+    }
   }
   return checkPathScope(path, 'write');
 }

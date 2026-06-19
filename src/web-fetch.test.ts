@@ -4,6 +4,7 @@ import {
   extractStructure,
   isPrivateHost,
   isAllowedByRobots,
+  looksBlocked,
   tavilySearch,
   renderWebFetchResult,
   REFUSED_TECHNIQUES,
@@ -205,9 +206,49 @@ describe('web-fetch ladder', () => {
   });
 });
 
+describe('web-fetch hardening', () => {
+  it('does NOT follow a redirect into a private/metadata host (redirect SSRF)', async () => {
+    const calls: string[] = [];
+    const fetchImpl: FetchImpl = async (url) => {
+      calls.push(url);
+      if (url.endsWith('/robots.txt')) return res({ status: 404 });
+      if (url.includes('archive.org/wayback/available')) return res({ status: 200, body: JSON.stringify({ archived_snapshots: {} }) });
+      if (url.startsWith('https://r.jina.ai/')) return res({ status: 500 });
+      if (url.startsWith('http://169.254.169.254')) return res({ status: 200, contentType: 'text/plain', body: 'SECRET-CREDENTIALS' });
+      return res({ status: 302, headers: { location: 'http://169.254.169.254/latest/meta-data/iam/' } }); // origin redirects to metadata
+    };
+
+    const r = await fetchWeb('https://innocent.example.com/', { fetchImpl });
+
+    expect(r.ok).toBe(false);
+    expect(r.content).toBeUndefined();
+    expect(JSON.stringify(r)).not.toContain('SECRET-CREDENTIALS');
+    expect(calls.some((u) => u.startsWith('http://169.254.169.254'))).toBe(false); // never even requested
+  });
+
+  it('rejects an over-cap response by Content-Length before buffering', async () => {
+    const fetchImpl: FetchImpl = async (url) => {
+      if (url.endsWith('/robots.txt')) return res({ status: 404 });
+      if (url.includes('archive.org/wayback/available')) return res({ status: 200, body: JSON.stringify({ archived_snapshots: {} }) });
+      if (url.startsWith('https://r.jina.ai/')) return res({ status: 500 });
+      return res({ status: 200, contentType: 'text/html', headers: { 'content-length': '99999999' }, body: '<html>huge</html>' });
+    };
+
+    const r = await fetchWeb('https://big.example.com/', { fetchImpl, maxBytes: 1000 });
+
+    expect(r.ok).toBe(false);
+    expect(r.attempts.find((a) => a.tier === 'direct')?.detail).toMatch(/too large/);
+  });
+});
+
 describe('isPrivateHost', () => {
   it('flags loopback, private, link-local and metadata hosts', () => {
     for (const h of ['localhost', '127.0.0.1', '10.1.2.3', '192.168.0.1', '172.16.5.5', '169.254.169.254', '::1', 'foo.local']) {
+      expect(isPrivateHost(h)).toBe(true);
+    }
+  });
+  it('flags IPv4-mapped IPv6 and trailing-dot evasions', () => {
+    for (const h of ['::ffff:127.0.0.1', '::ffff:169.254.169.254', '::ffff:a9fe:a9fe', 'localhost.', '127.0.0.1.']) {
       expect(isPrivateHost(h)).toBe(true);
     }
   });
@@ -215,6 +256,14 @@ describe('isPrivateHost', () => {
     for (const h of ['example.com', '8.8.8.8', 'sub.acme.io', '172.15.0.1', '11.0.0.1']) {
       expect(isPrivateHost(h)).toBe(false);
     }
+  });
+});
+
+describe('looksBlocked', () => {
+  it('flags short interstitials and strong markers, not long legit prose', () => {
+    expect(looksBlocked('<title>Just a moment...</title>')).toBe(true);
+    expect(looksBlocked('Attention Required! | Cloudflare')).toBe(true);
+    expect(looksBlocked(`Just a moment ${'word '.repeat(300)}`)).toBe(false); // weak marker but real content
   });
 });
 
@@ -233,6 +282,13 @@ describe('isAllowedByRobots', () => {
   it('prefers the group that matches our UA token', () => {
     const txt = 'User-agent: sanook\nDisallow: /\n\nUser-agent: *\nAllow: /';
     expect(isAllowedByRobots(txt, '/page', 'sanook')).toBe(false);
+  });
+  it('does not let a group named after a UA substring (web/cli/fetch) falsely apply', () => {
+    expect(isAllowedByRobots('User-agent: web\nDisallow: /\n\nUser-agent: *\nAllow: /', '/x', 'sanook')).toBe(true);
+  });
+  it('honours * wildcard and $ end-anchor in path rules', () => {
+    expect(isAllowedByRobots('User-agent: *\nDisallow: /*.pdf$', '/files/a.pdf', 'sanook')).toBe(false);
+    expect(isAllowedByRobots('User-agent: *\nDisallow: /*.pdf$', '/files/a.pdf?x=1', 'sanook')).toBe(true);
   });
 });
 
