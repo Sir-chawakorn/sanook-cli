@@ -451,6 +451,26 @@ async function runWebSetup(args: string[]): Promise<void> {
   console.log(`ทดสอบ: ${BRAND.cliName} mcp test tavily`);
 }
 
+/** sanook memory [log "<query>" | stats] — read-only view over the bi-temporal memory store */
+async function runMemory(args: string[] = []): Promise<void> {
+  const action = args[0] && !args[0].startsWith('--') ? args[0] : undefined;
+  const rest = action ? args.slice(1) : args;
+  const json = args.includes('--json');
+  const { loadStore } = await import('./memory-store.js');
+  const { memoryLog, renderMemoryLog, memoryStats, renderMemoryStats } = await import('./memory-log.js');
+  const store = await loadStore();
+  if (action === 'log') {
+    const query = rest.filter((a) => !a.startsWith('--')).join(' ').trim();
+    const entries = memoryLog(store, query);
+    if (json) console.log(JSON.stringify(entries, null, 2));
+    else process.stdout.write(`${renderMemoryLog(entries, query)}\n`);
+    return;
+  }
+  // default + `stats`: overview of what's remembered (active / superseded / archived)
+  const stats = memoryStats(store);
+  console.log(json ? JSON.stringify(stats, null, 2) : renderMemoryStats(stats));
+}
+
 async function runAgentSetupSummary(): Promise<void> {
   const cfg = await loadConfig({});
   console.log(`${BRAND.productName} agent settings`);
@@ -3937,6 +3957,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'auth') return runAuth(argv.slice(1));
   if (argv[0] === 'sessions' || argv[0] === 'session') return runSessions(argv.slice(1));
   if (argv[0] === 'insights') return runInsights(argv.slice(1));
+  if (argv[0] === 'memory' && ['log', 'stats', undefined].includes(argv[1])) return runMemory(argv.slice(1));
   if (argv[0] === 'dump') return runDump(argv.slice(1));
   if (argv[0] === 'prompt-size' && (argv.length === 1 || argv[1].startsWith('--'))) return runPromptSize(argv.slice(1));
   if (argv[0] === 'runtimes' && (argv.length === 1 || argv[1].startsWith('--'))) return runRuntimes(argv.slice(1));
