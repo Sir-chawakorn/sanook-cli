@@ -125,7 +125,7 @@ export async function agentTuning(): Promise<AgentTuning> {
 async function readJson(path: string): Promise<Record<string, unknown>> {
   try {
     const parsed: unknown = JSON.parse(await readFile(path, 'utf8'));
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {}; // ไม่มีไฟล์ / parse ไม่ได้ = ใช้ default
   }

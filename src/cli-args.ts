@@ -32,8 +32,8 @@ export function parseBudgetUsd(value: string | undefined): number | undefined {
 export function parseThinkingConfigValue(value: string): boolean | number | undefined {
   const normalized = value.trim();
   const flag = normalized.toLowerCase();
-  if (flag === 'on' || flag === 'true') return true;
-  if (flag === 'off' || flag === 'false') return false;
+  if (flag === 'on' || flag === 'true' || flag === 'yes') return true;
+  if (flag === 'off' || flag === 'false' || flag === 'no') return false;
   if (!POSITIVE_INTEGER_RE.test(normalized)) return undefined;
 
   const parsed = Number(normalized);

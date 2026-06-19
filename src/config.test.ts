@@ -248,6 +248,15 @@ describe('agentTuning (global config)', () => {
     expect(await runAgentTuning()).toMatchObject({ cacheTtl: '1h', compaction: 'summarize', contextCompression: 'off', summaryModel: 'haiku' });
   });
 
+  it('treats array-shaped global config as empty', async () => {
+    await writeFile(join(home, '.sanook', 'config.json'), JSON.stringify([{ cacheTtl: '1h' }]));
+
+    const { agentTuning: runAgentTuning, readGlobalConfigRaw } = await import('./config.js');
+
+    await expect(readGlobalConfigRaw()).resolves.toEqual({});
+    expect(await runAgentTuning()).toMatchObject({ cacheTtl: '5m', compaction: 'truncate', contextCompression: 'selective' });
+  });
+
   it('ignores blank env overrides when global config has tuning values', async () => {
     await writeFile(
       join(home, '.sanook', 'config.json'),

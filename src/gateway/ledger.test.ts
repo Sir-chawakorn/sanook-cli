@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -71,5 +72,32 @@ describe('ledger (lock + atomic concurrency)', () => {
     const due = await L.dueTasks(Date.now());
     expect(due.every((t) => t.status === 'queued' && t.runAt <= Date.now())).toBe(true);
     expect(due.some((t) => t.spec === 'future')).toBe(false);
+  });
+
+  it('drops malformed task records when reading and rewriting the ledger', async () => {
+    const gatewayDir = join(TMP, '.sanook', 'gateway');
+    const tasksFile = join(gatewayDir, 'tasks.json');
+    const valid = {
+      id: 'valid-1',
+      kind: 'once',
+      status: 'queued',
+      spec: 'safe task',
+      runAt: Date.now() - 1,
+      createdAt: Date.now() - 10,
+    };
+    await mkdir(gatewayDir, { recursive: true });
+    await writeFile(
+      tasksFile,
+      `${JSON.stringify([null, { id: 'bad' }, { ...valid, runAt: Number.NaN }, valid], null, 2)}\n`,
+    );
+
+    expect(await L.listTasks()).toEqual([valid]);
+    expect(await L.dueTasks(Date.now())).toEqual([valid]);
+
+    await L.enqueueTask({ kind: 'once', spec: 'new task', runAt: Date.now() });
+
+    const persisted = JSON.parse(await readFile(tasksFile, 'utf8')) as unknown[];
+    expect(persisted).toHaveLength(2);
+    expect(persisted.every((task) => task && typeof task === 'object' && 'spec' in task)).toBe(true);
   });
 });

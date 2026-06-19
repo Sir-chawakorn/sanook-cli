@@ -522,7 +522,7 @@ Quality-neutral knobs in `~/.sanook/config.json` (or the matching `SANOOK_*` env
 | — | `SANOOK_SUBAGENT_MODEL=haiku` | run all sub-agent work (exploration/search) on a cheaper model while the main agent keeps the strong one |
 | `summaryModel <spec>` | `SANOOK_SUMMARY_MODEL=<spec>` | model used for summarize-compaction (default: the fast sibling of your main model) |
 | `embeddingModel <spec>` | `SANOOK_EMBEDDING_MODEL=<spec>` | model used for semantic search embeddings (for example `openai:text-embedding-3-small`) |
-| `thinking 4000` | `SANOOK_THINKING=4000` | opt-in Anthropic extended thinking on the main agent with a `budgetTokens` cap (default off) |
+| `thinking on` / `thinking 4000` | `SANOOK_THINKING=on` / `4000` | opt-in Anthropic extended thinking on the main agent; use `on`, `true`, or `yes` for the default budget, `off`, `false`, or `no` to disable, or a positive integer for `budgetTokens` |
 
 Read-side savings are automatic: the agent reads file ranges (`read_file` with `offset`/`limit`) and edits with minimal `old_string` / `replace_all` rather than rewriting whole files.
 

@@ -157,7 +157,14 @@ function trimNumber(value: number): string {
 
 export function formatCwd(cwd: string, branch?: string | null): string {
   const home = process.env.HOME;
-  const label = home && cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd;
+  const homeBase = home && home !== '/' ? home.replace(/\/+$/, '') : undefined;
+  const inHome = Boolean(homeBase && (cwd === homeBase || cwd.startsWith(`${homeBase}/`)));
+  const label =
+    inHome && homeBase
+      ? cwd === homeBase
+        ? '~'
+        : `~/${cwd.slice(homeBase.length + 1)}`
+      : cwd;
   const parts = label.split('/').filter(Boolean);
   const shortPath =
     label.startsWith('~/') && parts.length > 2

@@ -40,6 +40,9 @@ export interface NewTask {
   runAt: number;
 }
 
+const TASK_KINDS = new Set<TaskKind>(['cron', 'message', 'once']);
+const TASK_STATUSES = new Set<TaskStatus>(['queued', 'running', 'done', 'failed']);
+
 function normalizeOptionalModel(model: string | undefined): string | undefined {
   const trimmed = model?.trim();
   return trimmed ? trimmed : undefined;
@@ -50,11 +53,30 @@ function normalizeOptionalText(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function isTask(value: unknown): value is Task {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const task = value as Partial<Task>;
+  return (
+    typeof task.id === 'string' &&
+    TASK_KINDS.has(task.kind as TaskKind) &&
+    TASK_STATUSES.has(task.status as TaskStatus) &&
+    typeof task.spec === 'string' &&
+    Number.isFinite(task.runAt) &&
+    Number.isFinite(task.createdAt) &&
+    (task.schedule === undefined || typeof task.schedule === 'string') &&
+    (task.model === undefined || typeof task.model === 'string') &&
+    (task.deliver === undefined || typeof task.deliver === 'string') &&
+    (task.lastRun === undefined || Number.isFinite(task.lastRun)) &&
+    (task.lastResult === undefined || typeof task.lastResult === 'string') &&
+    (task.lastError === undefined || typeof task.lastError === 'string')
+  );
+}
+
 // ── low-level: read ตรงจากไฟล์ทุกครั้ง (ไม่ cache snapshot → ไม่มี stale-overwrite) ──
 async function readTasks(): Promise<Task[]> {
   try {
     const parsed = JSON.parse(await readFile(TASKS_FILE, 'utf8'));
-    return Array.isArray(parsed) ? (parsed as Task[]) : [];
+    return Array.isArray(parsed) ? parsed.filter(isTask) : [];
   } catch {
     return []; // ไม่มีไฟล์/พัง → empty (write แบบ atomic จึงไม่ทำลายของเดิม)
   }

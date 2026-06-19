@@ -211,9 +211,11 @@ describe('parseThinkingConfigValue', () => {
     expect(parseThinkingConfigValue('on')).toBe(true);
     expect(parseThinkingConfigValue(' ON ')).toBe(true);
     expect(parseThinkingConfigValue(' true ')).toBe(true);
+    expect(parseThinkingConfigValue(' yes ')).toBe(true);
     expect(parseThinkingConfigValue('off')).toBe(false);
     expect(parseThinkingConfigValue(' OFF ')).toBe(false);
     expect(parseThinkingConfigValue(' false ')).toBe(false);
+    expect(parseThinkingConfigValue(' no ')).toBe(false);
     expect(parseThinkingConfigValue('4000')).toBe(4000);
     expect(parseThinkingConfigValue(' 4000 ')).toBe(4000);
   });

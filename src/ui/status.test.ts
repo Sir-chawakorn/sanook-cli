@@ -89,6 +89,20 @@ describe('footerStatus', () => {
     expect(formatCwd('/Users/me/dev/sanook-cli', 'feature/extremely-long-status-rule-branch')).toContain('…status-rule-branch)');
   });
 
+  it('only shortens cwd to home when it is inside the home directory boundary', () => {
+    const realHome = process.env.HOME;
+    process.env.HOME = '/Users/me';
+    try {
+      expect(formatCwd('/Users/me/dev/sanook-cli')).toBe('~/dev/sanook-cli');
+      expect(formatCwd('/Users/me2/dev/sanook-cli')).toBe('/dev/sanook-cli');
+      process.env.HOME = '/';
+      expect(formatCwd('/Users/me/dev/sanook-cli')).toBe('/dev/sanook-cli');
+    } finally {
+      if (realHome === undefined) delete process.env.HOME;
+      else process.env.HOME = realHome;
+    }
+  });
+
   it('sheds status segments in a stable priority order', () => {
     expect(statusSegments(120)).toEqual({
       compression: true,

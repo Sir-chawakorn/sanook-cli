@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runAgent } from '../loop.js';
@@ -68,6 +68,40 @@ describe('gateway chat sessions', () => {
       messages: [{ role: 'user', content: 'safe' }],
     });
     expect((await loadGatewaySession(platform, 'target'))?.id).toBe(id);
+  });
+
+  it('skips malformed gateway session files when loading and listing sessions', async () => {
+    const { gatewaySessionId, listGatewaySessions, loadGatewaySession, saveGatewaySession } = await import('./session.js');
+    const validId = gatewaySessionId('telegram', '111');
+    const malformedId = gatewaySessionId('telegram', 'bad');
+    const sessionDir = join(home, '.sanook', 'gateway', 'sessions');
+
+    await saveGatewaySession({
+      id: validId,
+      platform: 'telegram',
+      target: '111',
+      created: '2026-06-18T00:00:00.000Z',
+      updated: '2026-06-18T00:00:01.000Z',
+      model: 'sonnet',
+      messages: [{ role: 'user', content: 'safe' }],
+    });
+    await mkdir(sessionDir, { recursive: true });
+    await writeFile(
+      join(sessionDir, `${malformedId}.json`),
+      JSON.stringify({
+        id: malformedId,
+        platform: 'telegram',
+        target: 'bad',
+        created: '2026-06-18T00:00:00.000Z',
+        updated: 42,
+        model: 'sonnet',
+        messages: ['not a model message'],
+      }),
+    );
+    await writeFile(join(sessionDir, 'invalid-json.json'), '{bad');
+
+    expect(await loadGatewaySession('telegram', 'bad')).toBeNull();
+    expect((await listGatewaySessions()).map((session) => session.id)).toEqual([validId]);
   });
 
   it('detects Hermes-style silence tokens', async () => {

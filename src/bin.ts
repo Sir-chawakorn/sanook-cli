@@ -3225,7 +3225,7 @@ async function runConfig(args: string[]): Promise<void> {
       // เก็บเป็น number (budget) หรือ boolean ให้ตรง ConfigSchema (ไม่เก็บ string)
       value = parseThinkingConfigValue(raw);
       if (value === undefined) {
-        console.error('thinking ต้องเป็น on/off หรือ budget tokens (integer บวก เช่น 4000)');
+        console.error('thinking ต้องเป็น on/off, true/false, yes/no หรือ budget tokens (integer บวก เช่น 4000)');
         process.exit(1);
       }
     } else if (key === 'personality') {

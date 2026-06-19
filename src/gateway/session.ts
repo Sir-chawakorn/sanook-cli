@@ -58,6 +58,34 @@ function sessionPath(id: string): string {
   return join(SESSION_DIR, `${id}.json`);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isModelMessage(value: unknown): value is ModelMessage {
+  if (!isRecord(value)) return false;
+  if (value.role === 'system') return typeof value.content === 'string';
+  if (value.role === 'tool') return Array.isArray(value.content);
+  if (value.role === 'user' || value.role === 'assistant') {
+    return typeof value.content === 'string' || Array.isArray(value.content);
+  }
+  return false;
+}
+
+function isGatewaySession(value: unknown): value is GatewaySession {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.platform === 'string' &&
+    typeof value.target === 'string' &&
+    typeof value.created === 'string' &&
+    typeof value.updated === 'string' &&
+    typeof value.model === 'string' &&
+    Array.isArray(value.messages) &&
+    value.messages.every(isModelMessage)
+  );
+}
+
 function redactUnknown(value: unknown): unknown {
   if (typeof value === 'string') return redactKey(value);
   if (Array.isArray(value)) return value.map(redactUnknown);
@@ -75,7 +103,8 @@ export function shouldSuppressDelivery(text: string): boolean {
 export async function loadGatewaySession(platform: string, target: string): Promise<GatewaySession | null> {
   try {
     const id = gatewaySessionId(platform, target);
-    return JSON.parse(await readFile(sessionPath(id), 'utf8')) as GatewaySession;
+    const parsed: unknown = JSON.parse(await readFile(sessionPath(id), 'utf8'));
+    return isGatewaySession(parsed) && parsed.id === id ? parsed : null;
   } catch {
     return null;
   }
@@ -87,7 +116,8 @@ export async function listGatewaySessions(): Promise<GatewaySession[]> {
     const sessions = await Promise.all(
       files.map(async (file) => {
         try {
-          return JSON.parse(await readFile(join(SESSION_DIR, file), 'utf8')) as GatewaySession;
+          const parsed: unknown = JSON.parse(await readFile(join(SESSION_DIR, file), 'utf8'));
+          return isGatewaySession(parsed) ? parsed : null;
         } catch {
           return null;
         }
