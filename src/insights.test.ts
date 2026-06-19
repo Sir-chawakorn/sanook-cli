@@ -167,8 +167,11 @@ describe('local insights', () => {
     expect(parseInsightsArgs(['--all', '-d=15'])).toEqual({ days: 15, all: true });
     expect(parseInsightsArgs(['-a', '21'])).toEqual({ days: 21, all: true });
     expect(parseInsightsArgs(['21', '--all'])).toEqual({ days: 21, all: true });
+    expect(parseInsightsArgs(['--all', '--all', '21'])).toEqual({ days: 21, all: true });
     expect(parseInsightsArgs(['--days', '--all', '7'])).toBeNull();
     expect(parseInsightsArgs(['--days', '-a', '7'])).toBeNull();
+    expect(parseInsightsArgs(['--days', '7', '-d=8'])).toBeNull();
+    expect(parseInsightsArgs(['14', '--days=7'])).toBeNull();
     expect(parseInsightsArgs('--all nope')).toBeNull();
   });
 });

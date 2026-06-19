@@ -31,6 +31,13 @@ describe('parseBrainContextArgs', () => {
     });
   });
 
+  it('merges repeated source filters without dropping earlier selections', () => {
+    expect(parseBrainContextArgs(['ship', '--source', 'vault,session', '--sources=skill,vault'])).toEqual({
+      ok: true,
+      value: { task: 'ship', mode: 'auto', limit: 5, sources: ['vault', 'session', 'skill'], showContent: true },
+    });
+  });
+
   it('treats arguments after -- as literal task text', () => {
     expect(parseBrainContextArgs(['--mode', 'fts', '--limit', '3', '--', '--source', 'vault'])).toEqual({
       ok: true,
@@ -76,6 +83,16 @@ describe('parseBrainContextArgs', () => {
 
     expect(parsed.ok).toBe(false);
     if (!parsed.ok) expect(parsed.message).toContain('ใช้ --task เพียงครั้งเดียว');
+  });
+
+  it('rejects duplicate scalar search options instead of overwriting them', () => {
+    const mode = parseBrainContextArgs(['ship', '--mode', 'fts', '--mode=hybrid']);
+    const limit = parseBrainContextArgs(['ship', '--limit', '3', '--limit=9']);
+
+    expect(mode.ok).toBe(false);
+    if (!mode.ok) expect(mode.message).toContain('--mode');
+    expect(limit.ok).toBe(false);
+    if (!limit.ok) expect(limit.message).toContain('--limit');
   });
 });
 

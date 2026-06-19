@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { inlineValue, isFlagLike, takeValue } from './cli-option-values.js';
 
 describe('cli option value helpers', () => {
-  it('parses inline long option values without treating empty assignments as values', () => {
+  it('parses inline option values without treating empty assignments as values', () => {
     expect(inlineValue('--model', '--model=openai:gpt-5.5')).toBe('openai:gpt-5.5');
     expect(inlineValue('--model', '--models=openai:gpt-5.5')).toBeUndefined();
     expect(inlineValue('--model', '--model=')).toBeUndefined();
+    expect(inlineValue('-d', '-d=7')).toBe('7');
   });
 
   it('takes split values without consuming following flags', () => {

@@ -73,7 +73,7 @@ export function parseSearchArgs(args: string[]): SearchArgsResult {
         return { ok: false, message: `--source ต้องระบุค่าเป็น ${SEARCH_SOURCES.join(',')} (คั่นหลายค่าได้ด้วย comma)` };
       }
       if (bad.length) return { ok: false, message: `--source ต้องเป็น ${SEARCH_SOURCES.join(',')} (คั่นหลายค่าได้ด้วย comma)` };
-      sources = [...new Set(requested)] as SearchSource[];
+      sources = [...new Set([...(sources ?? []), ...requested])] as SearchSource[];
     } else {
       queryParts.push(a);
     }

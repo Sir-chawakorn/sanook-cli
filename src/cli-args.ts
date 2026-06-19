@@ -98,6 +98,8 @@ export function parseServeArgs(argv: string[]): ParsedServeArgs {
   let model: string | undefined;
   let portError: string | undefined;
   let modelError: string | undefined;
+  let portSet = false;
+  let modelSet = false;
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -107,20 +109,32 @@ export function parseServeArgs(argv: string[]): ParsedServeArgs {
       if (next) i = next.nextIndex;
       const parsed = parsePortValue(raw);
       if (parsed === undefined) portError = portErrorValue(raw);
-      else port = parsed;
+      else if (portSet) portError = 'ใช้ --port เพียงครั้งเดียว';
+      else {
+        port = parsed;
+        portSet = true;
+      }
     } else if (a === '--model' || a === '-m' || a.startsWith('--model=')) {
       if (a.startsWith('--model=')) {
         const raw = inlineValue('--model', a);
         const clean = cleanModelValue(raw);
         const error = modelErrorValue(raw);
         if (error) modelError = error;
-        else model = clean;
+        else if (modelSet) modelError = 'ใช้ --model เพียงครั้งเดียว';
+        else {
+          model = clean;
+          modelSet = true;
+        }
       } else {
         const next = takeValue(argv, i);
         const clean = cleanModelValue(next.value);
         const error = modelErrorValue(next.value);
         if (error) modelError = error;
-        else model = clean;
+        else if (modelSet) modelError = 'ใช้ --model เพียงครั้งเดียว';
+        else {
+          model = clean;
+          modelSet = true;
+        }
         i = next.nextIndex;
       }
     }

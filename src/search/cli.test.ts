@@ -16,6 +16,13 @@ describe('parseSearchArgs', () => {
     });
   });
 
+  it('merges repeated source filters without dropping earlier selections', () => {
+    expect(parseSearchArgs(['deploy', '--source', 'vault,session', '--sources=skill,vault'])).toEqual({
+      ok: true,
+      value: { query: 'deploy', mode: 'auto', limit: 8, sources: ['vault', 'session', 'skill'] },
+    });
+  });
+
   it('accepts inline values for search options', () => {
     expect(parseSearchArgs(['race', 'condition', '--mode=hybrid', '--limit=5', '--sources=vault,memory'])).toEqual({
       ok: true,

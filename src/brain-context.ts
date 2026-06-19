@@ -91,7 +91,9 @@ export function parseBrainContextArgs(args: string[]): BrainContextArgsResult {
   const taskParts: string[] = [];
   let task: string | undefined;
   let mode: SearchMode = 'auto';
+  let modeSet = false;
   let limit = 5;
+  let limitSet = false;
   let sources: SearchSource[] | undefined;
   let showContent = true;
 
@@ -114,14 +116,18 @@ export function parseBrainContextArgs(args: string[]): BrainContextArgsResult {
       if (next) i = next.nextIndex;
       if (!raw) return { ok: false, message: `--mode ต้องระบุค่าเป็น ${SEARCH_MODES.join('|')}` };
       if (!isSearchMode(raw)) return { ok: false, message: `--mode ต้องเป็น ${SEARCH_MODES.join('|')}` };
+      if (modeSet) return { ok: false, message: 'ใช้ --mode เพียงครั้งเดียว' };
       mode = raw;
+      modeSet = true;
     } else if (a === '--limit' || a.startsWith('--limit=')) {
       const next = a === '--limit' ? takeValue(args, i) : undefined;
       const raw = next ? next.value : inlineValue('--limit', a);
       if (next) i = next.nextIndex;
       const n = parsePositiveInteger(raw);
       if (n === undefined) return { ok: false, message: '--limit ต้องเป็น integer บวก เช่น 5' };
+      if (limitSet) return { ok: false, message: 'ใช้ --limit เพียงครั้งเดียว' };
       limit = n;
+      limitSet = true;
     } else if (a === '--source' || a === '--sources' || a.startsWith('--source=') || a.startsWith('--sources=')) {
       const next = a === '--source' || a === '--sources' ? takeValue(args, i) : undefined;
       const raw = next ? next.value : inlineSourceValue(a);
@@ -130,7 +136,7 @@ export function parseBrainContextArgs(args: string[]): BrainContextArgsResult {
       if (!requested.length) return { ok: false, message: `--source ต้องระบุค่าเป็น ${SEARCH_SOURCES.join(',')}` };
       const bad = requested.filter((s) => !isSearchSource(s));
       if (bad.length) return { ok: false, message: `--source ต้องเป็น ${SEARCH_SOURCES.join(',')}` };
-      sources = [...new Set(requested)] as SearchSource[];
+      sources = [...new Set([...(sources ?? []), ...requested])] as SearchSource[];
     } else if (a === '--no-content' || a === '--summary') {
       showContent = false;
     } else if (a === '--content') {

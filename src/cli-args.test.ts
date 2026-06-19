@@ -310,4 +310,15 @@ describe('parseServeArgs', () => {
       modelError: undefined,
     });
   });
+
+  it('rejects duplicate serve scalar options instead of overwriting them', () => {
+    expect(parseServeArgs(['--port', '9000', '--port=9001'])).toMatchObject({
+      port: 9000,
+      portError: 'ใช้ --port เพียงครั้งเดียว',
+    });
+    expect(parseServeArgs(['--model', 'sonnet', '-m', 'openai:gpt-5.5'])).toMatchObject({
+      model: 'sonnet',
+      modelError: 'ใช้ --model เพียงครั้งเดียว',
+    });
+  });
 });
