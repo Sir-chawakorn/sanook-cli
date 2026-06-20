@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.7
+
+### Local token usage ledger (ccusage-style)
+
+- **Persistent usage tracking** — every agent turn appends to `~/.sanook/usage/events.jsonl` with input/output/cache tokens, estimated cost, model, session id, and source (`repl`, `headless`, `gateway`, `subagent`, `plan`).
+- **`sanook usage`** — daily / weekly / monthly / session reports with ASCII tables and `--json` export (similar to [ccusage](https://ccusage.com/guide/getting-started)).
+- **Codex usage capture** — parse `turn.completed` token counts from Codex JSONL into the ledger.
+- **`/cost` / `/usage`** in REPL now points to `sanook usage daily` for full history.
+- Disable with `SANOOK_DISABLE_USAGE=1`.
+
+## 0.5.6
+
+### Install UX, second-brain wiring, session save, terminal visibility, Codex models
+
+- **`sanookai` CLI alias** — backward-compatible binary name alongside `sanook` (fixes Windows "sanookai not recognized" when docs/videos use the old name).
+- **Postinstall hints** — clarify global vs local install; suggest `npx sanook` / `npx sanookai` when not on PATH.
+- **Second-brain project link** — after setup brain wizard, auto-scaffold `Projects/<slug>/` for the current repo and create/link `SANOOK.md` project memory.
+- **Session save on exit** — Ctrl+C (empty prompt) or `/quit` saves the REPL session and writes a summarized note to `Sessions/` in the vault.
+- **Live agent status** — REPL shows Codex/Agent/Tool/Thinking status while work is in progress.
+- **Codex model picker** — delegate provider lists current Codex models (`gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, legacy codex variants, spark).
+
 ## 0.5.5
 
 ### Hermes-style setup, dashboard, and terminal parity

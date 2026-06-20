@@ -22,6 +22,14 @@ export const PRICING: Record<string, Pricing> = {
   'openai:gpt-5.5': { input: 1.25, output: 10, cacheWrite: 1.25, cacheRead: 0.125 },
   'openai:gpt-5.4-mini': { input: 0.25, output: 2, cacheWrite: 0.25, cacheRead: 0.025 },
   'openai:gpt-5.3-codex': { input: 1.25, output: 10, cacheWrite: 1.25, cacheRead: 0.125 },
+  // OpenAI Codex delegate (ChatGPT plan — token counts are real; cost is estimated from API list price)
+  'codex:gpt-5.5': { input: 1.25, output: 10, cacheWrite: 1.25, cacheRead: 0.125 },
+  'codex:gpt-5.4': { input: 2.5, output: 15, cacheWrite: 2.5, cacheRead: 0.25 },
+  'codex:gpt-5.4-mini': { input: 0.25, output: 2, cacheWrite: 0.25, cacheRead: 0.025 },
+  'codex:gpt-5.3-codex': { input: 1.25, output: 10, cacheWrite: 1.25, cacheRead: 0.125 },
+  'codex:gpt-5.2-codex': { input: 1.25, output: 10, cacheWrite: 1.25, cacheRead: 0.125 },
+  'codex:gpt-5-codex': { input: 1.25, output: 10, cacheWrite: 1.25, cacheRead: 0.125 },
+  'codex:gpt-5.3-codex-spark': { input: 0.25, output: 2, cacheWrite: 0.25, cacheRead: 0.025 },
   // Google Gemini (≤200k context tier)
   'google:gemini-2.5-pro': { input: 1.25, output: 10, cacheWrite: 1.25, cacheRead: 0.31 },
   'google:gemini-2.5-flash': { input: 0.3, output: 2.5, cacheWrite: 0.3, cacheRead: 0.075 },
@@ -170,5 +178,27 @@ export class CostMeter {
     const cost = this.hasPricing ? `$${this.spent.toFixed(4)}` : '(ไม่มี pricing สำหรับ model นี้)';
     const budget = this.budgetUsd != null ? ` / budget $${this.budgetUsd}` : '';
     return `tokens: ${total} (in ${this.inTok} · out ${this.outTok} · cache-read ${this.cacheReadTok} · cache-write ${this.cacheWriteTok}) · cost ${cost}${budget}`;
+  }
+
+  snapshot(): {
+    specKey: string;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+    totalTokens: number;
+    costUsd: number;
+    hasPricing: boolean;
+  } {
+    return {
+      specKey: this.specKey,
+      inputTokens: this.inTok,
+      outputTokens: this.outTok,
+      cacheReadTokens: this.cacheReadTok,
+      cacheWriteTokens: this.cacheWriteTok,
+      totalTokens: this.inTok + this.outTok + this.cacheReadTok + this.cacheWriteTok,
+      costUsd: this.spent,
+      hasPricing: this.hasPricing,
+    };
   }
 }

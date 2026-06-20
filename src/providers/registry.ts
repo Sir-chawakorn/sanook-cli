@@ -160,7 +160,17 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     requiresKey: false,
     localPlaceholderKey: 'codex',
     keyFormat: null,
-    models: { default: 'gpt-5-codex', codex: 'gpt-5-codex' },
+    models: {
+      default: 'gpt-5.5',
+      codex: 'gpt-5.5',
+      '5.5': 'gpt-5.5',
+      '5.4': 'gpt-5.4',
+      '5.4-mini': 'gpt-5.4-mini',
+      '5.3-codex': 'gpt-5.3-codex',
+      '5.2-codex': 'gpt-5.2-codex',
+      '5-codex': 'gpt-5-codex',
+      spark: 'gpt-5.3-codex-spark',
+    },
     create: () => {
       throw new Error('codex เป็น delegate provider — ใช้ผ่าน codex subprocess ไม่ใช่ Vercel AI SDK');
     },

@@ -26,6 +26,7 @@ export const BRAND_ENV = {
   disablePersistence: 'SANOOK_DISABLE_PERSISTENCE',
   disableUpdateCheck: 'SANOOK_DISABLE_UPDATE_CHECK',
   disableWorklog: 'SANOOK_DISABLE_WORKLOG',
+  disableUsageLedger: 'SANOOK_DISABLE_USAGE',
   trustProject: 'SANOOK_TRUST_PROJECT',
 };
 
@@ -52,4 +53,8 @@ export function persistenceEnabled(): boolean {
 
 export function worklogEnabled(): boolean {
   return !envFlag(BRAND_ENV.disableWorklog);
+}
+
+export function usageLedgerEnabled(): boolean {
+  return persistenceEnabled() && !envFlag(BRAND_ENV.disableUsageLedger);
 }

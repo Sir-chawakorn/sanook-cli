@@ -19,6 +19,7 @@ import { agentTuning, loadConfig } from './config.js';
 import { BRAND, envFlag } from './brand.js';
 import { semanticRecallHits } from './knowledge.js';
 import { personalityPrompt } from './personality.js';
+import { recordAgentUsage, usageFromCodexPayload, type UsageSource } from './usage-ledger.js';
 
 // auto-compact เมื่อ context ใกล้เต็ม — conservative (safe สำหรับ model 200K, เผื่อ output)
 const AUTO_COMPACT_TOKENS = 120_000;
@@ -49,7 +50,7 @@ export const SYSTEM = `You are ${BRAND.agentName}, an autonomous coding agent ru
 - Don't paste back file contents or large code blocks you just read or edited — the user already sees the diff/tool output; reference path:line instead. This keeps replies (and token cost) small without losing anything.`;
 
 export interface AgentEvent {
-  type: 'text' | 'reasoning' | 'tool-call' | 'tool-result' | 'finish' | 'error';
+  type: 'text' | 'reasoning' | 'tool-call' | 'tool-result' | 'finish' | 'error' | 'status';
   text?: string;
   tool?: string;
   detail?: unknown;
@@ -176,6 +177,8 @@ export interface RunAgentOptions {
   approve?: ApprovalFn;
   /** path ของรูป (vision input) — แนบเป็น image part ใน user message; history เก็บแค่ placeholder */
   images?: string[];
+  /** metadata for local usage ledger (~/.sanook/usage/events.jsonl) */
+  usageMeta?: { sessionId?: string; source?: UsageSource };
 }
 
 export interface RunAgentResult {
@@ -198,7 +201,6 @@ async function maybeWrapWithHeadroom<T>(model: T): Promise<T> {
  * แกน harness — agent loop: LLM -> tool -> result -> loop จนเสร็จ
  * multi-provider (BYOK) ผ่าน registry + cost meter + budget cap
  */
-/** delegate path — spawn official codex CLI (ChatGPT plan quota) แทน SDK loop */
 async function runDelegate(opts: RunAgentOptions): Promise<RunAgentResult> {
   const { runCodex } = await import('./providers/codex.js');
   const meter = new CostMeter(specKey(opts.model), opts.budgetUsd, agentContext.getStore()?.sharedBudget);
@@ -224,10 +226,11 @@ async function runDelegate(opts: RunAgentOptions): Promise<RunAgentResult> {
   // auto (--yes / config auto) → workspace-write เพื่อให้ codex แก้ไฟล์ได้จริง (ไม่งั้นเป็น coding agent ที่แก้อะไรไม่ได้)
   const sandbox: 'read-only' | 'workspace-write' =
     opts.planMode || (opts.permissionMode ?? 'ask') === 'ask' ? 'read-only' : 'workspace-write';
+  opts.onEvent?.({ type: 'status', detail: `Codex · ${model} · ${sandbox}` });
   let text = '';
   const out = await runCodex({
     prompt,
-    model: model === 'gpt-5-codex' ? undefined : model,
+    model: model === PROVIDERS.codex.models.default ? undefined : model,
     sandbox,
     cwd: opts.cwd, // worktree isolation ของ sub-agent
     signal: opts.signal,
@@ -239,6 +242,8 @@ async function runDelegate(opts: RunAgentOptions): Promise<RunAgentResult> {
         text = full;
         if (delta) opts.onEvent?.({ type: 'text', text: delta });
       } else if (e.type === 'usage') {
+        const parsed = usageFromCodexPayload(e.usage);
+        if (parsed) meter.add(parsed);
         opts.onEvent?.({ type: 'finish', detail: 'codex · ChatGPT quota' });
       }
     },
@@ -249,7 +254,25 @@ async function runDelegate(opts: RunAgentOptions): Promise<RunAgentResult> {
     { role: 'user', content: opts.prompt },
     { role: 'assistant', content: text },
   ];
-  return { messages, text, cost: meter };
+  return finishAgentRun(opts, { messages, text, cost: meter });
+}
+
+function inferUsageSource(opts: RunAgentOptions): UsageSource {
+  if (opts.usageMeta?.source) return opts.usageMeta.source;
+  if ((opts.subagentDepth ?? 0) > 0) return 'subagent';
+  if (opts.planMode) return 'plan';
+  return 'headless';
+}
+
+function finishAgentRun(opts: RunAgentOptions, result: RunAgentResult): RunAgentResult {
+  recordAgentUsage({
+    model: opts.model,
+    cost: result.cost,
+    cwd: opts.cwd ?? agentCwd(),
+    sessionId: opts.usageMeta?.sessionId,
+    source: inferUsageSource(opts),
+  });
+  return result;
 }
 
 export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
@@ -263,6 +286,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   if (PROVIDERS[parseSpec(opts.model).provider]?.kind === 'delegate') {
     return runDelegate(opts);
   }
+  opts.onEvent?.({ type: 'status', detail: `Agent · ${opts.model}` });
   const rawModel = resolveModel(opts.model); // throws ถ้าไม่มี key / provider ผิด
   let meter = new CostMeter(specKey(opts.model), opts.budgetUsd, sharedBudget);
 
@@ -411,13 +435,16 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
           opts.onEvent?.({ type: 'text', text: part.text });
           break;
         case 'reasoning-delta':
+          opts.onEvent?.({ type: 'status', detail: 'Thinking…' });
           opts.onEvent?.({ type: 'reasoning', text: part.text });
           break;
         case 'tool-call':
           if (isMutatingTool(part.toolName)) sideEffectToolSeen = true;
+          opts.onEvent?.({ type: 'status', detail: `Tool · ${part.toolName}` });
           opts.onEvent?.({ type: 'tool-call', tool: part.toolName, detail: part.input });
           break;
         case 'tool-result':
+          opts.onEvent?.({ type: 'status', detail: `Done · ${part.toolName}` });
           opts.onEvent?.({ type: 'tool-result', tool: part.toolName, detail: part.output });
           break;
         case 'error':
@@ -466,5 +493,5 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   const response = await result.response;
   // คืน history เต็ม (conversation + response messages) — ไม่รวม system (กัน user turn เก่าหาย + ไม่ save system ซ้ำ)
-  return { messages: [...conversation, ...response.messages], text, cost: meter };
+  return finishAgentRun(opts, { messages: [...conversation, ...response.messages], text, cost: meter });
 }

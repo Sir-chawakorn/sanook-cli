@@ -179,6 +179,7 @@ usage:
   ${BRAND.cliName} --json "<task>"     headless, JSONL output (for CI/scripts)
   ${BRAND.cliName} sessions             list/resume-audit saved conversation sessions
   ${BRAND.cliName} insights             local usage/session insights
+  ${BRAND.cliName} usage [daily|...]    token/cost ledger (ccusage-style)
   ${BRAND.cliName} dump [--show-keys]   support snapshot (secrets redacted)
   ${BRAND.cliName} prompt-size [--json]  inspect prompt/context budget without calling a model
   ${BRAND.cliName} runtimes [--json]     inspect optional Python/Rust runtime surface
@@ -2475,6 +2476,17 @@ async function runSessions(args: string[]): Promise<void> {
   process.exit(1);
 }
 
+async function runUsage(args: string[]): Promise<void> {
+  const { parseUsageArgs, renderUsageReport, usageHelpText } = await import('./usage-cli.js');
+  const parsed = parseUsageArgs(args);
+  if (!parsed) {
+    console.log(usageHelpText());
+    if (args.length && !args.includes('-h') && !args.includes('--help')) process.exit(2);
+    return;
+  }
+  console.log(await renderUsageReport(parsed));
+}
+
 async function runInsights(args: string[]): Promise<void> {
   const { parseInsightsArgs } = await import('./insights-args.js');
   const parsed = parseInsightsArgs(args);
@@ -4289,6 +4301,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'status' && (argv.length === 1 || argv[1].startsWith('--'))) return runStatus();
   if (argv[0] === 'auth') return runAuth(argv.slice(1));
   if (argv[0] === 'sessions' || argv[0] === 'session') return runSessions(argv.slice(1));
+  if (argv[0] === 'usage') return runUsage(argv.slice(1));
   if (argv[0] === 'insights') return runInsights(argv.slice(1));
   if (argv[0] === 'memory' && ['log', 'stats', undefined].includes(argv[1])) return runMemory(argv.slice(1));
   if (argv[0] === 'dump') return runDump(argv.slice(1));

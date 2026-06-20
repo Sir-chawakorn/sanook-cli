@@ -221,6 +221,10 @@ async function runAndSaveGatewayTurn(
     maxSteps: opts.maxSteps ?? 20,
     budgetUsd: opts.budgetUsd,
     permissionMode: opts.permissionMode ?? 'ask',
+    usageMeta: {
+      sessionId: `${opts.platform}:${opts.target}`,
+      source: 'gateway',
+    },
   });
   await saveGatewayState(opts, existing, model, messages);
   return { text, messages, suppressDelivery: shouldSuppressDelivery(text) };

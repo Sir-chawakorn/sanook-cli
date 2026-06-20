@@ -5,9 +5,13 @@ import { appHomePath, appProjectPath, BRAND } from './brand.js';
 import { projectRoot, projectTrustStatus } from './trust.js';
 import { registerPricing, type Pricing } from './cost.js';
 
-export const CONFIG_DIR = appHomePath();
-const CONFIG_PATH = join(CONFIG_DIR, 'config.json');
-const AUTH_PATH = join(CONFIG_DIR, 'auth.json'); // API keys (chmod 0600)
+export function configHomeDir(): string {
+  return appHomePath();
+}
+
+function authPath(): string {
+  return join(configHomeDir(), 'auth.json');
+}
 const AUTH_ENV_VAR_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const RESERVED_AUTH_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -126,6 +130,10 @@ export async function agentTuning(): Promise<AgentTuning> {
 
 const warnedBadConfigKeys = new Set<string>();
 
+function globalConfigPath(): string {
+  return join(configHomeDir(), 'config.json');
+}
+
 /**
  * Validate the merged config, but degrade gracefully: a malformed strict field (bad model/maxSteps/
  * permissionMode/budgetUsd/pricing in a hand-edited config.json) is dropped to its default with a
@@ -179,7 +187,7 @@ export async function loadConfig(
   overrides: Record<string, unknown> = {},
   cwd: string = process.cwd(),
 ): Promise<Config> {
-  const global = await readJson(CONFIG_PATH);
+  const global = await readJson(globalConfigPath());
   const root = await projectRoot(cwd);
   const projectRaw = await readJson(appProjectPath(root, 'config.json'));
   const trust = await projectTrustStatus(root);
@@ -234,7 +242,7 @@ export function parsePricingOverride(raw: string): PricingOverride {
 /** ครั้งแรกที่รัน (ยังไม่มี global config) → ต้องทำ setup wizard */
 export async function isFirstRun(): Promise<boolean> {
   try {
-    await readFile(CONFIG_PATH, 'utf8');
+    await readFile(globalConfigPath(), 'utf8');
     return false;
   } catch {
     return true;
@@ -245,28 +253,28 @@ export async function isFirstRun(): Promise<boolean> {
 export async function saveGlobalConfig(
   cfg: { model?: string; provider?: string; locale?: string } & Record<string, unknown>,
 ): Promise<void> {
-  await mkdir(CONFIG_DIR, { recursive: true });
-  const existing = await readJson(CONFIG_PATH);
-  await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, ...cfg }, null, 2)}\n`, { mode: 0o600 });
-  await chmod(CONFIG_PATH, 0o600).catch(() => {});
+  await mkdir(configHomeDir(), { recursive: true });
+  const existing = await readJson(globalConfigPath());
+  await writeFile(globalConfigPath(), `${JSON.stringify({ ...existing, ...cfg }, null, 2)}\n`, { mode: 0o600 });
+  await chmod(globalConfigPath(), 0o600).catch(() => {});
 }
 
 /** บันทึก path ของ second-brain workspace ลง global config (merge — ไม่ทับ field อื่น) */
 export async function saveBrainPath(path: string): Promise<void> {
-  await mkdir(CONFIG_DIR, { recursive: true });
-  const existing = await readJson(CONFIG_PATH);
-  await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, brainPath: path }, null, 2)}\n`, { mode: 0o600 });
-  await chmod(CONFIG_PATH, 0o600).catch(() => {});
+  await mkdir(configHomeDir(), { recursive: true });
+  const existing = await readJson(globalConfigPath());
+  await writeFile(globalConfigPath(), `${JSON.stringify({ ...existing, brainPath: path }, null, 2)}\n`, { mode: 0o600 });
+  await chmod(globalConfigPath(), 0o600).catch(() => {});
 }
 
 /** อ่าน config.json ดิบ (ไม่ apply default/schema) — สำหรับ `sanook config` */
 export async function readGlobalConfigRaw(): Promise<Record<string, unknown>> {
-  return readJson(CONFIG_PATH);
+  return readJson(globalConfigPath());
 }
 
 /** path ของ auth.json (ใช้โชว์ใน CLI เท่านั้น; ห้าม print raw secret) */
 export function authConfigPath(): string {
-  return AUTH_PATH;
+  return authPath();
 }
 
 function isSafeAuthEnvVarName(name: string): boolean {
@@ -275,7 +283,7 @@ function isSafeAuthEnvVarName(name: string): boolean {
 
 /** อ่าน auth.json ดิบแบบกรองเฉพาะ string values — caller ต้อง redact ก่อนโชว์ */
 export async function readStoredAuthRaw(): Promise<Record<string, string>> {
-  const raw = await readJson(AUTH_PATH);
+  const raw = await readJson(authPath());
   const auth: Record<string, string> = {};
   for (const [k, v] of Object.entries(raw)) {
     if (isSafeAuthEnvVarName(k) && typeof v === 'string') auth[k] = v;
@@ -285,43 +293,43 @@ export async function readStoredAuthRaw(): Promise<Record<string, string>> {
 
 /** merge patch ลง config.json (สำหรับ `sanook config set`) */
 export async function patchGlobalConfig(patch: Record<string, unknown>): Promise<void> {
-  await mkdir(CONFIG_DIR, { recursive: true });
-  const existing = await readJson(CONFIG_PATH);
-  await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, ...patch }, null, 2)}\n`, { mode: 0o600 });
-  await chmod(CONFIG_PATH, 0o600).catch(() => {});
+  await mkdir(configHomeDir(), { recursive: true });
+  const existing = await readJson(globalConfigPath());
+  await writeFile(globalConfigPath(), `${JSON.stringify({ ...existing, ...patch }, null, 2)}\n`, { mode: 0o600 });
+  await chmod(globalConfigPath(), 0o600).catch(() => {});
 }
 
 /** บันทึก API key ลง ~/.sanook/auth.json (chmod 0600) + set env ทันทีสำหรับ session นี้ */
 export async function saveKey(envVar: string, key: string): Promise<void> {
   if (!isSafeAuthEnvVarName(envVar)) throw new Error(`env var ไม่ถูกต้อง: ${envVar}`);
-  await mkdir(CONFIG_DIR, { recursive: true });
+  await mkdir(configHomeDir(), { recursive: true });
   const auth = await readStoredAuthRaw();
   auth[envVar] = key;
-  await writeFile(AUTH_PATH, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
-  await chmod(AUTH_PATH, 0o600); // เจ้าของอ่าน/เขียนเท่านั้น
+  await writeFile(authPath(), `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
+  await chmod(authPath(), 0o600); // เจ้าของอ่าน/เขียนเท่านั้น
   process.env[envVar] = key;
 }
 
 /** ลบ key ที่ Sanook เก็บไว้ใน auth.json (ไม่แตะ env จริงของ shell ภายนอก) */
 export async function removeStoredKey(envVar: string): Promise<boolean> {
   if (!isSafeAuthEnvVarName(envVar)) return false;
-  await mkdir(CONFIG_DIR, { recursive: true });
+  await mkdir(configHomeDir(), { recursive: true });
   const auth = await readStoredAuthRaw();
   if (!Object.prototype.hasOwnProperty.call(auth, envVar)) return false;
   delete auth[envVar];
-  await writeFile(AUTH_PATH, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
-  await chmod(AUTH_PATH, 0o600).catch(() => {});
+  await writeFile(authPath(), `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
+  await chmod(authPath(), 0o600).catch(() => {});
   delete process.env[envVar];
   return true;
 }
 
 /** ล้าง auth.json ที่ Sanook เก็บไว้ทั้งหมด */
 export async function clearStoredAuth(): Promise<void> {
-  await mkdir(CONFIG_DIR, { recursive: true });
+  await mkdir(configHomeDir(), { recursive: true });
   const auth = await readStoredAuthRaw();
   for (const envVar of Object.keys(auth)) delete process.env[envVar];
-  await writeFile(AUTH_PATH, '{}\n', { mode: 0o600 });
-  await chmod(AUTH_PATH, 0o600).catch(() => {});
+  await writeFile(authPath(), '{}\n', { mode: 0o600 });
+  await chmod(authPath(), 0o600).catch(() => {});
 }
 
 /** โหลด key จาก auth.json เข้า env ตอน boot (ไม่ override env ที่ตั้งไว้แล้ว) */

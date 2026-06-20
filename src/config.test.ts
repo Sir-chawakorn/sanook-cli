@@ -8,9 +8,13 @@ import { hasPricingForKey, PRICING } from './cost.js';
 // ใช้ cwd = temp dir (ไม่แตะ process.env) — test project/CLI layering แบบ relative
 describe('loadConfig layering', () => {
   let dir: string;
+  let home: string;
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'sanook-cfg-'));
+    home = await mkdtemp(join(tmpdir(), 'sanook-cfg-home-'));
+    vi.stubEnv('HOME', home);
     await mkdir(join(dir, '.sanook'), { recursive: true });
+    await mkdir(join(home, '.sanook'), { recursive: true });
   });
   afterEach(async () => {
     vi.unstubAllEnvs();
@@ -18,6 +22,7 @@ describe('loadConfig layering', () => {
       if (key.startsWith('test:')) delete PRICING[key];
     }
     await rm(dir, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true });
   });
 
   it('project config override default', async () => {

@@ -136,10 +136,11 @@ describe('parseCommand', () => {
     expect(result.message).toContain('saved sessions');
   });
   it('/cost → คืน cost summary จาก ctx', () => {
-    expect(parseCommand('/cost', { model: 'sonnet', costSummary: 'tokens: 100' }).message).toBe('tokens: 100');
+    expect(parseCommand('/cost', { model: 'sonnet', costSummary: 'tokens: 100' }).message).toContain('tokens: 100');
+    expect(parseCommand('/cost', { model: 'sonnet', costSummary: 'tokens: 100' }).message).toContain('usage daily');
   });
   it('/usage → Hermes-style alias ของ /cost', () => {
-    expect(parseCommand('/usage', { model: 'sonnet', costSummary: 'tokens: 100' }).message).toBe('tokens: 100');
+    expect(parseCommand('/usage', { model: 'sonnet', costSummary: 'tokens: 100' }).message).toContain('tokens: 100');
   });
   it('/insights → Hermes-style local insights command', () => {
     expect(parseCommand('/insights', ctx)).toMatchObject({ action: 'insights', insightsDays: 30 });

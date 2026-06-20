@@ -13,6 +13,7 @@ import {
   parseSlashInvocation,
 } from '../commands.js';
 import { runAgent, type AgentEvent } from '../loop.js';
+import { finalizeReplSession, formatFinalizeMessage } from '../session-brain.js';
 import { saveSession, newSessionId, listSessions, removeSession, renameSession, type Session } from '../session.js';
 import { TOOL_CATALOG } from '../tool-catalog.js';
 import { getBrainPath, appendBrainWorklog } from '../memory.js';
@@ -106,6 +107,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   });
   const [streaming, setStreaming] = useState('');
   const [thinking, setThinking] = useState('');
+  const [agentStatus, setAgentStatus] = useState('');
   const [toolTrail, setToolTrail] = useState<ToolTrailItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [model, setModel] = useState(initialModel);
@@ -127,6 +129,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const msgsRef = useRef<ModelMessage[]>(initialHistory ?? []); // conversation จริงสำหรับ LLM (สะสมข้ามรอบ)
   const sessionId = useRef(newSessionId());
   const sessionCreated = useRef(new Date().toISOString());
+  const exitingRef = useRef(false);
   const approvalResolve = useRef<((ok: boolean) => void) | null>(null);
   const replHistory = useRef<string[]>(loadHistory()); // prompt เก่า (persist) สำหรับ ↑/↓
   const checkpoints = useRef<Checkpoint[]>([]);
@@ -326,6 +329,25 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     editor.setValue(next);
     setCompletionIndex(0);
     return true;
+  };
+
+  const requestExit = (): void => {
+    if (exitingRef.current) return;
+    exitingRef.current = true;
+    void finalizeReplSession({
+      sessionId: sessionId.current,
+      sessionCreated: sessionCreated.current,
+      model,
+      cwd,
+      messages: msgsRef.current,
+      history: history.map((turn) => ({ role: turn.role, text: turn.text })),
+    })
+      .then((result) => {
+        const note = formatFinalizeMessage(result);
+        if (note) process.stderr.write(`\n${note}\n`);
+        exit();
+      })
+      .catch(() => exit());
   };
 
   // /diff /undo — git-backed (execFile ไม่ผ่าน shell)
@@ -820,7 +842,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     if (action === 'submit') void submit(editor.value);
     else if (action === 'interrupt') {
       if (editor.value) editor.reset(); // Ctrl+C ครั้งแรก = ล้างบรรทัด, ว่างแล้ว = ออก
-      else exit();
+      else requestExit();
     }
   });
 
@@ -920,7 +942,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     const cmd = parseCommand(displayText, { model, costSummary: lastCost.current });
     if (cmd.handled) {
       addTurn('user', displayText);
-      if (cmd.action === 'quit') return exit();
+      if (cmd.action === 'quit') return requestExit();
       if (cmd.action === 'clear') {
         msgsRef.current = [];
         checkpoints.current = [];
@@ -1036,6 +1058,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     resetLiveToolTrail();
     resetLiveThinking();
     setStreaming('');
+    setAgentStatus('Starting…');
     setBusy(true);
     let buf = '';
     let reasoningBuf = '';
@@ -1052,8 +1075,12 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         permissionMode,
         approve: requestApproval,
         signal: ac.signal,
+        usageMeta: { sessionId: sessionId.current, source: 'repl' },
         onEvent: (e: AgentEvent) => {
-          if (e.type === 'text') {
+          if (e.type === 'status' && typeof e.detail === 'string') {
+            setAgentStatus(e.detail);
+          } else if (e.type === 'text') {
+            setAgentStatus((prev) => (prev.startsWith('Codex') || prev.startsWith('Agent') ? 'Writing…' : prev));
             buf += e.text ?? '';
             const now = Date.now();
             if (now - lastFlush > 80) {
@@ -1109,6 +1136,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       }
     } finally {
       setStreaming('');
+      setAgentStatus('');
       resetLiveThinking();
       resetLiveToolTrail();
       setBusy(false);
@@ -1190,7 +1218,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       ) : (
         <Box marginTop={1} borderStyle="round" borderColor={busy ? 'gray' : 'blue'} paddingX={1}>
           <Text color={busy ? 'gray' : 'cyan'}>{busy ? '· ' : '› '}</Text>
-          <InputView value={editor.value} cursor={editor.cursor} busy={busy} />
+          <InputView value={editor.value} cursor={editor.cursor} busy={busy} agentStatus={agentStatus} toolTrail={toolTrail} />
         </Box>
       )}
       <Text dimColor>
@@ -1214,8 +1242,28 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
 }
 
 /** input ที่มี cursor (inverse) + placeholder — minimal; รับ input ได้แม้ busy (ต่อคิว) */
-function InputView({ value, cursor, busy }: { value: string; cursor: number; busy: boolean }) {
-  if (busy && !value) return <Text dimColor>กำลังทำงาน… Esc/Ctrl+C หยุด · พิมพ์เพื่อต่อคิว (⏎)</Text>;
+function InputView({
+  value,
+  cursor,
+  busy,
+  agentStatus,
+  toolTrail,
+}: {
+  value: string;
+  cursor: number;
+  busy: boolean;
+  agentStatus?: string;
+  toolTrail?: ToolTrailItem[];
+}) {
+  if (busy && !value) {
+    const runningTool = toolTrail?.find((item) => item.status === 'running');
+    const detail = agentStatus || (runningTool ? `Tool · ${runningTool.name}` : 'Working…');
+    return (
+      <Text dimColor>
+        {detail} · Esc/Ctrl+C หยุด · พิมพ์เพื่อต่อคิว (⏎)
+      </Text>
+    );
+  }
   if (!busy && !value) return <Text dimColor>ถามอะไรก็ได้ — /help ดูคำสั่ง · /tools ดู tools · @ไฟล์ แนบ context/รูป</Text>;
   const before = value.slice(0, cursor);
   const at = value.slice(cursor, cursor + 1) || ' ';

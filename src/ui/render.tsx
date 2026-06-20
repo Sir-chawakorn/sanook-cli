@@ -60,6 +60,7 @@ export function Root({ needsSetup, appProps }: RootProps) {
     const onComplete = (a: BrainAnswers): void => {
       void (async () => {
         const { scaffoldBrain, BRAIN_DEFAULTS, expandHome, wireBrainMcp } = await import('../brain.js');
+        const { linkBrainToProject } = await import('../brain-link.js');
         const today = new Date().toISOString().slice(0, 10);
         const target = expandHome(a.path);
         try {
@@ -72,9 +73,13 @@ export function Root({ needsSetup, appProps }: RootProps) {
           });
           await saveBrainPath(target);
           const wired = await wireBrainMcp(target).catch(() => 'skip');
+          const linked = await linkBrainToProject({ brainPath: target, cwd: process.cwd(), today }).catch(() => null);
+          const linkNote = linked?.projectRelDir
+            ? ` · project ${linked.projectRelDir} · ${linked.memoryCreated ? 'created' : 'linked'} ${BRAND.memoryFileName}`
+            : '';
           setBrainNote(
             `✅ second-brain — ${target} · สร้าง ${res.created.length} ไฟล์ · ` +
-              `${wired === 'added' ? 'wire filesystem MCP เข้า vault แล้ว' : 'MCP เดิมอยู่แล้ว (ไม่ทับ)'} · เปิดใน Obsidian: Open folder as vault`,
+              `${wired === 'added' ? 'wire filesystem MCP เข้า vault แล้ว' : 'MCP เดิมอยู่แล้ว (ไม่ทับ)'}${linkNote} · เปิดใน Obsidian: Open folder as vault`,
           );
         } catch (e) {
           setBrainNote(`⚠ สร้าง second-brain ไม่สำเร็จ: ${(e as Error).message} — ลองใหม่ด้วย ${'`'}sanook brain init${'`'}`);
@@ -109,6 +114,7 @@ export function startBrainSetup(): Promise<void> {
     const onComplete = (a: BrainAnswers): void => {
       void (async () => {
         const { scaffoldBrain, BRAIN_DEFAULTS, expandHome, wireBrainMcp } = await import('../brain.js');
+        const { linkBrainToProject } = await import('../brain-link.js');
         const today = new Date().toISOString().slice(0, 10);
         const target = expandHome(a.path);
         const res = await scaffoldBrain(target, {
@@ -120,10 +126,13 @@ export function startBrainSetup(): Promise<void> {
         });
         await saveBrainPath(target);
         const wired = await wireBrainMcp(target).catch(() => 'skip');
+        const linked = await linkBrainToProject({ brainPath: target, cwd: process.cwd(), today }).catch(() => null);
         unmount();
+        const linkLine = linked?.projectRelDir ? `\n   linked repo → ${linked.projectRelDir} · ${BRAND.memoryFileName} in cwd` : '';
         process.stdout.write(
           `\n✅ second-brain — ${target}\n   สร้าง ${res.created.length} · ข้าม ${res.skipped.length} (มีอยู่แล้ว ไม่ทับ)` +
             `\n   ${wired === 'added' ? 'wire filesystem MCP เข้า vault แล้ว (agent อ่าน/เขียนได้)' : 'MCP: มี server เดิมอยู่แล้ว (ไม่ทับ)'}` +
+            `${linkLine}` +
             `\n   เปิดใน Obsidian: Open folder as vault\n`,
         );
         resolve();

@@ -331,7 +331,10 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
       return { handled: true, action: 'rewind' };
     case 'cost':
     case 'usage':
-      return { handled: true, message: ctx.costSummary ?? '(ยังไม่มี usage รอบนี้)' };
+      return {
+        handled: true,
+        message: `${ctx.costSummary ?? '(ยังไม่มี usage รอบนี้)'}\n→ ${BRAND.cliName} usage daily`,
+      };
     case 'insights': {
       const parsed = parseInsightsArgs(args);
       if (parsed === null) return { handled: true, message: 'ใช้: /insights [--days N] [--all] (N ต้องเป็นจำนวนวันบวก)' };

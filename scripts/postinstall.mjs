@@ -20,11 +20,11 @@ try {
   const bold = (s) => paint('1', s);
 
   if (isGlobal) {
-    console.log(`\n${bold('✅ sanook-cli พร้อมใช้')} — พิมพ์ ${cyan('sanook')} เพื่อเริ่ม`);
-    console.log(dim('   ยังพิมพ์ "sanook" ไม่เจอ? ปิด-เปิด terminal ใหม่ · ตรวจ: ') + cyan('npx sanook doctor') + '\n');
+    console.log(`\n${bold('✅ sanook-cli พร้อมใช้')} — พิมพ์ ${cyan('sanook')} หรือ ${cyan('sanookai')} เพื่อเริ่ม`);
+    console.log(dim('   Command installed: sanook (alias: sanookai) · ปิด-เปิด terminal ถ้ายังไม่เจอ · ') + cyan('sanook doctor') + '\n');
   } else {
-    console.log(`\n${bold('sanook-cli ลงแบบ local แล้ว')} — คำสั่ง ${cyan('sanook')} ยัง${bold('ไม่')}อยู่ใน PATH`);
-    console.log(`  ${dim('• รันเลยตอนนี้:')}            ${cyan('npx sanook')}`);
+    console.log(`\n${bold('sanook-cli ลงแบบ local แล้ว')} — ${cyan('sanook')} / ${cyan('sanookai')} ยัง${bold('ไม่')}อยู่ใน PATH`);
+    console.log(`  ${dim('• รันเลยตอนนี้:')}            ${cyan('npx sanook')}  ${dim('(or')} ${cyan('npx sanookai')}${dim(')')}`);
     console.log(`  ${dim('• ลงให้พิมพ์ sanook ตรงๆ:')}  ${cyan('npm install -g sanook-cli')}`);
     console.log(`  ${dim('• ตรวจ/แก้ PATH:')}           ${cyan('npx sanook doctor')}\n`);
   }
