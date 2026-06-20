@@ -133,6 +133,17 @@ describe('appendBrainWorklog (auto worklog → vault Sessions)', () => {
     expect((c.match(/up:: \[\[Sessions/g) || []).length).toBe(1); // up:: ไม่ซ้ำ
   });
 
+  it('repair ไฟล์ worklog ที่มีอยู่แต่ว่าง/malformed ก่อน append', async () => {
+    const file = join(vault, 'Sessions', '2026-06-15-worklog.md');
+    await writeFile(file, '\n\n## old malformed block\n- prompt: before\n');
+    await appendBrainWorklog(vault, { prompt: 'after', summary: 'done', model: 'm', today: '2026-06-15' });
+    const c = await readFile(file, 'utf8');
+    expect(c).toContain('note_type: session-log');
+    expect(c).toContain('old malformed block');
+    expect(c).toContain('after');
+    expect(c.trimEnd().endsWith('up:: [[Sessions/_Index]]')).toBe(true);
+  });
+
   it('ไม่เขียนถ้าไม่มี Sessions/ (ไม่ใช่ vault)', async () => {
     const notVault = await mkdtemp(join(tmpdir(), 'x-'));
     expect(await appendBrainWorklog(notVault, { prompt: 'x', summary: 'y', model: 'm', today: '2026-06-15' })).toBe(false);
@@ -174,6 +185,7 @@ describe('appendBrainTranscript (full conversation → vault Sessions)', () => {
     const c = await readFile(chatFile('sess_abc123'), 'utf8');
     expect(c).toContain('tags: [session, transcript, chat]');
     expect(c).toContain('**You:**');
+    expect(c).toContain('## 03:00 · codex:gpt-5');
     expect(c).toContain('อธิบาย memory ของ sanook');
     expect(c).toContain('memory มีหลายชั้น...');
     expect(c.trimEnd().endsWith('up:: [[Sessions/_Index]]')).toBe(true);
@@ -188,6 +200,24 @@ describe('appendBrainTranscript (full conversation → vault Sessions)', () => {
     expect(c).toContain('q2');
     expect(c).toContain('a2');
     expect((c.match(/up:: \[\[Sessions/g) || []).length).toBe(1);
+  });
+
+  it('repair ไฟล์ chat ที่มีอยู่แต่ว่าง/malformed ก่อน append', async () => {
+    const file = chatFile('s_empty');
+    await writeFile(file, '\n## old chat block\nlegacy text\n');
+    await appendBrainTranscript(vault, {
+      sessionId: 's_empty',
+      prompt: 'new question',
+      answer: 'new answer',
+      model: 'm',
+      createdIso: '2026-06-15T04:10:00.000Z',
+    });
+    const c = await readFile(file, 'utf8');
+    expect(c).toContain('tags: [session, transcript, chat]');
+    expect(c).toContain('old chat block');
+    expect(c).toContain('new question');
+    expect(c).toContain('## 04:10 · m');
+    expect(c.trimEnd().endsWith('up:: [[Sessions/_Index]]')).toBe(true);
   });
 
   it('redact API key ออกจากบทสนทนา', async () => {

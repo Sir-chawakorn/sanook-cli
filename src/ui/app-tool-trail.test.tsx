@@ -141,6 +141,42 @@ describe('App tool trail', () => {
     unmount();
   });
 
+  it('keeps only the latest tool turn expanded in scrollback; older tool turns downgrade to compact', async () => {
+    h.run = async (opts) => {
+      const tag = opts.prompt.includes('second') ? 'second' : 'first';
+      opts.onEvent?.({ detail: { path: `src/${tag}.tsx` }, tool: 'read_file', type: 'tool-call' });
+      opts.onEvent?.({ detail: `detail-${tag}`, tool: 'read_file', type: 'tool-result' });
+      opts.onEvent?.({ text: `answer ${tag}`, type: 'text' });
+      return {
+        cost: { summary: () => 'tokens: 10' },
+        messages: [...(opts.history ?? []), { content: opts.prompt, role: 'user' }, { content: `answer ${tag}`, role: 'assistant' }],
+        text: `answer ${tag}`,
+      };
+    };
+    const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" permissionMode="auto" />);
+
+    stdin.write('first task');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('answer first'));
+
+    stdin.write('second task');
+    await tick();
+    stdin.write('\r');
+    await waitFor(() => (lastFrame() ?? '').includes('answer second'));
+
+    const frame = lastFrame() ?? '';
+    // latest tool turn keeps the expanded diff/detail…
+    expect(frame).toContain('detail-second');
+    expect(frame).toContain('src/second.tsx');
+    // …while the older tool turn downgrades to the compact one-liner (no per-item detail)
+    expect(frame).toContain('tools: +read_file');
+    expect(frame).not.toContain('detail-first');
+    expect(frame).not.toContain('src/first.tsx');
+
+    unmount();
+  });
+
   it('renders reasoning deltas in a thinking panel and /details thinking hidden hides saved thinking', async () => {
     h.run = async (opts) => {
       opts.onEvent?.({ text: 'Plan next tool\nRead package metadata', type: 'reasoning' });

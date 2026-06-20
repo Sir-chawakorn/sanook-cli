@@ -40,6 +40,16 @@ function json(res: ServerResponse, status: number, body: unknown): void {
   res.end(`${JSON.stringify(body)}\n`);
 }
 
+async function packageVersion(): Promise<string> {
+  if (process.env.npm_package_version) return process.env.npm_package_version;
+  try {
+    const pkg = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as { version?: unknown };
+    return typeof pkg.version === 'string' && pkg.version ? pkg.version : 'dev';
+  } catch {
+    return 'dev';
+  }
+}
+
 async function handleApi(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<boolean> {
   if (req.method === 'GET' && pathname === '/api/status') {
     const config = await loadConfig({});
@@ -47,7 +57,7 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, pathname: st
     json(res, 200, {
       product: 'Sanook Dashboard',
       cli: BRAND.cliName,
-      version: process.env.npm_package_version ?? 'dev',
+      version: await packageVersion(),
       model: config.model,
       locale: config.locale,
       brainPath: config.brainPath ?? null,

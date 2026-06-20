@@ -209,7 +209,7 @@ export function startPersonaSetup(): Promise<void> {
         const vaultLine = vaultWritten
           ? `\n   เขียนโปรไฟล์ลง vault → ${brain}/Shared/User-Persona/persona.md`
           : brain
-            ? ''
+            ? `\n   ⚠ ข้ามการเขียนโปรไฟล์ลง vault (ไม่พบโฟลเดอร์ Shared/User-Persona — รัน \`${BRAND.cliName} brain init\` เพื่อ scaffold ใหม่)`
             : `\n   (ยังไม่มี second-brain — รัน \`${BRAND.cliName} brain init\` เพื่อเก็บโปรไฟล์ลง vault ด้วย)`;
         process.stdout.write(`\n✅ บันทึก Persona เรียบร้อย\n${memLine}${vaultLine}\n`);
         resolve();

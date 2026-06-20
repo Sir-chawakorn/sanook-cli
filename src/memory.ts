@@ -327,6 +327,23 @@ export async function appendToVaultInbox(brainPath: string, fact: string): Promi
 }
 
 /** บันทึก worklog ย่อเข้า vault Sessions/ (รายวัน) — "second brain จำว่าวันนี้ทำอะไร" */
+function worklogHeader(today: string): string {
+  return `---\ntags: [session, session-log, worklog]\nnote_type: session-log\ncreated: ${today}\nupdated: ${today}\nparent: "[[Sessions/_Index]]"\nai_surface: history\n---\n\n# ${today} — Worklog (auto by ${BRAND.cliName})\n`;
+}
+
+function chatTranscriptHeader(today: string): string {
+  return `---\ntags: [session, transcript, chat]\nnote_type: session-log\ncreated: ${today}\nupdated: ${today}\nparent: "[[Sessions/_Index]]"\nai_surface: history\n---\n\n# ${today} — Chat transcript (auto by ${BRAND.cliName})\n\n> บทสนทนาเต็มของ session นี้ — เก็บอัตโนมัติทุก turn\n`;
+}
+
+function ensureSessionNoteScaffold(content: string, header: string): string {
+  const clean = content.trimEnd();
+  let next = clean;
+  if (!next) next = header.trimEnd();
+  else if (!next.includes('note_type: session-log')) next = `${header.trimEnd()}\n\n${next}`;
+  if (!next.includes('\nup:: ')) next = `${next.trimEnd()}\n\nup:: [[Sessions/_Index]]`;
+  return `${next.trimEnd()}\n`;
+}
+
 export async function appendBrainWorklog(
   brainPath: string,
   entry: { prompt: string; summary: string; model: string; today: string },
@@ -340,8 +357,9 @@ export async function appendBrainWorklog(
   try {
     content = await readFile(file, 'utf8');
   } catch {
-    content = `---\ntags: [session, session-log, worklog]\nnote_type: session-log\ncreated: ${entry.today}\nupdated: ${entry.today}\nparent: "[[Sessions/_Index]]"\nai_surface: history\n---\n\n# ${entry.today} — Worklog (auto by ${BRAND.cliName})\n\nup:: [[Sessions/_Index]]\n`;
+    content = '';
   }
+  content = ensureSessionNoteScaffold(content, worklogHeader(entry.today));
   const block = `\n## ${topic}\n- prompt: ${redactKey(entry.prompt).trim().slice(0, 200)}\n- model: ${entry.model}\n- ${redactKey(entry.summary).trim().slice(0, 300)}\n`;
   // แทรกก่อน up:: ท้ายไฟล์ (กัน up:: หลุดไปกลาง)
   const out = content.includes('\nup:: ')
@@ -368,7 +386,7 @@ export async function appendBrainTranscript(
   const today = created.slice(0, 10);
   const sid = entry.sessionId.slice(-6) || 'session';
   const file = join(dir, `${today}-${sid}-chat.md`);
-  const time = new Date().toISOString().slice(11, 16); // HH:MM (UTC)
+  const time = created.slice(11, 16); // HH:MM (UTC)
   const prompt = redactKey(entry.prompt).trim();
   const answer = redactKey(entry.answer).trim();
   if (!prompt && !answer) return false;
@@ -378,8 +396,9 @@ export async function appendBrainTranscript(
     try {
       content = await readFile(file, 'utf8');
     } catch {
-      content = `---\ntags: [session, transcript, chat]\nnote_type: session-log\ncreated: ${today}\nupdated: ${today}\nparent: "[[Sessions/_Index]]"\nai_surface: history\n---\n\n# ${today} — Chat transcript (auto by ${BRAND.cliName})\n\n> บทสนทนาเต็มของ session นี้ — เก็บอัตโนมัติทุก turn\n\nup:: [[Sessions/_Index]]\n`;
+      content = '';
     }
+    content = ensureSessionNoteScaffold(content, chatTranscriptHeader(today));
     const block = [`\n## ${time} · ${entry.model}`, '', '**You:**', '', prompt || '_(empty)_', '', `**${BRAND.agentName}:**`, '', answer || '_(no text output)_', ''].join('\n');
     const out = content.includes('\nup:: ')
       ? content.replace(/\nup:: .*$/s, `\n${block}\nup:: [[Sessions/_Index]]\n`)
@@ -451,9 +470,12 @@ export async function seedPersonaMemory(input: {
     let store = await loadStore();
     for (const inc of facts) {
       const { store: next, op } = mergeFact(store, { ...inc, text: redactKey(inc.text) });
+      // persist any store mutation (NOOP bumps accessCount, QUARANTINE holds the fact aside),
+      // but only count facts actually remembered as new/changed — so a re-run with identical
+      // answers reports "nothing new" instead of falsely claiming N facts were saved.
       if (op !== 'PROTECTED_HALT') {
         store = next;
-        written += 1;
+        if (op === 'ADD' || op === 'UPDATE' || op === 'SUPERSEDE') written += 1;
       }
     }
     await saveStore(store);
@@ -480,9 +502,12 @@ export async function seedPersonaFacts(facts: string[]): Promise<number> {
         trust: 'owner',
         tier: 'protected',
       });
+      // persist any store mutation (NOOP bumps accessCount, QUARANTINE holds the fact aside),
+      // but only count facts actually remembered as new/changed — so a re-run with identical
+      // answers reports "nothing new" instead of falsely claiming N facts were saved.
       if (op !== 'PROTECTED_HALT') {
         store = next;
-        written += 1;
+        if (op === 'ADD' || op === 'UPDATE' || op === 'SUPERSEDE') written += 1;
       }
     }
     await saveStore(store);

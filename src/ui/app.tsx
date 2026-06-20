@@ -1183,7 +1183,19 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const contextTokens = estimateTokens(msgsRef.current);
   const activeQueueIndex = clampQueueActiveIndex(queueActiveIndex, queued.length);
   const queueWindow = getQueueWindow(queued.length, activeQueueIndex);
-  const toolTrailView = toolTrailLines(toolTrail, columns, toolTrailMode);
+  // gate only — the expanded view renders via ToolTrailView/ActivityRow and the compact view
+  // recomputes its own strings; equivalent to toolTrailLines(...).length without building the array each render.
+  const showToolTrail = toolTrailMode !== 'hidden' && toolTrail.length > 0;
+  // id of the most recent turn that has a tool trail — only it keeps full expanded diffs in
+  // scrollback (older tool turns downgrade to compact). Tracks the trail, not just the last turn,
+  // so trailing text/command turns don't strip detail off the latest tool work.
+  let latestTrailTurnId: number | undefined;
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    if (history[i].toolTrail) {
+      latestTrailTurnId = history[i].id;
+      break;
+    }
+  }
   const thinkingView = thinkingPanelLines(thinking, columns, thinkingMode);
   const transcriptLimit = transcriptWindowSize(stdout?.rows);
   const transcriptView = getTranscriptWindow(history.length, transcriptLimit, transcriptScroll);
@@ -1208,7 +1220,14 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         <Text dimColor>… {transcriptView.start} older turns · PgUp/Ctrl+U scroll · PgDn/Ctrl+D newer</Text>
       ) : null}
       {visibleHistory.map((turn) => (
-        <TurnView key={`${historyResetKey}-${turn.id}`} columns={columns} thinkingMode={thinkingMode} toolTrailMode={toolTrailMode} turn={turn} />
+        <TurnView
+          key={`${historyResetKey}-${turn.id}`}
+          columns={columns}
+          isLatest={turn.id === latestTrailTurnId}
+          thinkingMode={thinkingMode}
+          toolTrailMode={toolTrailMode}
+          turn={turn}
+        />
       ))}
       {transcriptView.showNewer ? (
         <Text dimColor>… {transcriptView.scrollFromBottom} newer turns hidden · PgDn/Ctrl+D to catch up</Text>
@@ -1219,7 +1238,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
           <StreamingMarkdownText columns={columns} text={streaming} />
         </Box>
       ) : null}
-      {toolTrailView.length ? (
+      {showToolTrail ? (
         <ToolTrailView columns={columns} items={toolTrail} mode={toolTrailMode} />
       ) : null}
       <FloatingOverlay columns={columns} overlay={overlay} pageSize={pagerPageSize} />
@@ -1349,10 +1368,16 @@ function statusMarker(status: ToolTrailItem['status']): string {
   return status === 'error' ? '✗' : status === 'running' ? '›' : '✓';
 }
 
+// per-row diff line budget — bounds each ActivityRow's height so a turn with several large
+// edits (×TOOL_TRAIL_LIMIT items, ×visible historical turns) can't push the prompt off-screen.
+const ACTIVITY_DIFF_LINES = 10;
+
 /** one tool's activity: a friendly title line + colored diff (green +, red -) */
 function ActivityRow({ item, width }: { item: ToolTrailItem; width: number }) {
   const title = item.activity?.title ?? item.name;
-  const diff = item.activity?.diff;
+  const fullDiff = item.activity?.diff;
+  const diff = fullDiff?.slice(0, ACTIVITY_DIFF_LINES);
+  const hiddenDiff = fullDiff && fullDiff.length > ACTIVITY_DIFF_LINES ? fullDiff.length - ACTIVITY_DIFF_LINES : 0;
   return (
     <Box flexDirection="column">
       <Text color={statusColor(item.status)} wrap="truncate-end">
@@ -1369,6 +1394,12 @@ function ActivityRow({ item, width }: { item: ToolTrailItem; width: number }) {
           {line.sign === ' ' ? ' ' : line.sign} {line.text.slice(0, Math.max(0, width - 4))}
         </Text>
       ))}
+      {hiddenDiff ? (
+        <Text dimColor wrap="truncate-end">
+          {'      …(+'}
+          {hiddenDiff} บรรทัด)
+        </Text>
+      ) : null}
       {item.status !== 'running' && item.detail ? (
         <Text color={item.status === 'error' ? 'red' : undefined} dimColor wrap="truncate-end">
           {'    ↳ '}
@@ -1428,11 +1459,13 @@ function ThinkingView({ columns, mode, text }: { columns: number; mode: DetailsD
 
 function TurnView({
   columns,
+  isLatest,
   thinkingMode,
   toolTrailMode,
   turn,
 }: {
   columns: number;
+  isLatest: boolean;
   thinkingMode: DetailsDisplayMode;
   toolTrailMode: ToolTrailDisplayMode;
   turn: Turn;
@@ -1449,7 +1482,12 @@ function TurnView({
     <Box flexDirection="column" marginTop={1}>
       {turn.thinking ? <ThinkingView columns={columns} mode={thinkingMode} text={turn.thinking} /> : null}
       <MarkdownText columns={columns} text={turn.text} />
-      {turn.toolTrail ? <ToolTrailView columns={columns} items={turn.toolTrail} mode={toolTrailMode} /> : null}
+      {turn.toolTrail ? (
+        // scrollback: only the latest turn keeps the full expanded diff; older turns downgrade
+        // expanded→compact so deep history can't stack many full diff blocks (Ctrl+T / /trail still
+        // collapses everything; hidden stays hidden).
+        <ToolTrailView columns={columns} items={turn.toolTrail} mode={isLatest || toolTrailMode !== 'expanded' ? toolTrailMode : 'compact'} />
+      ) : null}
     </Box>
   );
 }

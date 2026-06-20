@@ -283,7 +283,7 @@ config & mcp:
   ${BRAND.cliName} runtimes [--json]               ดู Python/Rust optional runtime + บทบาทใน Sanook
   ${BRAND.cliName} web status [--json]             ดู web-search/fetch readiness และ grounding policy
   ${BRAND.cliName} tools                          ดู tool surface ที่ agent ใช้ได้
-  ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/budgetUsd/permissionMode/cacheTtl/compaction/contextCompression/thinking/embeddingModel)
+  ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/fallbackModel/budgetUsd/maxSteps/permissionMode/brainPath/brainTranscript/cacheTtl/compaction/contextCompression/thinking/summaryModel/embeddingModel/personality)
   ${BRAND.cliName} mcp [search|info|install|test|doctor|enable|disable|preset|list|add|remove]   จัดการ MCP servers
   ${BRAND.cliName} trust [status|add|remove]      อนุญาต/ยกเลิก project .sanook mcp/hooks/skills/commands
 
@@ -595,12 +595,14 @@ async function runAgentSetupSummary(): Promise<void> {
   console.log(`  maxSteps:       ${cfg.maxSteps}`);
   console.log(`  budgetUsd:      ${cfg.budgetUsd ?? '(not set)'}`);
   console.log(`  brainPath:      ${cfg.brainPath ?? '(not set)'}`);
+  console.log(`  brainTranscript:${cfg.brainTranscript ? ' on' : ' off'}`);
   console.log(`  insights:       ${BRAND.cliName} insights [--days N]`);
   console.log('\nแก้ค่าได้ด้วย:');
   console.log(`  ${BRAND.cliName} config set personality concise`);
   console.log(`  ${BRAND.cliName} config set permissionMode ask`);
   console.log(`  ${BRAND.cliName} config set budgetUsd 0.25`);
   console.log(`  ${BRAND.cliName} config set fallbackModel haiku`);
+  console.log(`  ${BRAND.cliName} config set brainTranscript on`);
 }
 
 async function runGatewayDoctor(): Promise<void> {
@@ -4383,7 +4385,7 @@ async function main(): Promise<void> {
   // A management command word whose subcommand didn't match any route above → don't silently
   // fall through and run it as an LLM task (costly + confusing). These words intentionally
   // require a valid subcommand; an NL prompt starting with one can still be quoted as a single arg.
-  const MANAGEMENT_WORDS = new Set(['config', 'mcp', 'brain', 'web', 'trust', 'cron', 'skill', 'init', 'dashboard']);
+  const MANAGEMENT_WORDS = new Set(['config', 'mcp', 'brain', 'web', 'trust', 'cron', 'skill', 'init', 'dashboard', 'persona']);
   if (argv[0] && MANAGEMENT_WORDS.has(argv[0]) && argv[1] && !argv[1].startsWith('-')) {
     console.error(`${BRAND.cliName}: ไม่รู้จัก subcommand "${argv[0]} ${argv[1]}" — ดูวิธีใช้: ${BRAND.cliName} --help`);
     process.exit(1);

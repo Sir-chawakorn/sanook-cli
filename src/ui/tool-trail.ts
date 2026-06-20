@@ -123,10 +123,10 @@ export function toolTrailWidth(columns: number): number {
 export function toolTrailLines(items: ToolTrailItem[], columns: number, mode: ToolTrailDisplayMode = 'expanded'): string[] {
   if (mode === 'hidden') return [];
   if (!items.length) return [];
-  const width = Math.max(24, Math.min(Math.max(30, columns - 4), 96));
+  const width = toolTrailWidth(columns);
   const nameWidth = Math.max(8, Math.min(24, Math.floor(width * 0.34)));
   const detailWidth = Math.max(0, width - nameWidth - 18);
-  const lines = [`Sanook tool trail (${items.length})`, `view: ${mode} | ${statusSummary(items)} | Ctrl+T / /trail`];
+  const lines = toolTrailHeader(items, mode);
   if (mode === 'compact') {
     lines.push(`tools: ${items.map((item) => `${markerForStatus(item.status)}${item.name}`).join(' ')}`);
     return lines.map((line) => clip(line, width));

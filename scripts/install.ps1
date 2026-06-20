@@ -29,6 +29,13 @@ if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
 Write-Host "Using $(node -v) / npm $(npm -v)" -ForegroundColor Cyan
 Write-Host "npm install -g ${pkg}@${version}" -ForegroundColor Cyan
 npm install -g "${pkg}@${version}"
+# $ErrorActionPreference='Stop' does NOT halt on a native command's non-zero exit in
+# Windows PowerShell 5.1 — check $LASTEXITCODE explicitly so a failed install doesn't
+# print the success banner.
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "Global install failed (exit $LASTEXITCODE). Run PowerShell as Administrator, or fix your npm prefix permissions, then retry." -ForegroundColor Red
+  exit 1
+}
 
 Write-Host "Sanook CLI installed." -ForegroundColor Green
 Write-Host "Run:  sanook            (start the agent)"

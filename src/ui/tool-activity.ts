@@ -10,6 +10,8 @@ export interface DiffLine {
   text: string;
 }
 
+import { editDiffSegments } from '../diff.js';
+
 export interface ToolActivity {
   /** human-friendly one-liner of what's happening */
   title: string;
@@ -27,29 +29,23 @@ function basenameish(p: string): string {
   return p.length > 52 ? `…${p.slice(-51)}` : p;
 }
 
-/** structured edit diff (old → new) with common prefix/suffix trimmed — green +, red - */
+/** structured edit diff (old → new) with common prefix/suffix trimmed — green +, red -.
+ * Built on the shared core in src/diff.ts so the algorithm doesn't drift from renderEditDiff. */
 export function diffLines(oldStr: string, newStr: string, max = MAX_DIFF_LINES): DiffLine[] {
-  const oldL = oldStr.split('\n');
-  const newL = newStr.split('\n');
-  let pre = 0;
-  while (pre < oldL.length && pre < newL.length && oldL[pre] === newL[pre]) pre++;
-  let suf = 0;
-  while (suf < oldL.length - pre && suf < newL.length - pre && oldL[oldL.length - 1 - suf] === newL[newL.length - 1 - suf]) suf++;
-  const oldMid = oldL.slice(pre, oldL.length - suf);
-  const newMid = newL.slice(pre, newL.length - suf);
+  const seg = editDiffSegments(oldStr, newStr, max);
   const out: DiffLine[] = [];
-  const removed = oldMid.slice(0, max);
-  for (const l of removed) out.push({ sign: '-', text: l });
-  if (oldMid.length > max) out.push({ sign: ' ', text: `…(-${oldMid.length - max} บรรทัด)` });
-  const added = newMid.slice(0, max);
-  for (const l of added) out.push({ sign: '+', text: l });
-  if (newMid.length > max) out.push({ sign: ' ', text: `…(+${newMid.length - max} บรรทัด)` });
+  for (const l of seg.removed) out.push({ sign: '-', text: l });
+  if (seg.moreRemoved) out.push({ sign: ' ', text: `…(-${seg.moreRemoved} บรรทัด)` });
+  for (const l of seg.added) out.push({ sign: '+', text: l });
+  if (seg.moreAdded) out.push({ sign: ' ', text: `…(+${seg.moreAdded} บรรทัด)` });
   return out;
 }
 
-/** whole-content as additions (new file write) — all green */
+/** whole-content as additions (new file write) — all green. Drops the trailing empty line of a
+ * file ending in \n so the green-line count matches the title's countLines() (no spurious blank). */
 function additionLines(content: string, max = MAX_DIFF_LINES): DiffLine[] {
   const all = content.split('\n');
+  if (content.endsWith('\n')) all.pop();
   const out: DiffLine[] = all.slice(0, max).map((text) => ({ sign: '+' as const, text }));
   if (all.length > max) out.push({ sign: ' ', text: `…(+${all.length - max} บรรทัด)` });
   return out;
