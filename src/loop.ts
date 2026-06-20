@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { resolveModel, specKey, parseSpec, PROVIDERS } from './providers/registry.js';
 import { CostMeter, SharedBudget, type Usage } from './cost.js';
 import { tools } from './tools/index.js';
+import { agentCwd } from './agentContext.js';
 import { loadMemory, loadAutoMemory, loadBrainContext } from './memory.js';
 import { buildTurnRetrieval, PROJECT_SOURCES } from './turn-retrieval.js';
 import { loadSkills, renderAvailableSkills } from './skills.js';
@@ -272,7 +273,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     loadAutoMemory(),
     loadSkills(),
     gitContext(opts.cwd), // worktree ของ sub-agent ถ้ามี → git context สะท้อน tree ที่ถูกต้อง
-    loadBrainContext(),
+    loadBrainContext(opts.cwd ?? agentCwd()),
     opts.tools ? Promise.resolve('') : loadRepoMap(),
     agentTuning(), // cache TTL + thinking budget (อ่านจาก config/env)
     loadConfig({}, opts.cwd ?? process.cwd()),

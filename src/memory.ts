@@ -1,6 +1,7 @@
 import { readFile, writeFile, stat } from 'node:fs/promises';
 import { join, dirname, resolve } from 'node:path';
 import { buildContextPackBlock, listContextPacks, readContextPackExcerpt, selectContextPack } from './context-pack.js';
+import { buildProjectContextBlock, resolveVaultProject } from './project-registry.js';
 import { appHomePath, BRAND, persistenceEnabled, worklogEnabled } from './brand.js';
 import { redactKey } from './providers/keys.js';
 import { loadStore, saveStore, mergeFact, maybeConsolidate, consolidate, renderPromptBlock, type NoteType } from './memory-store.js';
@@ -79,15 +80,15 @@ export async function loadAutoMemory(): Promise<string> {
  * "รู้จัก" vault: inject Shared/AI-Context-Index.md (ไฟล์ที่ vault บอกให้อ่านก่อน) เข้า system prompt
  * brainPath มาจาก ~/.sanook/config.json · ไม่มี/ไฟล์หาย → คืน '' (เงียบ)
  */
-export async function loadBrainContext(): Promise<string> {
+export async function loadBrainContext(cwd: string = process.cwd()): Promise<string> {
   const brainPath = await getBrainPath();
-  return brainPath ? buildBrainContext(brainPath) : '';
+  return brainPath ? buildBrainContext(brainPath, { cwd }) : '';
 }
 
 export type BrainContextPartStatus = 'present' | 'empty' | 'missing';
 
 export interface BrainContextPart {
-  id: 'ai-context-index' | 'current-state' | 'memory-inbox' | 'context-pack';
+  id: 'ai-context-index' | 'current-state' | 'memory-inbox' | 'context-pack' | 'project-workspace';
   label: string;
   relPath: string;
   path: string;
@@ -100,6 +101,10 @@ export interface BrainContextPart {
 export interface BuildBrainContextOptions {
   /** When set, auto-select a matching Shared/Context-Packs/ bundle for this task. */
   taskQuery?: string;
+  /** When set, auto-detect Projects/<slug>/ hot context from repo_path ↔ cwd. */
+  cwd?: string;
+  /** Force a vault project slug instead of cwd auto-detect. */
+  projectSlug?: string;
 }
 
 /** ประกอบ source parts ชุดเดียวกับที่ inject เข้า prompt จริง — ให้ CLI inspect ได้โดยไม่ drift */
@@ -121,6 +126,24 @@ export async function buildBrainContextParts(brainPath: string, options: BuildBr
   });
   const inbox = await readInboxPart(brainPath, 'Shared/Memory-Inbox/memory-inbox.md', 1200);
   const parts: BrainContextPart[] = [idx, currentState, inbox];
+  const project = await resolveVaultProject({
+    brainPath,
+    cwd: options.cwd,
+    slug: options.projectSlug,
+  });
+  if (project) {
+    const block = await buildProjectContextBlock(brainPath, project);
+    parts.push({
+      id: 'project-workspace',
+      label: `Project (${project.slug})`,
+      relPath: `${project.relDir}/`,
+      path: join(brainPath, project.relDir),
+      content: block,
+      chars: block.length,
+      maxChars: 3500,
+      status: block ? 'present' : 'empty',
+    });
+  }
   const taskQuery = options.taskQuery?.trim();
   if (taskQuery) {
     const packs = await listContextPacks(brainPath);

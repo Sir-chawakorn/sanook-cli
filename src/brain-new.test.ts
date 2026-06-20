@@ -102,6 +102,21 @@ describe('createBrainNote', () => {
     expect(index).toContain('[[Sessions/2026-06-20-implement-brain-pack]]');
   });
 
+  it('scaffolds a project workspace under Projects/<slug>/', async () => {
+    const repo = join(dir, 'demo-app');
+    const report = await createBrainNote({
+      brainPath: vault,
+      type: 'project',
+      title: 'Demo App',
+      repo: repo,
+      today: '2026-06-20',
+    });
+    expect(report.ok).toBe(true);
+    expect(report.relPath).toBe('Projects/demo-app/overview.md');
+    const repoMd = await readFile(join(vault, 'Projects/demo-app/repo.md'), 'utf8');
+    expect(repoMd).toContain(`repo_path: ${repo}`);
+  });
+
   it('creates a golden-case note from the Acceptance template fallback', async () => {
     const report = await createBrainNote({
       brainPath: vault,

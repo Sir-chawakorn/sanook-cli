@@ -17,6 +17,9 @@ export interface ParsedBrainNewArgs {
   title?: string;
   force: boolean;
   output?: string;
+  repo?: string;
+  verify?: string;
+  defaultBranch?: string;
 }
 
 export type BrainNewArgsResult =
@@ -42,6 +45,9 @@ export interface CreateBrainNoteOptions {
   today?: string;
   force?: boolean;
   output?: string;
+  repo?: string;
+  verify?: string;
+  defaultBranch?: string;
 }
 
 const TEMPLATE_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', 'second-brain');
@@ -67,9 +73,9 @@ export const BRAIN_NOTE_TYPES: Record<BrainNoteType, BrainNoteTypeConfig> = {
   },
   project: {
     destDir: 'Projects',
-    templateCandidates: ['Templates/project.md'],
-    defaultRelPath: ({ slug }) => `Projects/${slug}.md`,
-    titlePlaceholders: ['<Project Name>'],
+    templateCandidates: ['Templates/project-workspace/overview.md', 'Templates/project.md'],
+    defaultRelPath: ({ slug }) => `Projects/${slug}/overview.md`,
+    titlePlaceholders: ['<Project Name>', '{{TITLE}}'],
   },
   'golden-case': {
     destDir: 'Acceptance',
@@ -110,6 +116,27 @@ export function parseBrainNewArgs(args: string[]): BrainNewArgsResult {
       if (!value?.trim()) return { ok: false, message: 'ต้องระบุค่าให้ --title' };
       if (parsed.title) return { ok: false, message: 'ระบุ title ได้ครั้งเดียว' };
       parsed.title = value.trim();
+    } else if (arg === '--repo' || arg.startsWith('--repo=')) {
+      const next = arg === '--repo' ? takeValue(rest, i) : undefined;
+      const value = next ? next.value : inlineValue('--repo', arg);
+      if (next) i = next.nextIndex;
+      if (!value?.trim()) return { ok: false, message: 'ต้องระบุค่าให้ --repo' };
+      if (parsed.repo) return { ok: false, message: 'ระบุ repo ได้ครั้งเดียว' };
+      parsed.repo = value.trim();
+    } else if (arg === '--verify' || arg.startsWith('--verify=')) {
+      const next = arg === '--verify' ? takeValue(rest, i) : undefined;
+      const value = next ? next.value : inlineValue('--verify', arg);
+      if (next) i = next.nextIndex;
+      if (!value?.trim()) return { ok: false, message: 'ต้องระบุค่าให้ --verify' };
+      if (parsed.verify) return { ok: false, message: 'ระบุ verify ได้ครั้งเดียว' };
+      parsed.verify = value.trim();
+    } else if (arg === '--default-branch' || arg.startsWith('--default-branch=')) {
+      const next = arg === '--default-branch' ? takeValue(rest, i) : undefined;
+      const value = next ? next.value : inlineValue('--default-branch', arg);
+      if (next) i = next.nextIndex;
+      if (!value?.trim()) return { ok: false, message: 'ต้องระบุค่าให้ --default-branch' };
+      if (parsed.defaultBranch) return { ok: false, message: 'ระบุ default-branch ได้ครั้งเดียว' };
+      parsed.defaultBranch = value.trim();
     } else if (arg === '--output') {
       const next = takeValue(rest, i);
       const value = next.value;
@@ -221,6 +248,34 @@ export async function createBrainNote(options: CreateBrainNoteOptions): Promise<
   }
 
   const today = options.today ?? new Date().toISOString().slice(0, 10);
+
+  if (options.type === 'project' && !options.output) {
+    const { scaffoldProjectWorkspace } = await import('./project-scaffold.js');
+    const scaffold = await scaffoldProjectWorkspace({
+      brainPath,
+      title,
+      repoPath: options.repo,
+      verify: options.verify,
+      defaultBranch: options.defaultBranch,
+      today,
+      force: options.force,
+    });
+    return {
+      ok: scaffold.ok,
+      brainPath,
+      type: 'project',
+      title: scaffold.title,
+      template: 'Templates/project-workspace/*',
+      path: join(brainPath, scaffold.relDir),
+      relPath: `${scaffold.relDir}/overview.md`,
+      indexed: scaffold.indexed,
+      warnings: [
+        ...scaffold.warnings,
+        ...(scaffold.created.length ? [`created ${scaffold.created.length} file(s) under ${scaffold.relDir}/`] : []),
+      ],
+    };
+  }
+
   const slug = slugify(title);
   const config = BRAIN_NOTE_TYPES[options.type];
   const relPath = normalizeRelPath(options.output ?? config.defaultRelPath({ today, slug }));

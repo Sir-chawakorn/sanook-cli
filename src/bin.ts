@@ -229,11 +229,12 @@ project setup:
 second brain (Obsidian workspace สำหรับจัดเก็บงาน + ความจำ AI):
   ${BRAND.cliName} brain init [path]              สร้างโครงสร้าง second-brain ที่ path (ไม่ใส่ = ถาม)
   ${BRAND.cliName} brain doctor                   ตรวจ health ของ second-brain ที่ config.brainPath
-  ${BRAND.cliName} brain context [--task "..."]    แสดง context ที่ Sanook จะ inject + retrieval hits ต่อ task
+  ${BRAND.cliName} brain context [--task "..."] [--project <slug>]  แสดง context ที่ Sanook จะ inject (+ project auto-detect จาก cwd)
+  ${BRAND.cliName} brain projects list            แสดง Projects/<slug>/ + repo_path mapping
   ${BRAND.cliName} brain eval                     รัน second-brain benchmark sanity checks
   ${BRAND.cliName} brain review                   curator review: inbox, packs, sessions, evals, note hygiene
   ${BRAND.cliName} brain pack list|show <name>    ดู context packs ใน Shared/Context-Packs/
-  ${BRAND.cliName} brain new <type> [--title "..."]  สร้างโน้ตจาก template (session/bug/handoff/project/golden-case/checklist)
+  ${BRAND.cliName} brain new project [--title "..."] [--repo /path] [--verify "..."]  scaffold Projects/<slug>/ workspace
   ${BRAND.cliName} brain repair [--dry-run]       แก้ one-line fixes หลัง doctor/review
   ${BRAND.cliName} brain consolidate [--apply]      sleep-time consolidation (inbox, stale, retrieval; dry-run default)
   ${BRAND.cliName} brain metrics [--no-retrieval] vault counts, stale notes, index freshness, retrieval coverage
@@ -3319,13 +3320,15 @@ async function runBrainContext(args: string[]): Promise<void> {
   const parsed = parseBrainContextArgs(args);
   if (!parsed.ok) {
     console.error(parsed.message);
-    console.error(`ใช้: ${BRAND.cliName} brain context [--task "..."] [--mode auto|fts|semantic|hybrid] [--limit N] [--source vault,session,skill] [--no-content]`);
+    console.error(`ใช้: ${BRAND.cliName} brain context [--task "..."] [--project <slug>] [--mode auto|fts|semantic|hybrid] [--limit N] [--source vault,session,skill] [--no-content]`);
     process.exit(1);
   }
   const cfg = await loadConfig({});
   const report = await inspectBrainContext({
     brainPath: cfg.brainPath,
     task: parsed.value.task,
+    cwd: process.cwd(),
+    projectSlug: parsed.value.project,
     mode: parsed.value.mode,
     limit: parsed.value.limit,
     sources: parsed.value.sources,
@@ -3405,6 +3408,34 @@ async function runBrainMetrics(args: string[]): Promise<void> {
   if (!report.ok) process.exit(1);
 }
 
+/** sanook brain projects list — show vault project workspaces and repo_path mappings */
+async function runBrainProjects(args: string[]): Promise<void> {
+  if (args[0] && args[0] !== 'list') {
+    console.error(`ใช้: ${BRAND.cliName} brain projects list`);
+    process.exit(1);
+  }
+  const cfg = await loadConfig({});
+  if (!cfg.brainPath) {
+    console.error('ยังไม่ได้ตั้ง brainPath — รัน `sanook brain init [path]` ก่อน');
+    process.exit(1);
+  }
+  const { listVaultProjects, formatVaultProjectLine, resolveVaultProject } = await import('./project-registry.js');
+  const projects = await listVaultProjects(cfg.brainPath);
+  const active = await resolveVaultProject({ brainPath: cfg.brainPath, cwd: process.cwd() });
+  console.log(`${BRAND.productName} brain projects`);
+  console.log(`vault: ${cfg.brainPath}`);
+  console.log(`cwd: ${process.cwd()}${active ? ` → active: ${active.slug}` : ''}`);
+  if (!projects.length) {
+    console.log('(no project workspaces — run `sanook brain new project --title "..." --repo /path`)');
+    return;
+  }
+  console.log('\nslug             repo_path');
+  for (const project of projects) {
+    const marker = active?.slug === project.slug ? ' *' : '';
+    console.log(`${formatVaultProjectLine(project)}${marker}`);
+  }
+}
+
 /** sanook brain pack list|show <name> — inspect Shared/Context-Packs/ bundles */
 async function runBrainPack(args: string[]): Promise<void> {
   const { parseBrainPackArgs, listContextPacks, showContextPack, formatBrainPackListReport, formatBrainPackShowReport } =
@@ -3438,7 +3469,7 @@ async function runBrainNew(args: string[]): Promise<void> {
   if (!parsed.ok) {
     console.error(parsed.message);
     console.error(
-      `ใช้: ${BRAND.cliName} brain new <session|bug|handoff|project|golden-case|checklist> [--title "..."] [--output path] [--force]`,
+      `ใช้: ${BRAND.cliName} brain new <session|bug|handoff|project|golden-case|checklist> [--title "..."] [--repo /path] [--verify "..."] [--output path] [--force]`,
     );
     process.exit(1);
   }
@@ -3492,6 +3523,7 @@ async function runBrain(args: string[]): Promise<void> {
   if (args[0] === 'context') return runBrainContext(args.slice(1));
   if (args[0] === 'eval') return runBrainEval(args.slice(1));
   if (args[0] === 'review') return runBrainReview(args.slice(1));
+  if (args[0] === 'projects') return runBrainProjects(args.slice(1));
   if (args[0] === 'pack') return runBrainPack(args.slice(1));
   if (args[0] === 'new') return runBrainNew(args.slice(1));
   if (args[0] === 'repair') return runBrainRepair(args.slice(1));
@@ -3503,12 +3535,15 @@ async function runBrain(args: string[]): Promise<void> {
     console.log(`ใช้:
   sanook brain init [path]   สร้างโครงสร้าง second-brain (Obsidian vault)
   sanook brain doctor        ตรวจ health ของ second-brain ที่ config.brainPath
-  sanook brain context       แสดง context ที่ Sanook จะ inject
+  sanook brain context       แสดง context ที่ Sanook จะ inject (project auto-detect จาก cwd)
   sanook brain context --task "..."  ดู retrieval hits ต่อ task
+  sanook brain context --project <slug>  บังคับ project workspace
+  sanook brain projects list  แสดง Projects/<slug>/ + repo_path
   sanook brain eval          รัน second-brain benchmark sanity checks
   sanook brain review        curator review: inbox, packs, sessions, evals, note hygiene
   sanook brain pack list     แสดง context packs ใน Shared/Context-Packs/
   sanook brain pack show <name>  แสดง load order / done criteria ของ pack
+  sanook brain new project --title "..." --repo /path [--verify "..."]
   sanook brain new <type> [--title "..."]  สร้างโน้ตจาก template
   sanook brain repair [--dry-run]  แก้ one-line fixes หลัง doctor/review
   sanook brain consolidate [--apply] [--apply --archive] [--memory]
@@ -4246,7 +4281,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'models') return runModels(argv.slice(1));
   if (
     argv[0] === 'brain' &&
-    ['init', 'doctor', 'context', 'eval', 'review', 'pack', 'new', 'repair', 'consolidate', 'metrics', 'final', undefined].includes(
+    ['init', 'doctor', 'context', 'eval', 'review', 'projects', 'pack', 'new', 'repair', 'consolidate', 'metrics', 'final', undefined].includes(
       argv[1],
     )
   )

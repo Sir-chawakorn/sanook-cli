@@ -75,11 +75,14 @@ describe('scaffoldBrain', () => {
     const templateRoot = join(process.cwd(), 'second-brain');
     const seedMarkdown = (await walkFiles(templateRoot))
       .filter((f) => f.endsWith('.md'))
-      .filter((f) => folderName(f) !== '_Index.md');
+      .filter((f) => folderName(f) !== '_Index.md')
+      // per-user workspaces — add via `sanook brain new project`, not bundled copy
+      .filter((f) => !f.startsWith('Projects/'));
     expect(seedMarkdown.length).toBeGreaterThan(20);
     for (const f of seedMarkdown) {
       expect((await stat(join(target, f))).isFile(), `ไม่ได้เขียน seed markdown ${f}`).toBe(true);
     }
+    await expect(stat(join(target, 'Projects/sanook-cli/context.md'))).rejects.toThrow();
   });
 
   it('SOTA upgrades — folders + rules/runbooks ใหม่มีจริง', async () => {

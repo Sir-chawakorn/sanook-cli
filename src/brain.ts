@@ -238,6 +238,8 @@ export async function scaffoldBrain(
   // 2) rich seed files (substitute placeholders)
   for (const rel of await walk(TEMPLATE_DIR)) {
     if (rel.split('/').pop() === '_Index.md') continue; // generated จาก FOLDERS[] แล้ว ไม่ copy ซ้ำจาก template source
+    // Projects/<slug>/ are per-user workspaces — scaffold via `sanook brain new project`, not bundled copy
+    if (rel.startsWith('Projects/') && rel !== 'Projects/_Index.md') continue;
     const raw = await readFile(join(TEMPLATE_DIR, rel), 'utf8');
     await writeIfMissing(join(targetPath, rel), substitute(raw, cfg), created, skipped);
   }

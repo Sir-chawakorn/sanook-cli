@@ -179,8 +179,19 @@ Completed on 2026-06-20 (release 0.5.3):
 
 Best next code slice:
 
-1. `sanook brain export --for claude|gemini|codex|hermes` when adapter portability is explicitly needed.
-2. Scheduled `sanook brain consolidate --apply` hook/cron integration for unattended sleep-time loops.
-3. Richer pack auto-select (user-defined packs beyond bundled three) with `brain pack` discoverability in setup wizard.
+1. Scheduled `sanook brain consolidate --apply` hook/cron integration for unattended sleep-time loops.
+2. Richer pack auto-select (user-defined packs beyond bundled three) with `brain pack` discoverability in setup wizard.
+3. `sanook brain export --for claude|gemini|codex|hermes` when adapter portability is explicitly needed.
+
+## Project Portfolio (2026-06-20)
+
+Status: **implemented** — multi-project vault via `Projects/<slug>/` + cwd auto-detect.
+
+- Standard workspace files: `overview.md`, `current-state.md`, `context.md`, `repo.md` (`repo_path`, `verify`, `default_branch`)
+- `sanook brain new project --title "..." --repo /path`
+- `sanook brain projects list`
+- Agent injects `<project_workspace>` when cwd matches `repo_path`
+- `sanook brain context --project <slug>` for forced selection
+- `brain init` skips copying bundled `Projects/<slug>/` (add projects explicitly)
 
 up:: [[Projects/sanook-cli/_Index]]

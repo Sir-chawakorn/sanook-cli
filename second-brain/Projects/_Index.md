@@ -1,14 +1,14 @@
 ---
 tags: [index, moc, projects]
 note_type: moc
-created: {{DATE}}
-updated: {{DATE}}
+created: 2026-06-18
+updated: 2026-06-20
 parent: "[[Home]]"
 ---
 
 # Projects
 
-> workspace ของงานจริง — 1 โฟลเดอร์ = 1 โปรเจค
+> workspace ของงานจริง — 1 โฟลเดอร์ = 1 โปรเจค = 1 repo (ผ่าน `repo.md`)
 
 ## ใส่ที่นี่
 deliverable + overview/context/current-state ของ project
@@ -25,8 +25,21 @@ deliverable + overview/context/current-state ของ project
 
 > รายละเอียดทุกโฟลเดอร์ + decision rules → [[Vault Structure Map]]
 
+## Project Dashboard
+
+| Project | Repo | Status | Hub |
+|---|---|---|---|
+| Sanook CLI | `/Users/chawakornbuasontorn/dev/sanook-cli` | active | [[Projects/sanook-cli/_Index]] |
+
 ## Projects
 
-- [[Projects/sanook-cli/_Index]] — project workspace สำหรับ Sanook CLI
+- [[Projects/sanook-cli/_Index]] — Sanook CLI (terminal agent + second brain)
+
+### Add a project
+
+```bash
+sanook brain new project --title "My App" --repo /path/to/repo
+sanook brain projects list
+```
 
 up:: [[Home]]

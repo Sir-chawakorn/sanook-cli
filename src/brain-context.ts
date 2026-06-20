@@ -1,4 +1,5 @@
 import { stat } from 'node:fs/promises';
+import { resolveVaultProject } from './project-registry.js';
 import { inlineValue, takeValue } from './cli-option-values.js';
 import {
   buildBrainContextParts,
@@ -16,6 +17,7 @@ const DEFAULT_TASK_SOURCES = ['vault', 'session', 'skill'] as const satisfies re
 
 export interface ParsedBrainContextArgs {
   task?: string;
+  project?: string;
   mode: SearchMode;
   limit: number;
   sources?: SearchSource[];
@@ -50,6 +52,8 @@ export interface BrainContextTaskReport {
 export interface BrainContextReport {
   ok: boolean;
   brainPath?: string;
+  projectSlug?: string;
+  projectRepo?: string;
   context: string;
   contextChars: number;
   sources: BrainContextSourceReport[];
@@ -60,6 +64,8 @@ export interface BrainContextReport {
 export interface InspectBrainContextOptions {
   brainPath?: string;
   task?: string;
+  cwd?: string;
+  projectSlug?: string;
   mode?: SearchMode;
   limit?: number;
   sources?: SearchSource[];
@@ -90,6 +96,7 @@ function inlineSourceValue(value: string): string | undefined {
 export function parseBrainContextArgs(args: string[]): BrainContextArgsResult {
   const taskParts: string[] = [];
   let task: string | undefined;
+  let project: string | undefined;
   let mode: SearchMode = 'auto';
   let modeSet = false;
   let limit = 5;
@@ -110,6 +117,13 @@ export function parseBrainContextArgs(args: string[]): BrainContextArgsResult {
       if (task !== undefined) return { ok: false, message: 'ระบุ task ได้ครั้งเดียว: ใช้ --task เพียงครั้งเดียว' };
       task = raw.trim();
       if (!task) return { ok: false, message: '--task ต้องระบุข้อความ task' };
+    } else if (a === '--project' || a.startsWith('--project=')) {
+      const next = a === '--project' ? takeValue(args, i) : undefined;
+      const raw = next ? next.value : inlineValue('--project', a);
+      if (next) i = next.nextIndex;
+      if (!raw?.trim()) return { ok: false, message: 'ต้องระบุค่าให้ --project' };
+      if (project !== undefined) return { ok: false, message: 'ระบุ project ได้ครั้งเดียว' };
+      project = raw.trim();
     } else if (a === '--mode' || a.startsWith('--mode=')) {
       const next = a === '--mode' ? takeValue(args, i) : undefined;
       const raw = next ? next.value : inlineValue('--mode', a);
@@ -149,7 +163,7 @@ export function parseBrainContextArgs(args: string[]): BrainContextArgsResult {
   const positionalTask = taskParts.join(' ').trim();
   if (task !== undefined && positionalTask) return { ok: false, message: 'ระบุ task ได้ครั้งเดียว: ใช้ positional หรือ --task อย่างใดอย่างหนึ่ง' };
   const finalTask = (task ?? positionalTask).trim();
-  return { ok: true, value: { task: finalTask || undefined, mode, limit, sources, showContent } };
+  return { ok: true, value: { task: finalTask || undefined, project, mode, limit, sources, showContent } };
 }
 
 export async function inspectBrainContext(options: InspectBrainContextOptions = {}): Promise<BrainContextReport> {
@@ -187,8 +201,17 @@ export async function inspectBrainContext(options: InspectBrainContextOptions = 
     };
   }
 
-  const parts = await buildBrainContextParts(brainPath, { taskQuery: options.task });
+  const parts = await buildBrainContextParts(brainPath, {
+    taskQuery: options.task,
+    cwd: options.cwd,
+    projectSlug: options.projectSlug,
+  });
   const context = renderBrainContext(brainPath, parts);
+  const activeProject = await resolveVaultProject({
+    brainPath,
+    cwd: options.cwd,
+    slug: options.projectSlug,
+  });
   const sourceReports = parts.map((part) => ({
     id: part.id,
     label: part.label,
@@ -237,6 +260,8 @@ export async function inspectBrainContext(options: InspectBrainContextOptions = 
   return {
     ok: true,
     brainPath,
+    projectSlug: activeProject?.slug,
+    projectRepo: activeProject?.repoPath,
     context,
     contextChars: context.length,
     sources: sourceReports,
@@ -252,6 +277,9 @@ function statusLabel(status: BrainContextPart['status']): string {
 export function formatBrainContextReport(report: BrainContextReport, showContent = true): string {
   const lines: string[] = ['Sanook brain context'];
   lines.push(`vault: ${report.brainPath ?? '(not configured)'}`);
+  if (report.projectSlug) {
+    lines.push(`project: ${report.projectSlug}${report.projectRepo ? ` (${report.projectRepo})` : ''}`);
+  }
   lines.push(`context: ${report.contextChars} chars`);
   if (report.sources.length) {
     lines.push('sources:');

@@ -2,17 +2,21 @@
 tags: [index, moc, project, sanook-cli]
 note_type: moc
 created: 2026-06-18
-updated: 2026-06-18
+updated: 2026-06-20
 parent: "[[Projects/_Index]]"
 ---
 
 # Sanook CLI
 
-> Project workspace for Sanook CLI product decisions, implementation plans, and current project-specific state. Use this for deliverables about the CLI itself, not generic second-brain theory.
+> Project workspace for Sanook CLI product decisions, implementation plans, and current project-specific state.
 
 ## Notes
 
-- [[Projects/sanook-cli/second-brain-feature-roadmap]] — roadmap for making second-brain features native to Sanook CLI
+- [[Projects/sanook-cli/overview]] — goal, scope, stack, verify
+- [[Projects/sanook-cli/current-state]] — NOW / blockers / next
+- [[Projects/sanook-cli/context]] — architecture + conventions for AI
+- [[Projects/sanook-cli/repo]] — repo path mapping (Sanook auto-detect)
+- [[Projects/sanook-cli/second-brain-feature-roadmap]] — second-brain CLI roadmap
 
 ## AI Routing Contract
 

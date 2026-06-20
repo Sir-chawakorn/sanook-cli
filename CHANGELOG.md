@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.4
+
+### Multi-project vault — project workspace auto-detect
+
+- **`Projects/<slug>/` workspace standard** — `overview.md`, `current-state.md`, `context.md`, `repo.md` with `repo_path` for machine-readable repo mapping.
+- **`sanook brain new project --title "..." --repo /path`** — scaffolds full `Projects/<slug>/` workspace from `Templates/project-workspace/` and links it from `Projects/_Index.md`.
+- **`sanook brain projects list`** — shows registered project workspaces and marks the active project for the current cwd.
+- **Project auto-detect in agent context** — when cwd is inside a project's `repo_path`, Sanook injects `<project_workspace>` hot context (current-state, context, overview) into `loadBrainContext()` and `sanook brain context`.
+- **`sanook brain context --project <slug>`** — force a project workspace without cwd matching.
+- **Scaffold policy** — `sanook brain init` no longer copies bundled `Projects/<slug>/` dogfood folders into new vaults (only `Projects/_Index.md`); add projects explicitly with `brain new project`.
+
 ## 0.5.3
 
 ### Second-brain CLI — pack, create, repair, consolidate, metrics

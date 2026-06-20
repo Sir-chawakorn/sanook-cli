@@ -2,7 +2,7 @@
 tags: [operating-state, current-state]
 note_type: operating-state
 created: {{DATE}}
-updated: {{DATE}}
+updated: 2026-06-20
 parent: "[[Shared/Operating-State/_Index]]"
 ai_surface: starter
 ---
@@ -13,24 +13,19 @@ ai_surface: starter
 
 ## Now
 
-- 2026-06-17: ปรับ second-brain ให้ใช้ [[Runbooks/ai-second-brain-operating-sequence]] เป็น default AI operating sequence หลังทดลองเทียบ methods แล้ว
-- 2026-06-17: เพิ่ม [[Evals/second-brain-benchmarks]], [[Shared/User-Memory/response-examples]], และ context packs ใน [[Shared/Context-Packs/_Index]]
-- 2026-06-18: dogfood context packs กับงานจริง 3 task-family แล้ว: coding-release, second-brain-maintenance, research-to-framework
-- 2026-06-18: ตรวจ cli-args serve port UX change แล้ว; targeted/full tests, typecheck, build, diff check ผ่าน
-- 2026-06-18: วิจัย Hermes CLI second-brain expansion ไว้เป็น reference; เจ้าของ clarify ว่าเป้าจริงคือทำใน Sanook CLI
-- 2026-06-18: Sanook-native P0 implemented: `sanook brain doctor`, `sanook brain context`, `sanook brain eval`
-- 2026-06-18: เพิ่ม `sanook brain review` เป็น curator review แบบ read-only สำหรับ inbox/context-packs/sessions/evals/note hygiene
-- 2026-06-18: เพิ่ม [[Templates/final]] เป็น final gate / evidence matrix ก่อนปิดงาน non-trivial
-- 2026-06-18: เพิ่ม `sanook brain final`, [[Templates/final-lite]], final-gate validator ใน `brain review`, และ `SB-FINAL` ใน `brain eval` แล้ว
-- 2026-06-18: MCP P0 implemented ใน Sanook CLI แล้ว: registry-backed `mcp search/info/install/preset/test/doctor/list --tools`; verification ผ่าน และพบว่า GitLab remote ต้อง auth header ก่อน probe ผ่าน
-- 2026-06-18: เพิ่ม [[Research/2026-06-18-ai-token-reduction-frameworks]], default query-aware selective context compression, adaptive stale-tool budgets, และ optional Headroom framework mode ใน Sanook CLI
+- 2026-06-20: **Sanook CLI 0.5.3** shipped — brain pack/new/repair/consolidate/metrics, MCP safety, gateway doctor, project workspace auto-detect
+- 2026-06-20: Multi-project strategy — ใช้ vault เดียว, โฟลเดอร์ `Projects/<slug>/` ต่อ repo จริง (`repo_path` ใน `repo.md`)
+- 2026-06-18: Sanook-native brain CLI P0/P1 complete (doctor, context, eval, review, final)
 
 ## Active Bets
 
-- Scientific Loop Sequence: single retrieval path + JIT task rules + explicit write routing + eval/consolidation loop
-- AI จะเก่งขึ้นแบบวัดได้เมื่อมี benchmark + taste examples + reusable context packs
-- Final gate ที่มี evidence และ CLI scaffold จะลดการ claim done เกินจริงตอนปิดงาน
-- Token/cost จะลดได้อย่างปลอดภัยที่สุดจาก stale tool-output compression ก่อน ไม่ใช่บีบ user intent หรือ recent evidence
+- **Projects/ as single portfolio hub** — AI รู้ project จาก cwd ไม่ต้องเดา
+- Scientific Loop Sequence + context packs + final gate ลด claim-done เกินจริง
+- Token/cost ลดจาก stale tool compression ก่อน ไม่บีบ user intent
+
+## Active Project
+
+- [[Projects/sanook-cli/current-state]] — primary focus (Sanook CLI itself)
 
 ## Blockers
 
@@ -38,12 +33,8 @@ _(ติดอะไรอยู่)_
 
 ## Next Actions
 
-- [ ] Review remaining worktree diff before commit/release
-- [ ] Dogfood `sanook brain final --task "..." --from-diff` ในงาน implementation ถัดไป
-- [x] ทำ MCP P0: `sanook mcp search`, `sanook mcp info`, `sanook mcp install`, `sanook mcp test`
-- [ ] MCP follow-up: auth hints for hosted remotes that return `401`, risk labels, and richer install preview/cache
-- [ ] Token compression follow-up: benchmark real multi-step traces and smoke test Headroom mode with a real proxy/cloud setup
-- [ ] ถ้าจะต่อ second-brain CLI รอบถัดไป: ทำ `sanook brain pack list|show`, `sanook brain new <type>`, หรือ `sanook brain repair`
-- [ ] เพิ่ม good/bad examples ใหม่ใน [[Shared/User-Memory/response-examples]] เมื่อมี feedback จริงรอบถัดไป
+- [ ] เพิ่ม project workspace ถัดไปด้วย `sanook brain new project --title "..." --repo /path`
+- [ ] Dogfood `sanook brain context` จาก cwd ของแต่ละ repo
+- [ ] Weekly `sanook brain consolidate --apply` + `sanook index`
 
 up:: [[Shared/Operating-State/_Index]]
