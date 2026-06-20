@@ -1140,7 +1140,9 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
             prompt: promptText,
             answer: answerText,
             model,
-            createdIso: sessionCreated.current,
+            // per-turn timestamp → correct HH:MM heading + correct day file (matches the worklog
+            // above); sessionCreated is frozen at session start so it stamped every turn the same.
+            createdIso: new Date().toISOString(),
           }).catch(() => {});
         }
       })();
@@ -1368,16 +1370,17 @@ function statusMarker(status: ToolTrailItem['status']): string {
   return status === 'error' ? '✗' : status === 'running' ? '›' : '✓';
 }
 
-// per-row diff line budget — bounds each ActivityRow's height so a turn with several large
-// edits (×TOOL_TRAIL_LIMIT items, ×visible historical turns) can't push the prompt off-screen.
-const ACTIVITY_DIFF_LINES = 10;
+// total diff rows rendered per tool row — a hard per-item height bound. diffLines caps each SIDE at
+// MAX_DIFF_LINES, so a two-sided edit can exceed this; we cap the combined rows here and show a plain
+// "…" (no count — the inner per-side "…(+N)" sentinels already carry the numbers, so we don't double-count).
+const MAX_ROW_DIFF_LINES = 14;
 
-/** one tool's activity: a friendly title line + colored diff (green +, red -) */
+/** one tool's activity: a friendly title line + colored diff (green +, red -), height-bounded. */
 function ActivityRow({ item, width }: { item: ToolTrailItem; width: number }) {
   const title = item.activity?.title ?? item.name;
   const fullDiff = item.activity?.diff;
-  const diff = fullDiff?.slice(0, ACTIVITY_DIFF_LINES);
-  const hiddenDiff = fullDiff && fullDiff.length > ACTIVITY_DIFF_LINES ? fullDiff.length - ACTIVITY_DIFF_LINES : 0;
+  const diff = fullDiff?.slice(0, MAX_ROW_DIFF_LINES);
+  const diffClipped = (fullDiff?.length ?? 0) > MAX_ROW_DIFF_LINES;
   return (
     <Box flexDirection="column">
       <Text color={statusColor(item.status)} wrap="truncate-end">
@@ -1394,12 +1397,7 @@ function ActivityRow({ item, width }: { item: ToolTrailItem; width: number }) {
           {line.sign === ' ' ? ' ' : line.sign} {line.text.slice(0, Math.max(0, width - 4))}
         </Text>
       ))}
-      {hiddenDiff ? (
-        <Text dimColor wrap="truncate-end">
-          {'      …(+'}
-          {hiddenDiff} บรรทัด)
-        </Text>
-      ) : null}
+      {diffClipped ? <Text dimColor>{'      …'}</Text> : null}
       {item.status !== 'running' && item.detail ? (
         <Text color={item.status === 'error' ? 'red' : undefined} dimColor wrap="truncate-end">
           {'    ↳ '}

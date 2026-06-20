@@ -81,7 +81,8 @@ export function planUpLinkFix(relPath: string, content: string): BrainRepairActi
 export function applyPurposeFix(content: string): string {
   if (/^>\s+/m.test(content)) return content;
   const match = content.match(/^---[\s\S]*?---\n?/);
-  if (match) return content.replace(match[0], `${match[0]}${PURPOSE_PLACEHOLDER}`);
+  // replacer function so `$`-sequences in the matched frontmatter are written literally
+  if (match) return content.replace(match[0], () => `${match[0]}${PURPOSE_PLACEHOLDER}`);
   return `${PURPOSE_PLACEHOLDER}${content}`;
 }
 
@@ -135,9 +136,10 @@ export function applyContextPackIndexFix(indexContent: string, packName: string,
   const description = extractBlockquotePurpose(packContent) || 'context pack';
   const line = `- ${link} — ${description}`;
   const marker = '\n## Use Rule';
-  if (indexContent.includes(marker)) return indexContent.replace(marker, `\n${line}\n${marker}`);
+  // replacer functions so `$`-sequences in the pack description aren't interpreted as replace patterns
+  if (indexContent.includes(marker)) return indexContent.replace(marker, () => `\n${line}\n${marker}`);
   const upMarker = '\nup:: [[Shared/_Index]]';
-  if (indexContent.includes(upMarker)) return indexContent.replace(upMarker, `\n${line}\n${upMarker}`);
+  if (indexContent.includes(upMarker)) return indexContent.replace(upMarker, () => `\n${line}\n${upMarker}`);
   return `${indexContent.trimEnd()}\n${line}\n`;
 }
 

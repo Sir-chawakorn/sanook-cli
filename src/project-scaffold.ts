@@ -44,7 +44,8 @@ export function slugifyProject(value: string): string {
 function renderTemplate(raw: string, vars: Record<string, string>): string {
   let out = raw;
   for (const [key, value] of Object.entries(vars)) {
-    out = out.replaceAll(`{{${key}}}`, value);
+    // replacer function so `$`-sequences in a var value aren't interpreted as String.replace patterns
+    out = out.replaceAll(`{{${key}}}`, () => value);
   }
   return out;
 }
@@ -74,7 +75,8 @@ async function maybeAppendProjectsIndex(brainPath: string, slug: string, title: 
   if (content.includes(link)) return false;
   const line = `- ${link} — ${title}`;
   const marker = 'up:: [[Home]]';
-  const next = content.includes(marker) ? content.replace(marker, `${line}\n\n${marker}`) : `${content.trimEnd()}\n${line}\n`;
+  // replacer function so `$`-sequences in the project title aren't interpreted as replace patterns
+  const next = content.includes(marker) ? content.replace(marker, () => `${line}\n\n${marker}`) : `${content.trimEnd()}\n${line}\n`;
   await writeFile(indexPath, next, 'utf8');
   return true;
 }

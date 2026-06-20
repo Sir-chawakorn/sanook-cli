@@ -240,12 +240,13 @@ function instantiateTemplate(
   const titleTask = options.task;
   let content = raw
     .replaceAll('YYYY-MM-DD', options.today)
-    .replaceAll('<task/topic>', titleTask)
+    .replaceAll('<task/topic>', () => titleTask)
     .replace('tags: [template, final-gate, verification, dod]', 'tags: [final-gate, verification, dod]')
     .replace('tags: [template, final-gate, verification, lite]', 'tags: [final-gate, verification, lite]')
     .replace('parent: "[[Templates/_Index]]"', 'parent: "[[Sessions/_Index]]"')
     .replace('up:: [[Templates/_Index]]', 'up:: [[Sessions/_Index]]')
-    .replace('<paste owner request or goal text here>', options.task);
+    // replacer functions throughout — `$`-sequences in the user task/title must be written literally
+    .replace('<paste owner request or goal text here>', () => options.task);
 
   if (options.fromDiff) content = injectDiffEvidence(content, options.diffFiles);
   return content;
@@ -265,7 +266,9 @@ function injectDiffEvidence(content: string, diffFiles: string[]): string {
 function replaceFilesChangedRows(content: string, fileRows: string): string {
   const fullPattern = /(Files changed:\n\n\| File\/path \| Change summary \| Evidence \|\n\|---\|---\|---\|\n)\| `(?:<path>|<file>)` \|  \|  \|/;
   const litePattern = /(Changed files:\n\n\| File \| Change summary \| Evidence \|\n\|---\|---\|---\|\n)\| `(?:<path>|<file>)` \|  \|  \|/;
-  return content.replace(fullPattern, `$1${fileRows}`).replace(litePattern, `$1${fileRows}`);
+  // replacer functions keep the $1 backreference (the captured header) while writing fileRows
+  // literally — a changed file path can legitimately contain a `$`, which a string replacement would mangle.
+  return content.replace(fullPattern, (_m, p1: string) => `${p1}${fileRows}`).replace(litePattern, (_m, p1: string) => `${p1}${fileRows}`);
 }
 
 async function readTemplate(brainPath: string, template: BrainFinalReport['template']): Promise<string> {
@@ -313,7 +316,8 @@ async function maybeAppendSessionIndex(brainPath: string, relPath: string, task:
   if (content.includes(link)) return false;
   const line = `- ${link} — final gate: ${task}`;
   const marker = '\nup:: [[Home]]';
-  const next = content.includes(marker) ? content.replace(marker, `\n${line}\n${marker}`) : `${content.trimEnd()}\n${line}\n`;
+  // replacer function so `$`-sequences in the task text aren't interpreted as String.replace patterns
+  const next = content.includes(marker) ? content.replace(marker, () => `\n${line}\n${marker}`) : `${content.trimEnd()}\n${line}\n`;
   await writeFile(indexPath, next, 'utf8');
   return true;
 }

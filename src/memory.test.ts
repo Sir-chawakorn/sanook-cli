@@ -28,6 +28,14 @@ describe('appendToVaultInbox (remember → second brain)', () => {
     expect(await appendToVaultInbox(vault, 'fact ก')).toBe(false);
   });
 
+  it('เขียน fact ที่มี $-sequence แบบ literal (ไม่ตีความเป็น String.replace pattern)', async () => {
+    expect(await appendToVaultInbox(vault, 'ราคา $5 ใช้ $& และ $1 กับ $$')).toBe(true);
+    const c = await readFile(join(vault, 'Shared', 'Memory-Inbox', 'memory-inbox.md'), 'utf8');
+    expect(c).toContain('- ราคา $5 ใช้ $& และ $1 กับ $$'); // ตรงตามที่พิมพ์ ไม่ถูก expand
+    // เขียนซ้ำ fact เดิม → dedup ได้ (ถ้า $ ถูก expand บรรทัดที่เก็บจะเพี้ยน แล้ว dedup จะพัง)
+    expect(await appendToVaultInbox(vault, 'ราคา $5 ใช้ $& และ $1 กับ $$')).toBe(false);
+  });
+
   it('ไม่เขียนถ้าไม่ใช่ vault (ไม่มี memory-inbox.md)', async () => {
     const notVault = await mkdtemp(join(tmpdir(), 'x-'));
     expect(await appendToVaultInbox(notVault, 'x')).toBe(false);
@@ -249,6 +257,33 @@ describe('appendBrainTranscript (full conversation → vault Sessions)', () => {
   it('ปิด persistence ทั้งหมด → ไม่เขียนแม้ env force', async () => {
     vi.stubEnv('SANOOK_DISABLE_PERSISTENCE', '1');
     expect(await appendBrainTranscript(vault, { sessionId: 's_p', prompt: 'q', answer: 'a', model: 'm', createdIso: '2026-06-15T03:00:00.000Z' })).toBe(false);
+  });
+
+  it('ไม่ truncate turn เก่าเมื่อ prompt/answer มีบรรทัดขึ้นต้น "up:: " (กัน data loss)', async () => {
+    // turn 1: คำตอบมีบรรทัด up:: กลางเนื้อหา (เช่น user paste เนื้อหา vault note เข้ามา)
+    await appendBrainTranscript(vault, { sessionId: 's_up', prompt: 'q1', answer: 'see note\nup:: [[Sessions/Foo]]\nMORETEXT', model: 'm', createdIso: '2026-06-15T03:00:00.000Z' });
+    // turn 2: ต้องไม่ลบเนื้อหา turn 1 (regex เก่า /\nup:: .*$/s จะลบจาก up:: แรกถึง EOF)
+    await appendBrainTranscript(vault, { sessionId: 's_up', prompt: 'q2', answer: 'a2', model: 'm', createdIso: '2026-06-15T03:05:00.000Z' });
+    const c = await readFile(chatFile('s_up'), 'utf8');
+    expect(c).toContain('q1');
+    expect(c).toContain('see note');
+    expect(c).toContain('up:: [[Sessions/Foo]]'); // body up:: ยังอยู่
+    expect(c).toContain('MORETEXT'); // ข้อความหลัง body up:: ไม่ถูกตัดทิ้ง (จุดที่ regex เก่าลบ)
+    expect(c).toContain('q2'); // turn 2 ต่อท้ายได้
+    expect(c).toContain('a2');
+    expect((c.match(/up:: \[\[Sessions\/_Index/g) || []).length).toBe(1); // footer เดียว ไม่ซ้ำ
+    expect(c.trimEnd().endsWith('up:: [[Sessions/_Index]]')).toBe(true);
+  });
+
+  it('เขียน $-sequence ใน prompt/answer แบบ literal (ไม่ตีความเป็น String.replace pattern)', async () => {
+    await appendBrainTranscript(vault, { sessionId: 's_dollar', prompt: 'turn one', answer: 'a1', model: 'm', createdIso: '2026-06-15T03:00:00.000Z' });
+    // turn 2 hits the replace-before-footer branch where $-sequences mattered
+    await appendBrainTranscript(vault, { sessionId: 's_dollar', prompt: 'ใช้ $& และ $1 กับ $$ ยังไง', answer: 'ตอบ $`x', model: 'm', createdIso: '2026-06-15T03:05:00.000Z' });
+    const c = await readFile(chatFile('s_dollar'), 'utf8');
+    expect(c).toContain('ใช้ $& และ $1 กับ $$ ยังไง'); // literal — ไม่ถูก expand เป็น match/backref
+    expect(c).toContain('ตอบ $`x');
+    expect(c).toContain('turn one'); // turn 1 ยังอยู่
+    expect(c.trimEnd().endsWith('up:: [[Sessions/_Index]]')).toBe(true);
   });
 });
 

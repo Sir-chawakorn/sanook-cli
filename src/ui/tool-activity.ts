@@ -19,7 +19,10 @@ export interface ToolActivity {
   diff?: DiffLine[];
 }
 
-const MAX_DIFF_LINES = 16;
+// PER-SIDE diff cap (removed and added counted separately) — a two-sided edit can still yield up to
+// ~2×this rows, so the overall per-row height bound is enforced by ActivityRow (MAX_ROW_DIFF_LINES).
+// diffLines/additionLines append a correct "…(+N บรรทัด)" sentinel per side when exceeded.
+const MAX_DIFF_LINES = 10;
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
@@ -44,6 +47,7 @@ export function diffLines(oldStr: string, newStr: string, max = MAX_DIFF_LINES):
 /** whole-content as additions (new file write) — all green. Drops the trailing empty line of a
  * file ending in \n so the green-line count matches the title's countLines() (no spurious blank). */
 function additionLines(content: string, max = MAX_DIFF_LINES): DiffLine[] {
+  if (content === '') return []; // empty write → no diff body (title already shows "+0 บรรทัด")
   const all = content.split('\n');
   if (content.endsWith('\n')) all.pop();
   const out: DiffLine[] = all.slice(0, max).map((text) => ({ sign: '+' as const, text }));

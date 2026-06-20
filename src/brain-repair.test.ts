@@ -41,6 +41,15 @@ describe('brain repair helpers', () => {
     expect(next).toContain('[[Shared/Context-Packs/orphan-pack]]');
     expect(planContextPackIndexFix('orphan-pack', next)).toBeUndefined();
   });
+
+  it('writes a pack purpose with $-sequences literally (no String.replace pattern expansion)', () => {
+    const index = ['## Context Packs', '', '## Use Rule', 'rule', '', 'up:: [[Shared/_Index]]'].join('\n');
+    const pack = ['> กำไร $$ การันตี $& และ $1 เสมอ', '', '## Load Order', '- a'].join('\n');
+    const next = applyContextPackIndexFix(index, 'dollar-pack', pack);
+    expect(next).toContain('กำไร $$ การันตี $& และ $1 เสมอ'); // literal — ไม่ถูก expand เป็น match/backref
+    expect(next).not.toContain('## Use Rule\n## Use Rule'); // $& ไม่ได้ splice marker ซ้ำ
+    expect((next.match(/## Use Rule/g) || []).length).toBe(1);
+  });
 });
 
 describe('repairBrain', () => {

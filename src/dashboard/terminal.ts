@@ -17,7 +17,12 @@ const HISTORY = new Map<string, ModelMessage[]>(); // sessionId → conversation
 const MAX_HISTORY_SESSIONS = 20;
 
 function sseSend(res: ServerResponse, event: Record<string, unknown>): void {
-  res.write(`data: ${JSON.stringify(event)}\n\n`);
+  if (res.destroyed || res.writableEnded) return; // client gone — don't write to a dead socket
+  try {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  } catch {
+    /* socket closed mid-write */
+  }
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
@@ -52,19 +57,28 @@ export async function handleTerminalRun(req: IncomingMessage, res: ServerRespons
     return;
   }
 
-  const config = await loadConfig({});
-  const model = config.model;
-  const history = HISTORY.get(sessionId) ?? [];
   const rememberedFacts: string[] = [];
-  sseSend(res, { type: 'status', detail: `Agent · ${model}` });
+  // abort the agent run if the browser disconnects mid-stream — otherwise it keeps executing
+  // (and metering cost) and writing to a closed socket. RunAgent honors opts.signal.
+  const ac = new AbortController();
+  const onClose = (): void => ac.abort();
+  res.on('close', onClose);
 
+  // headers are already sent above, so everything that can throw stays inside this try and emits an
+  // SSE error here — otherwise the throw propagates to the server's catch, which calls writeHead(500)
+  // on an already-headed response (ERR_HTTP_HEADERS_SENT).
   try {
+    const config = await loadConfig({});
+    const model = config.model;
+    const history = HISTORY.get(sessionId) ?? [];
+    sseSend(res, { type: 'status', detail: `Agent · ${model}` });
     const { messages } = await runAgent({
       model,
       prompt,
       history,
       maxSteps: 20,
       permissionMode: autoApprove ? 'auto' : 'ask',
+      signal: ac.signal,
       usageMeta: { sessionId: `web:${sessionId}`, source: 'repl' },
       onEvent: (e: AgentEvent) => {
         switch (e.type) {
@@ -114,9 +128,11 @@ export async function handleTerminalRun(req: IncomingMessage, res: ServerRespons
     }
   } catch (err) {
     sseSend(res, { type: 'error', message: redactKey((err as Error).message) });
+  } finally {
+    res.off('close', onClose);
   }
   sseSend(res, { type: 'done' });
-  res.end();
+  if (!res.writableEnded) res.end();
 }
 
 export function resetTerminalSession(sessionId: string): void {
@@ -181,6 +197,13 @@ export async function attachShell(server: Server): Promise<void> {
         cwd: process.env.HOME || process.cwd(),
         env: process.env,
       });
+      const safeKill = (): void => {
+        try {
+          term.kill();
+        } catch {
+          /* pty already exited — kill() can throw for a reaped pid on some platforms */
+        }
+      };
       term.onData((data) => ws.send(JSON.stringify({ type: 'data', data })));
       term.onExit(() => ws.close());
       ws.on('message', (raw: unknown) => {
@@ -192,7 +215,10 @@ export async function attachShell(server: Server): Promise<void> {
           /* ignore malformed frame */
         }
       });
-      ws.on('close', () => term.kill());
+      ws.on('close', safeKill);
+      // without an 'error' listener, a ws error (abrupt TCP reset / protocol violation) is rethrown
+      // by Node's EventEmitter as an uncaught exception and crashes the whole dashboard server.
+      ws.on('error', safeKill);
     });
   });
 }

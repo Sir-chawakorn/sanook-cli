@@ -319,8 +319,9 @@ export async function appendToVaultInbox(brainPath: string, fact: string): Promi
   const line = `- ${safeFact.trim().replace(/\s+/g, ' ')}`;
   if (content.includes(line)) return false; // dedup
   const marker = '## New Candidates';
+  // replacer function so `$`-sequences in the fact aren't interpreted as String.replace patterns
   const next = content.includes(marker)
-    ? content.replace(marker, `${marker}\n${line}`)
+    ? content.replace(marker, () => `${marker}\n${line}`)
     : `${content.trimEnd()}\n${line}\n`;
   await writeFile(p, next);
   return true;
@@ -335,13 +336,30 @@ function chatTranscriptHeader(today: string): string {
   return `---\ntags: [session, transcript, chat]\nnote_type: session-log\ncreated: ${today}\nupdated: ${today}\nparent: "[[Sessions/_Index]]"\nai_surface: history\n---\n\n# ${today} — Chat transcript (auto by ${BRAND.cliName})\n\n> บทสนทนาเต็มของ session นี้ — เก็บอัตโนมัติทุก turn\n`;
 }
 
+// Matches ONLY the trailing `up:: ...` footer (anchored to EOF), never a body line that merely
+// starts with `up:: ` (e.g. pasted vault content). `[^\n]*` can't cross newlines and `\s*$` forces
+// the match to reach end-of-file, so a mid-file `up:: ` occurrence can't be mistaken for the footer.
+const UP_FOOTER_RE = /\nup:: [^\n]*\s*$/;
+
 function ensureSessionNoteScaffold(content: string, header: string): string {
   const clean = content.trimEnd();
   let next = clean;
   if (!next) next = header.trimEnd();
   else if (!next.includes('note_type: session-log')) next = `${header.trimEnd()}\n\n${next}`;
-  if (!next.includes('\nup:: ')) next = `${next.trimEnd()}\n\nup:: [[Sessions/_Index]]`;
+  if (!UP_FOOTER_RE.test(`${next}\n`)) next = `${next.trimEnd()}\n\nup:: [[Sessions/_Index]]`;
   return `${next.trimEnd()}\n`;
+}
+
+/**
+ * Insert `block` just before the note's trailing `up:: ...` footer, preserving everything above it.
+ * Uses a REPLACER FUNCTION (so `$`-sequences in user prompt/answer text are written literally, not
+ * interpreted as String.replace patterns) and matches only the final footer (UP_FOOTER_RE), so a
+ * body `up:: ` line can never trigger a greedy truncation-to-EOF. Falls back to appending if no footer.
+ */
+function insertBeforeUpFooter(content: string, block: string): string {
+  return UP_FOOTER_RE.test(content)
+    ? content.replace(UP_FOOTER_RE, () => `\n${block}\nup:: [[Sessions/_Index]]\n`)
+    : `${content.trimEnd()}\n${block}`;
 }
 
 export async function appendBrainWorklog(
@@ -353,20 +371,23 @@ export async function appendBrainWorklog(
   if (!(await exists(dir))) return false; // ไม่ใช่ vault → ข้าม
   const topic = entry.prompt.trim().split(/\s+/).slice(0, 6).join(' ').slice(0, 50) || 'work';
   const file = join(dir, `${entry.today}-worklog.md`);
-  let content: string;
-  try {
-    content = await readFile(file, 'utf8');
-  } catch {
-    content = '';
-  }
-  content = ensureSessionNoteScaffold(content, worklogHeader(entry.today));
   const block = `\n## ${topic}\n- prompt: ${redactKey(entry.prompt).trim().slice(0, 200)}\n- model: ${entry.model}\n- ${redactKey(entry.summary).trim().slice(0, 300)}\n`;
-  // แทรกก่อน up:: ท้ายไฟล์ (กัน up:: หลุดไปกลาง)
-  const out = content.includes('\nup:: ')
-    ? content.replace(/\nup:: .*$/s, `\n${block}\nup:: [[Sessions/_Index]]\n`)
-    : `${content.trimEnd()}\n${block}`;
-  await writeFile(file, out);
-  return true;
+  // serialize the read-modify-write with withMemLock (same as appendBrainTranscript) — turns run
+  // fire-and-forget in the REPL, so two concurrent worklog appends to the same daily file would
+  // otherwise read the same baseline and the later writeFile would clobber the earlier turn's block.
+  return withMemLock(async () => {
+    let content: string;
+    try {
+      content = await readFile(file, 'utf8');
+    } catch {
+      content = '';
+    }
+    content = ensureSessionNoteScaffold(content, worklogHeader(entry.today));
+    // แทรกก่อน up:: footer ท้ายไฟล์ (กัน up:: หลุดไปกลาง + กัน $ ใน prompt ทำ replace เพี้ยน)
+    const out = insertBeforeUpFooter(content, block);
+    await writeFile(file, out);
+    return true;
+  });
 }
 
 /**
@@ -400,9 +421,7 @@ export async function appendBrainTranscript(
     }
     content = ensureSessionNoteScaffold(content, chatTranscriptHeader(today));
     const block = [`\n## ${time} · ${entry.model}`, '', '**You:**', '', prompt || '_(empty)_', '', `**${BRAND.agentName}:**`, '', answer || '_(no text output)_', ''].join('\n');
-    const out = content.includes('\nup:: ')
-      ? content.replace(/\nup:: .*$/s, `\n${block}\nup:: [[Sessions/_Index]]\n`)
-      : `${content.trimEnd()}\n${block}`;
+    const out = insertBeforeUpFooter(content, block);
     await writeFile(file, out);
     return true;
   });

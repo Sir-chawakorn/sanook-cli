@@ -205,7 +205,8 @@ export function instantiateNoteTemplate(
   let content = raw.replaceAll('YYYY-MM-DD', options.today).replaceAll('{{DATE}}', options.today);
   const config = BRAIN_NOTE_TYPES[options.type];
   for (const placeholder of config.titlePlaceholders) {
-    content = content.replaceAll(placeholder, options.title);
+    // replacer function so `$`-sequences in the note title are written literally
+    content = content.replaceAll(placeholder, () => options.title);
   }
   content = content.replace(/^# .+$/m, (heading) => {
     if (heading.includes(options.title)) return heading;
@@ -395,7 +396,8 @@ async function maybeAppendDestinationIndex(
   if (content.includes(link)) return false;
   const line = `- ${link} — ${type}: ${title}`;
   const marker = '\nup:: [[Home]]';
-  const next = content.includes(marker) ? content.replace(marker, `\n${line}\n${marker}`) : `${content.trimEnd()}\n${line}\n`;
+  // replacer function so `$`-sequences in the note title aren't interpreted as String.replace patterns
+  const next = content.includes(marker) ? content.replace(marker, () => `\n${line}\n${marker}`) : `${content.trimEnd()}\n${line}\n`;
   await writeFile(indexPath, next, 'utf8');
   return true;
 }
