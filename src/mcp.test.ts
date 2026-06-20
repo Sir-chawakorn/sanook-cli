@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { capMcpToolOutput, isValidMcpServerName, loadMcpConfig, MAX_MCP_TOOL_OUTPUT_CHARS, probeMcpServer } from './mcp.js';
+import { capMcpToolOutput, findMcpServerConfigPath, isMcpServerEnabled, isValidMcpServerName, loadMcpConfig, mcpAuthHints, MAX_MCP_TOOL_OUTPUT_CHARS, probeMcpServer } from './mcp.js';
 
 describe('MCP config loading', () => {
   let home: string;
@@ -39,6 +39,40 @@ describe('MCP config loading', () => {
     expect((cfg as Record<string, unknown>).polluted).toBeUndefined();
   });
 
+  it('preserves enabled flag and skips disabled servers at runtime', async () => {
+    await writeFile(
+      join(home, '.sanook', 'mcp.json'),
+      `{
+        "mcpServers": {
+          "active": { "command": "node", "args": ["server.js"] },
+          "paused": { "command": "node", "args": ["paused.js"], "enabled": false }
+        }
+      }`,
+    );
+
+    const cfg = await loadMcpConfig(undefined, process.cwd());
+    expect(cfg.active.enabled).toBeUndefined();
+    expect(cfg.paused.enabled).toBe(false);
+    expect(isMcpServerEnabled(cfg.active)).toBe(true);
+    expect(isMcpServerEnabled(cfg.paused)).toBe(false);
+  });
+
+  it('finds the config path that owns a server name', async () => {
+    await writeFile(
+      join(home, '.sanook', 'mcp.json'),
+      `{ "mcpServers": { "global": { "command": "node", "args": ["g.js"] } } }`,
+    );
+    await expect(findMcpServerConfigPath('global')).resolves.toBe(join(home, '.sanook', 'mcp.json'));
+    await expect(findMcpServerConfigPath('missing')).resolves.toBeUndefined();
+  });
+
+  it('returns auth hints for hosted MCP 401 responses', () => {
+    expect(mcpAuthHints({ url: 'https://example.com/mcp' }, 'mcp http 401 Unauthorized')).toEqual(
+      expect.arrayContaining([expect.stringContaining('Authorization')]),
+    );
+    expect(mcpAuthHints({ command: 'node' }, 'mcp http 401 Unauthorized')).toEqual([]);
+  });
+
   it('rejects special or path-like MCP server names', () => {
     expect(isValidMcpServerName('fs_server-1')).toBe(true);
     expect(isValidMcpServerName('__proto__')).toBe(false);
@@ -50,6 +84,29 @@ describe('MCP config loading', () => {
     const capped = capMcpToolOutput('x'.repeat(MAX_MCP_TOOL_OUTPUT_CHARS + 12));
     expect(capped).toContain('[MCP output truncated: 12 chars omitted]');
     expect(capped.length).toBeLessThan(MAX_MCP_TOOL_OUTPUT_CHARS + 80);
+  });
+
+  it('reports auth hints when remote MCP returns HTTP 401', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      headers: { get: () => null },
+      json: async () => ({}),
+      text: async () => '',
+    })) as unknown as typeof fetch;
+
+    try {
+      await expect(probeMcpServer({ url: 'https://example.com/mcp' }, 500)).resolves.toMatchObject({
+        ok: false,
+        transport: 'http',
+        error: 'mcp http 401 Unauthorized',
+        authHints: expect.arrayContaining([expect.stringContaining('401')]),
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('probes stdio MCP servers and reports advertised tools', async () => {

@@ -40,6 +40,7 @@ const BUILTIN_SLASH_COMPLETIONS: CompletionItem[] = [
   { text: '/mcp', display: '/mcp', meta: 'browse MCP servers' },
   { text: '/skills', display: '/skills', meta: 'browse loaded skills' },
   { text: '/sessions', display: '/sessions', meta: 'resume saved sessions' },
+  { text: '/tasks', display: '/tasks', meta: 'background task_spawn jobs' },
   { text: '/status', display: '/status', meta: 'session/model status' },
   { text: '/platforms', display: '/platforms', meta: 'providers + gateways' },
   { text: '/trail', display: '/trail', meta: 'toggle tool trail detail' },

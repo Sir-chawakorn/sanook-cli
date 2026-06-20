@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.5.3
+
+### Second-brain CLI — pack, create, repair, consolidate, metrics
+
+- **`sanook brain pack list|show <name>`** — makes `Shared/Context-Packs/` first-class: list packs with descriptions and index status; show load order, done criteria, and wiki-link sources.
+- **`sanook brain new <type> [--title "..."]`** — template-backed note creation for `session`, `bug`, `handoff`, `project`, `golden-case`, and `checklist`; fills frontmatter, sets `parent`/`up::`, appends to destination `_Index.md`, and rejects wrong-folder output paths.
+- **`sanook brain repair [--dry-run]`** — safe one-line fixes after `doctor`/`review`: missing purpose blockquote, `parent`, `up::`, unlinked context packs, and missing scaffold folders.
+- **`sanook brain consolidate [--apply] [--apply --archive] [--memory]`** — sleep-time consolidation runner (inbox dedup, stale → archive, retrieval eval, optional auto-memory merge); dry-run by default.
+- **`sanook brain metrics [--no-retrieval]`** — vault counts, stale notes, index freshness, and retrieval coverage with non-zero exit on issues.
+- **Context pack auto-select** — `buildBrainContext({ taskQuery })` and per-turn retrieval now inject the best-matching context pack before broader vault context.
+
+### MCP trust & safety
+
+- **`sanook mcp enable|disable <name>`** — toggle MCP servers without removing config (`enabled` flag in `mcp.json`; disabled servers are skipped by the agent, web probes, and doctor).
+- **401 auth hints** — `mcp test` / `mcp doctor` print setup hints when hosted remotes return Unauthorized.
+- **Risk labels** — classify servers as `read-only`, `file-write`, `network-write`, `database-write`, or `infra/admin` in search/info/list/test and the MCP hub overlay.
+- **Registry cache** — official MCP registry responses are cached for 5 minutes to reduce repeated network fetches.
+
+### Agent loop — web fetch, plan handoff, background tasks
+
+- **`web_fetch` agent tool** — built-in ethical fetch ladder (direct HTML → reader → Tavily → Wayback); read-only, no approval gate; same policy as `sanook web fetch`.
+- **`sanook plan "<task>"`** — read-only plan mode with stderr execute handoff (`sanook --yes "…"`) after success.
+- **`/tasks` overlay + `bg N` status** — inspect running `task_spawn` background jobs from the REPL.
+
+### Gateway — doctor, richer status, mobile replies
+
+- **`sanook gateway doctor`** — validate configured channel tokens, webhooks, and allowlists with live probes where possible.
+- **`sanook gateway status` (enhanced)** — pending cron jobs, recent delivery failures, and config-based channel health summary.
+- **Mobile chat formatting** — truncate fenced code blocks and cap reply length before delivering to Telegram/Discord/Slack/LINE/WhatsApp and other chat platforms.
+
+### TUI — sessions, transcript, launchpad
+
+- **Session rename** — `/sessions` → `r` to rename inline.
+- **Cross-project sessions** — list sessions from all projects (`≠` marker); resume cross-project with `--continue-any`-style cwd note.
+- **Virtual transcript** — viewport windowing with PgUp/PgDn scroll instead of rendering full scrollback.
+- **Collapsible launchpad** — keys `1`/`2`/`3` toggle Tools/Skills/MCP startup sections.
+
+### Developer experience
+
+- **`sanook init [--trust]`** — scaffold `.sanook/commands/` starter templates and print brain/MCP/trust next-step hints.
+- **`sanook skill install <name|path>`** — install from bundled catalog or local path (shared resolver with `skill add`).
+
 ## 0.5.2
 
 ### TUI startup polish — SANOOK AI Launchpad

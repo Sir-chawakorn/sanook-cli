@@ -45,6 +45,7 @@ const READ_ONLY_TOOLS = new Set([
   'ha_list_entities',
   'ha_get_state',
   'ha_list_services',
+  'web_fetch',
 ]);
 
 export function isReadOnlyTool(tool: string): boolean {

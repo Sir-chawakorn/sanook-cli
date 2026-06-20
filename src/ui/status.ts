@@ -1,5 +1,6 @@
 export interface FooterStatusInput {
   branch?: string | null;
+  backgroundTaskCount?: number;
   columns: number;
   contextCompression?: 'headroom' | 'off' | 'selective';
   contextLimit?: number;
@@ -25,6 +26,7 @@ export interface StatusRuleWidths {
 }
 
 export interface StatusSegments {
+  backgroundTasks: boolean;
   compression: boolean;
   contextBar: boolean;
   cost: boolean;
@@ -38,6 +40,7 @@ export interface StatusSegments {
 export function statusSegments(columns: number): StatusSegments {
   const width = Math.max(20, Math.floor(columns || 80));
   return {
+    backgroundTasks: width >= 42,
     compression: width >= 88,
     contextBar: width >= 96,
     cost: width >= 78,
@@ -66,6 +69,7 @@ export function statusRuleWidths(columns: number, rightLabel: string, minLeftCon
 
 export function footerStatus({
   branch,
+  backgroundTaskCount = 0,
   busy = false,
   columns,
   contextCompression,
@@ -89,6 +93,7 @@ export function footerStatus({
   if (contextCompression && segments.compression) parts.push(compressionSegment(contextCompression));
   if (busy && elapsedSeconds != null && segments.elapsed) parts.push(`time ${formatElapsed(elapsedSeconds)}`);
   if (queuedCount > 0 && segments.queue) parts.push(`q ${queuedCount}`);
+  if (backgroundTaskCount > 0 && segments.backgroundTasks) parts.push(`bg ${backgroundTaskCount}`);
   if (costHint && segments.cost) parts.push(`cost ${costHint}`);
   if (segments.hints) parts.push('/help', '@file');
   if (segments.hotkeys) parts.push('/hotkeys');

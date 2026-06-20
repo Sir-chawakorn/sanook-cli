@@ -1,8 +1,11 @@
-import { loadMcpConfig, type McpServerConfig } from './mcp.js';
+import { isMcpServerEnabled, loadMcpConfig, type McpServerConfig } from './mcp.js';
+import { inferConfiguredServerRisk, formatMcpRiskLabel, type McpRiskLabel } from './mcp-risk.js';
 
 export interface McpHubEntry {
   config: McpServerConfig;
+  enabled: boolean;
   name: string;
+  risk: McpRiskLabel;
   transport: 'http' | 'stdio';
   target: string;
   secretSummary: string;
@@ -19,7 +22,9 @@ export function mcpHubEntriesFromConfig(config: Record<string, McpServerConfig>,
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([name, server]) => ({
         config: server,
+        enabled: isMcpServerEnabled(server),
         name,
+        risk: inferConfiguredServerRisk(name, server),
         transport: server.url ? 'http' : 'stdio',
         target: server.url ? server.url : [server.command, ...(server.args ?? [])].filter(Boolean).join(' '),
         secretSummary: secretSummary(server),

@@ -63,6 +63,17 @@ describe('footerStatus', () => {
     expect(status.length).toBeLessThanOrEqual(80);
   });
 
+  it('shows background task_spawn count in status bar', () => {
+    const status = footerStatus({
+      columns: 72,
+      backgroundTaskCount: 2,
+      model: 'sonnet',
+      mode: 'ask',
+    });
+
+    expect(status).toContain('bg 2');
+  });
+
   it('shows compression mode on roomy terminals below cost/cwd priority', () => {
     const status = footerStatus({
       columns: 96,
@@ -105,6 +116,7 @@ describe('footerStatus', () => {
 
   it('sheds status segments in a stable priority order', () => {
     expect(statusSegments(120)).toEqual({
+      backgroundTasks: true,
       compression: true,
       contextBar: true,
       cost: true,
@@ -115,6 +127,7 @@ describe('footerStatus', () => {
       queue: true,
     });
     expect(statusSegments(44)).toMatchObject({
+      backgroundTasks: true,
       compression: false,
       contextBar: false,
       cost: false,

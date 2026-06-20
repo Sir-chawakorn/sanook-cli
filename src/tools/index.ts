@@ -13,6 +13,7 @@ import { diagnosticsTool } from './diagnostics.js';
 import { gitStatusTool, gitDiffTool, gitLogTool, gitCommitTool } from './git.js';
 import { haCallServiceTool, haGetStateTool, haListEntitiesTool, haListServicesTool } from './homeassistant.js';
 import { pythonTool, rustTool } from './polyglot.js';
+import { webFetchTool } from './web-fetch-tool.js';
 
 /** tool registry ที่ส่งให้ agent loop */
 export const tools = {
@@ -48,6 +49,7 @@ export const tools = {
   ha_get_state: haGetStateTool,
   ha_list_services: haListServicesTool,
   ha_call_service: haCallServiceTool,
+  web_fetch: webFetchTool,
 };
 
 export { readFileTool, writeFileTool, editFileTool, listDirTool, globTool, grepTool, bashTool };

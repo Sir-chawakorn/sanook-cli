@@ -25,6 +25,12 @@ export const TOOL_CATALOG: ToolCatalogEntry[] = [
     summary: 'remember/recall/find_skills/create_skill',
   },
   {
+    detail: 'Fetch public pages via the ethical web ladder (robots.txt, SSRF guard, reader/Tavily/Wayback fallbacks).',
+    group: 'Research',
+    name: 'web fetch',
+    summary: 'web_fetch (ethical ladder)',
+  },
+  {
     detail: 'Use local brain search for vault/session/skill retrieval, and configured MCP web/search/fetch servers for current external facts with citations.',
     group: 'Research',
     name: 'local + web grounding',

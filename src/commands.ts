@@ -32,7 +32,8 @@ export interface CommandResult {
     | 'sessionsHub'
     | 'details'
     | 'toolTrail'
-    | 'toolsHub';
+    | 'toolsHub'
+    | 'tasksHub';
   /** ข้อความแสดงกลับ (help / cost / model / unknown) */
   message?: string;
   /** /model <spec> — เปลี่ยน model */
@@ -64,6 +65,7 @@ export const HELP_TEXT = `คำสั่ง:
   /mcp             เปิด MCP Hub overlay
   /skills          เปิด Skills Hub overlay (จัดการ: ${BRAND.cliName} skill list)
   /sessions        เปิด Session Switcher overlay · /trail พับ/ขยาย tool trail
+  /tasks           ดู background sub-agents (task_spawn)
   /diff            ดู git diff (สิ่งที่ agent แก้ในรอบนี้)
   /retry           รัน prompt ล่าสุดอีกครั้ง
   /stop            หยุด turn ที่กำลังรัน
@@ -295,6 +297,8 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
       };
     case 'sessions':
       return { handled: true, action: 'sessionsHub', message: `saved sessions — จัดการด้วย "${BRAND.cliName} sessions"` };
+    case 'tasks':
+      return { handled: true, action: 'tasksHub', message: 'background tasks — จาก task_spawn (Enter ดูรายละเอียด)' };
     case 'diff':
       return { handled: true, action: 'diff' };
     case 'retry':
@@ -343,6 +347,7 @@ export const BUILTIN_COMMANDS = new Set([
   'mcp',
   'skills',
   'sessions',
+  'tasks',
   'diff',
   'retry',
   'stop',

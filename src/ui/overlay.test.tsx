@@ -11,6 +11,7 @@ import {
   pagerOverlayLines,
   sessionsOverlayLines,
   skillsOverlayLines,
+  tasksOverlayLines,
   toolsOverlayLines,
 } from './overlay.js';
 
@@ -51,6 +52,8 @@ const sampleMcpServers = [
     transport: 'stdio' as const,
     target: 'npx -y @modelcontextprotocol/server-filesystem .',
     secretSummary: 'no secrets',
+    enabled: true,
+    risk: 'file-write' as const,
   },
   {
     config: { url: 'https://example.com/mcp', headers: { Authorization: 'Bearer token' } },
@@ -58,6 +61,8 @@ const sampleMcpServers = [
     transport: 'http' as const,
     target: 'https://example.com/mcp',
     secretSummary: '1 header',
+    enabled: true,
+    risk: 'network-write' as const,
   },
 ];
 
@@ -144,6 +149,24 @@ describe('FloatingOverlay', () => {
     expect(frame).toContain('debug-root-cause');
     expect(frame).toContain('Enter inspect');
     unmount();
+  });
+
+  it('renders a background tasks overlay list', () => {
+    const lines = tasksOverlayLines(
+      {
+        detail: false,
+        kind: 'tasks',
+        selected: 0,
+        tasks: [
+          { id: 't1', description: 'scan repo', state: 'running', startedMs: Date.now() - 5000 },
+          { id: 't2', description: 'research docs', state: 'done', startedMs: 1000, endedMs: 9000, text: 'found 3 hits' },
+        ],
+      },
+      82,
+    );
+    expect(lines.join('\n')).toContain('Sanook background tasks');
+    expect(lines.join('\n')).toContain('t1');
+    expect(lines.join('\n')).toContain('running');
   });
 
   it('renders a tools hub overlay list and details', () => {
@@ -251,14 +274,46 @@ describe('FloatingOverlay', () => {
   });
 
   it('renders session switcher lines with titles and prompt fallback', () => {
-    const lines = sessionsOverlayLines({ kind: 'sessions', selected: 1, sessions: sampleSessions }, 68);
+    const lines = sessionsOverlayLines({ currentCwd: '/project', kind: 'sessions', selected: 1, sessions: sampleSessions }, 68);
 
     expect(lines).toContain('Sanook sessions');
+    expect(lines.join('\n')).toContain('all projects');
     expect(lines.join('\n')).toContain('Audit');
     expect(lines.join('\n')).toContain('Gateway cleanup');
     expect(lines.join('\n')).toContain('Enter resume');
-    expect(lines.join('\n')).toContain('i inspect');
-    expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(68);
+    expect(lines.join('\n')).toContain('r rename');
+    expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(96);
+  });
+
+  it('marks sessions from other projects in the list', () => {
+    const lines = sessionsOverlayLines(
+      {
+        currentCwd: '/project',
+        kind: 'sessions',
+        selected: 0,
+        sessions: [{ ...sampleSessions[0], cwd: '/elsewhere' }, sampleSessions[1]],
+      },
+      96,
+    );
+
+    expect(lines.join('\n')).toContain('≠ Audit');
+  });
+
+  it('renders rename mode with the editable title draft', () => {
+    const lines = sessionsOverlayLines(
+      {
+        currentCwd: '/project',
+        kind: 'sessions',
+        renaming: 'New launch title',
+        selected: 1,
+        sessions: sampleSessions,
+      },
+      72,
+    );
+
+    expect(lines.join('\n')).toContain('rename:');
+    expect(lines.join('\n')).toContain('title: New launch title');
+    expect(lines.join('\n')).toContain('Enter save');
   });
 
   it('renders session detail and delete confirmation hints', () => {

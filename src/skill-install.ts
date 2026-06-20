@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { parseFrontmatter, isValidSkillName } from './skills.js';
+import { parseFrontmatter, isValidSkillName, bundledSkillsDir, listBundledSkills } from './skills.js';
 import { appHomePath, BRAND } from './brand.js';
 
 const execFileAsync = promisify(execFile);
@@ -169,6 +169,30 @@ async function fetchSkillMd(url: string): Promise<string> {
   const text = await r.text();
   if (text.length > MAX_MD) throw new Error('SKILL.md ใหญ่เกิน 2MB');
   return text;
+}
+
+function bundledCatalogHint(name: string): string {
+  const sample = ['git-commit-pr', 'write-tests', 'debug-root-cause'];
+  return `ไม่เจอ bundled skill "${name}" — ลอง ${sample.join(', ')} หรือ ${BRAND.cliName} skill list`;
+}
+
+/**
+ * ติดตั้ง skill จาก bundled catalog (ชื่อ slug) · local path · URL · GitHub
+ * ⚠️ skill = instruction ที่ agent จะ trust (ไม่ใช่ data) — ติดตั้งจาก source ที่เชื่อถือเท่านั้น
+ */
+export async function installNamedSkill(nameOrSource: string, onLog?: (m: string) => void): Promise<InstallResult[]> {
+  if (await exists(nameOrSource)) return installFromLocal(nameOrSource, onLog);
+
+  if (isValidSkillName(nameOrSource)) {
+    const bundled = join(bundledSkillsDir(), nameOrSource);
+    if (await exists(join(bundled, 'SKILL.md'))) return [await installFromDir(bundled)];
+    const catalog = await listBundledSkills();
+    const match = catalog.find((skill) => skill.name === nameOrSource);
+    if (match) return [await installFromDir(dirname(dirname(match.path)))];
+    throw new Error(bundledCatalogHint(nameOrSource));
+  }
+
+  return installSkill(nameOrSource, onLog);
 }
 
 /**

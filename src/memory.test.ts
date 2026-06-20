@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendToVaultInbox, appendBrainWorklog, buildBrainContext } from './memory.js';
+import { appendToVaultInbox, appendBrainWorklog, buildBrainContext, buildBrainContextParts } from './memory.js';
 
 describe('appendToVaultInbox (remember → second brain)', () => {
   let vault: string;
@@ -73,6 +73,18 @@ describe('buildBrainContext (closed loop — remembered fact กลับเข�
     const empty = await mkdtemp(join(tmpdir(), 'e-'));
     expect(await buildBrainContext(empty)).toBe('');
     await rm(empty, { recursive: true, force: true });
+  });
+
+  it('auto-selects a context pack when taskQuery matches coding-release', async () => {
+    await mkdir(join(vault, 'Shared', 'Context-Packs'), { recursive: true });
+    await writeFile(
+      join(vault, 'Shared', 'Context-Packs', 'coding-release.md'),
+      '---\nnote_type: context-pack\n---\n\n# Coding\n\n> Use when changing code/tests/build/release.\n\n## Load Order\n1. index\n\n## Done Criteria\n- tests pass\n',
+    );
+    const parts = await buildBrainContextParts(vault, { taskQuery: 'fix unit test and ship cli release build' });
+    const pack = parts.find((p) => p.id === 'context-pack');
+    expect(pack?.relPath).toBe('Shared/Context-Packs/coding-release.md');
+    expect(pack?.content).toContain('Coding');
   });
 });
 

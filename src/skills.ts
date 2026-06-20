@@ -12,6 +12,10 @@ import { projectConfigPathIfTrusted } from './trust.js';
 const BUNDLED_SKILLS = join(dirname(fileURLToPath(import.meta.url)), '..', 'skills');
 const GLOBAL_SKILLS = appHomePath('skills');
 
+export function bundledSkillsDir(): string {
+  return BUNDLED_SKILLS;
+}
+
 export interface Skill {
   name: string;
   description: string;
@@ -40,6 +44,34 @@ export function parseFrontmatter(content: string): { meta: Record<string, string
 /** ป้องกัน path traversal — ชื่อ skill ต้องเป็น slug ปลอดภัย */
 export function isValidSkillName(name: string): boolean {
   return /^[a-z0-9][a-z0-9-]{0,63}$/.test(name);
+}
+
+/** list bundled skills only (sanook skill install <name> catalog) */
+export async function listBundledSkills(): Promise<Skill[]> {
+  const out: Skill[] = [];
+  let entries: Dirent[];
+  try {
+    entries = await readdir(BUNDLED_SKILLS, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    if (!e.isDirectory() || !isValidSkillName(e.name)) continue;
+    const p = join(BUNDLED_SKILLS, e.name, 'SKILL.md');
+    try {
+      const { meta } = parseFrontmatter(await readFile(p, 'utf8'));
+      const name = meta.name && isValidSkillName(meta.name) ? meta.name : e.name;
+      out.push({
+        name,
+        description: meta.description ?? '',
+        whenToUse: meta.when_to_use,
+        path: p,
+      });
+    } catch {
+      /* skip invalid entries */
+    }
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** scan project + global skills → list (name+description เท่านั้น สำหรับ inject). project ทับ global ชื่อซ้ำ */

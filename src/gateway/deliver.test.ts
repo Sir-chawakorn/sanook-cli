@@ -613,4 +613,24 @@ describe('gateway delivery helper', () => {
       }),
     ).rejects.toThrow('recipient');
   });
+
+  it('truncates long code blocks for mobile chat delivery targets', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, result: { message_id: 99 } }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const code = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join('\n');
+    await deliverToTarget('telegram:111', `summary\n\`\`\`ts\n${code}\n\`\`\``, {
+      config: { telegram: { botToken: '123:abc', allowedChatIds: [111] } },
+      env: CLEAN_ENV,
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const payload = JSON.parse(String(init.body)) as { text: string };
+    expect(payload.text).toContain('truncated for mobile');
+    expect(payload.text).not.toContain('line 20');
+  });
 });

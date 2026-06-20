@@ -2,7 +2,7 @@
 tags: [project, sanook-cli, second-brain, roadmap]
 note_type: project-overview
 created: 2026-06-18
-updated: 2026-06-18
+updated: 2026-06-20
 parent: "[[Projects/sanook-cli/_Index]]"
 source::
   - src/bin.ts
@@ -11,6 +11,12 @@ source::
   - src/knowledge.ts
   - src/mcp-server.ts
   - src/search/indexer.ts
+  - src/brain-pack.ts
+  - src/brain-new.ts
+  - src/brain-repair.ts
+  - src/brain-consolidate.ts
+  - src/brain-metrics.ts
+  - src/context-pack.ts
   - second-brain/SANOOK.md
 related:: [[Research/2026-06-18-hermes-cli-second-brain-expansion-research]]
 ---
@@ -23,12 +29,13 @@ related:: [[Research/2026-06-18-hermes-cli-second-brain-expansion-research]]
 
 - `sanook brain init [path]` scaffolds the vault, writes `SANOOK.md`, and stores `brainPath`.
 - `wireBrainMcp()` adds a filesystem MCP server for the vault under `~/.sanook/mcp.json`.
-- `buildBrainContext()` injects `Shared/AI-Context-Index.md`, `current-state.md`, and Memory-Inbox candidates into agent context.
+- `buildBrainContext()` injects `Shared/AI-Context-Index.md`, `current-state.md`, Memory-Inbox candidates, and **auto-selected context packs** into agent context.
 - `remember` writes to Sanook memory store and routes facts into vault Memory-Inbox.
 - Headless sessions append a daily worklog into `Sessions/`.
 - `sanook index` incrementally indexes vault + memory + sessions + skills.
 - `sanook search` gives BM25 plus optional semantic/hybrid search over the unified index.
 - `sanook mcp serve` exposes `sanook_search`, `sanook_recall`, `sanook_remember`, `sanook_index`, and `sanook_stats`.
+- `sanook brain pack list|show`, `brain new`, `brain repair`, `brain consolidate`, and `brain metrics` operate on the configured vault from the CLI.
 
 ## Correct Direction
 
@@ -90,24 +97,35 @@ Curator-style health review for the vault:
 
 ### `sanook brain pack list|show`
 
-Make `Shared/Context-Packs/` first-class:
+Status: implemented (2026-06-20).
 
-- List available packs with descriptions.
-- Show pack sources and expected use cases.
-- Eventually let the agent choose a pack before loading broader context.
+- List available packs with descriptions and index link status.
+- Show pack sources, load order, done criteria, and expected use cases.
+- Agent auto-selects a pack via `buildBrainContext({ taskQuery })` and per-turn retrieval when the query matches a pack.
 
 ### `sanook brain new <type>`
+
+Status: implemented (2026-06-20).
 
 Template-backed note creation:
 
 - `session`, `bug`, `handoff`, `project`, `golden-case`, `checklist`.
 - Reads destination `_Index.md`, fills frontmatter, and prevents wrong-folder drift.
 
+### `sanook brain consolidate`
+
+Status: implemented (2026-06-20).
+
+Sleep-time consolidation runner based on `Runbooks/sleep-time-consolidation.md`:
+
+- Inbox routing/dedup, stale → archive, retrieval eval, optional auto-memory merge.
+- Dry-run by default; `--apply` / `--apply --archive` / `--memory` for writes.
+
 ## P2 Features
 
 - `sanook brain export --for claude|gemini|codex|hermes` for adapter files only when explicitly needed.
-- `sanook brain metrics` for counts, stale notes, index freshness, and retrieval coverage.
-- `sanook brain repair` for safe one-line fixes after `doctor` reports them.
+- `sanook brain metrics` — **implemented (2026-06-20)**: counts, stale notes, index freshness, retrieval coverage.
+- `sanook brain repair` — **implemented (2026-06-20)**: safe one-line fixes after `doctor`/`review` (purpose blockquote, `parent`, `up::`, pack links, scaffold folders).
 
 ## Folder Policy
 
@@ -145,12 +163,24 @@ Completed on 2026-06-18:
 3. Updated generated `Shared/Context-Packs/_Index.md` to link bundled context packs.
 4. Verified with review/scaffold/memory tests and typecheck.
 
+## Third Implementation Slice
+
+Completed on 2026-06-20 (release 0.5.3):
+
+1. Added `src/brain-pack.ts` — `sanook brain pack list|show`.
+2. Added `src/brain-new.ts` — `sanook brain new <type>`.
+3. Added `src/brain-repair.ts` — `sanook brain repair [--dry-run]`.
+4. Added `src/brain-consolidate.ts` — `sanook brain consolidate [--apply]`.
+5. Added `src/brain-metrics.ts` — `sanook brain metrics`.
+6. Added `src/context-pack.ts` — pack catalog + auto-select in `buildBrainContext()` / `buildTurnRetrieval()`.
+7. Verified with targeted tests, full suite (1210 tests), and typecheck.
+
 ## Next Implementation Slice
 
 Best next code slice:
 
-1. Add `sanook brain pack list|show` for `Shared/Context-Packs/`.
-2. Add `sanook brain new <type>` once note creation templates need a CLI surface.
-3. Add `sanook brain repair` for safe one-line fixes after `doctor`/`review` reports them.
+1. `sanook brain export --for claude|gemini|codex|hermes` when adapter portability is explicitly needed.
+2. Scheduled `sanook brain consolidate --apply` hook/cron integration for unattended sleep-time loops.
+3. Richer pack auto-select (user-defined packs beyond bundled three) with `brain pack` discoverability in setup wizard.
 
 up:: [[Projects/sanook-cli/_Index]]

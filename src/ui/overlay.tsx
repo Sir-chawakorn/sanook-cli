@@ -7,8 +7,9 @@ import type { Session } from '../session.js';
 import type { CompletionItem } from '../slash-completion.js';
 import type { Skill } from '../skills.js';
 import type { ToolCatalogEntry } from '../tool-catalog.js';
+import type { TaskRecord } from '../orchestrate.js';
 
-export type OverlayKind = 'hotkeys' | 'mcp' | 'model' | 'pager' | 'skills' | 'sessions' | 'tools';
+export type OverlayKind = 'hotkeys' | 'mcp' | 'model' | 'pager' | 'skills' | 'sessions' | 'tasks' | 'tools';
 
 export interface HotkeysOverlayState {
   kind: 'hotkeys';
@@ -53,10 +54,12 @@ export interface SkillsOverlayState {
 }
 
 export interface SessionsOverlayState {
+  currentCwd?: string;
   detail?: boolean;
   kind: 'sessions';
   notice?: string;
   pendingDeleteId?: string;
+  renaming?: string;
   selected: number;
   sessions: Session[];
 }
@@ -68,6 +71,13 @@ export interface ToolsOverlayState {
   tools: ToolCatalogEntry[];
 }
 
+export interface TasksOverlayState {
+  detail: boolean;
+  kind: 'tasks';
+  selected: number;
+  tasks: TaskRecord[];
+}
+
 export type OverlayState =
   | HotkeysOverlayState
   | McpOverlayState
@@ -75,6 +85,7 @@ export type OverlayState =
   | PagerOverlayState
   | SkillsOverlayState
   | SessionsOverlayState
+  | TasksOverlayState
   | ToolsOverlayState;
 
 export interface OverlayNavigation {
@@ -106,6 +117,7 @@ const MODEL_WINDOW = 10;
 const MCP_WINDOW = 10;
 const SKILL_WINDOW = 10;
 const SESSION_WINDOW = 10;
+const TASK_WINDOW = 10;
 const TOOL_WINDOW = 10;
 const DEFAULT_PAGER_PAGE_SIZE = 12;
 const COMPLETION_WINDOW = 8;
@@ -514,19 +526,130 @@ function ToolsHubOverlay({ columns, overlay }: { columns: number; overlay: Tools
   );
 }
 
+function taskElapsed(rec: TaskRecord, now = Date.now()): string {
+  if (rec.state === 'running') return `${Math.max(0, Math.floor((now - rec.startedMs) / 1000))}s…`;
+  if (rec.endedMs) return `${((rec.endedMs - rec.startedMs) / 1000).toFixed(1)}s`;
+  return '—';
+}
+
+export function tasksOverlayLines(overlay: TasksOverlayState, columns: number, now = Date.now()): string[] {
+  const width = overlayWidth(columns);
+  const innerWidth = Math.max(1, width - 4);
+  const selected = overlay.tasks[overlay.selected];
+
+  if (!overlay.tasks.length) {
+    return [
+      'Sanook background tasks',
+      'No task_spawn jobs in this session',
+      'Esc/q close · spawn via task_spawn tool',
+    ];
+  }
+
+  if (overlay.detail && selected) {
+    const lines = [
+      'Sanook background tasks',
+      `${selected.id} · ${selected.state} · ${taskElapsed(selected, now)}`,
+      selected.description,
+      'Esc back · q close',
+    ];
+    if (selected.state === 'done' && selected.text) {
+      lines.push('', clip(selected.text.trim().slice(0, 800), innerWidth));
+    } else if (selected.state === 'error' && selected.error) {
+      lines.push('', clip(selected.error, innerWidth));
+    } else if (selected.state === 'running') {
+      lines.push('', 'Still running — task_collect(id) when ready');
+    }
+    return lines;
+  }
+
+  const window = listWindow(overlay.tasks.length, overlay.selected, TASK_WINDOW);
+  const visible = overlay.tasks.slice(window.start, window.end);
+  const running = overlay.tasks.filter((t) => t.state === 'running').length;
+  const lines = [
+    'Sanook background tasks',
+    `${overlay.tasks.length} job(s) · ${running} running · Enter inspect`,
+  ];
+  for (let index = 0; index < visible.length; index++) {
+    const rec = visible[index];
+    const absolute = window.start + index;
+    const cursor = absolute === overlay.selected ? '>' : ' ';
+    lines.push(`${cursor} ${rec.id}  ${rec.state.padEnd(8)} ${taskElapsed(rec, now)}  ${clip(rec.description, Math.max(12, innerWidth - 28))}`);
+  }
+  if (window.end < overlay.tasks.length) lines.push(`... ${overlay.tasks.length - window.end} more`);
+  lines.push('Esc/q close');
+  return lines;
+}
+
+function TasksHubOverlay({ columns, overlay }: { columns: number; overlay: TasksOverlayState }) {
+  const innerWidth = Math.max(1, overlayWidth(columns) - 4);
+  const lines = tasksOverlayLines(overlay, columns);
+  return (
+    <OverlayBox columns={columns}>
+      {lines.map((line, index) => {
+        const isHeader = index === 0;
+        const isActive = line.startsWith('>');
+        return (
+          <Text
+            key={`${index}-${line}`}
+            color={isHeader ? 'cyan' : isActive ? 'yellow' : undefined}
+            dimColor={!isHeader && !isActive}
+            inverse={isActive}
+            wrap="truncate-end"
+          >
+            {clip(line, innerWidth)}
+          </Text>
+        );
+      })}
+    </OverlayBox>
+  );
+}
+
+function sessionTitle(session: Session, currentCwd?: string): string {
+  const base = session.title || firstUserSummary(session) || '(untitled)';
+  if (currentCwd && session.cwd !== currentCwd) return `≠ ${base}`;
+  return base;
+}
+
+export function firstUserSummary(session: Session): string {
+  const user = session.messages.find((message) => message.role === 'user');
+  const content = user?.content;
+  if (typeof content === 'string') return content.replace(/\s+/g, ' ').trim();
+  if (Array.isArray(content)) {
+    const text = content
+      .map((part) => (typeof part === 'object' && part && 'text' in part && typeof part.text === 'string' ? part.text : ''))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return text;
+  }
+  return '';
+}
+
 export function sessionsOverlayLines(overlay: SessionsOverlayState, columns: number): string[] {
   const width = overlayWidth(columns);
   const innerWidth = Math.max(1, width - 4);
   if (!overlay.sessions.length) {
-    return ['Sanook sessions', overlay.notice ? clip(overlay.notice, innerWidth) : 'No saved sessions for this project', 'Esc/q close'];
+    return ['Sanook sessions', overlay.notice ? clip(overlay.notice, innerWidth) : 'No saved sessions yet', 'Esc/q close'];
   }
 
   const selected = overlay.sessions[overlay.selected];
+  if (overlay.renaming !== undefined && selected) {
+    const title = selected.title || firstUserSummary(selected) || selected.id;
+    return [
+      'Sanook sessions',
+      `rename: ${title}`,
+      `title: ${overlay.renaming || '(empty)'}`,
+      clip(overlay.notice ?? 'Enter save · Esc cancel', innerWidth),
+    ];
+  }
+
   if (overlay.detail && selected) {
-    const title = selected.title || firstUserSummary(selected) || '(untitled)';
+    const title = sessionTitle(selected, overlay.currentCwd);
     const user = firstUserSummary(selected) || '(no user prompt found)';
     const deleteHint =
-      overlay.pendingDeleteId === selected.id ? 'Delete this session? press d again · Esc cancel' : 'Enter resume · d delete · Esc back · q close';
+      overlay.pendingDeleteId === selected.id
+        ? 'Delete this session? press d again · Esc cancel'
+        : 'Enter resume · r rename · d delete · Esc back · q close';
     return [
       'Sanook sessions',
       clip(title, innerWidth),
@@ -544,7 +667,7 @@ export function sessionsOverlayLines(overlay: SessionsOverlayState, columns: num
   const titleWidth = Math.max(10, innerWidth - idWidth - metaWidth - 8);
   const window = listWindow(overlay.sessions.length, overlay.selected, SESSION_WINDOW);
   const visible = overlay.sessions.slice(window.start, window.end);
-  const lines = ['Sanook sessions', `${overlay.sessions.length} resumable · Enter resume · i inspect · d delete`];
+  const lines = ['Sanook sessions', `${overlay.sessions.length} resumable · all projects · Enter resume · i inspect · r rename · d delete`];
 
   if (overlay.notice) lines.push(clip(overlay.notice, innerWidth));
 
@@ -552,7 +675,7 @@ export function sessionsOverlayLines(overlay: SessionsOverlayState, columns: num
   for (const [offset, session] of visible.entries()) {
     const index = window.start + offset;
     const cursor = index === overlay.selected ? '>' : ' ';
-    const title = session.title || firstUserSummary(session) || '(untitled)';
+    const title = sessionTitle(session, overlay.currentCwd);
     const meta = `${session.model} · ${shortDate(session.updated)}`;
     lines.push(
       `${cursor} ${clip(session.id, idWidth).padEnd(idWidth)} ${clip(title, titleWidth).padEnd(titleWidth)} ${clip(meta, metaWidth)}`,
@@ -561,23 +684,8 @@ export function sessionsOverlayLines(overlay: SessionsOverlayState, columns: num
   if (window.end < overlay.sessions.length) lines.push(`... ${overlay.sessions.length - window.end} more`);
   const active = overlay.sessions[overlay.selected];
   if (active && overlay.pendingDeleteId === active.id) lines.push('Delete selected? press d again · Esc cancel');
-  else lines.push('↑↓/jk select · Enter resume · i inspect · Esc/q close');
+  else lines.push('↑↓/jk select · Enter resume · i inspect · r rename · Esc/q close');
   return lines;
-}
-
-function firstUserSummary(session: Session): string {
-  const user = session.messages.find((message) => message.role === 'user');
-  const content = user?.content;
-  if (typeof content === 'string') return content.replace(/\s+/g, ' ').trim();
-  if (Array.isArray(content)) {
-    const text = content
-      .map((part) => (typeof part === 'object' && part && 'text' in part && typeof part.text === 'string' ? part.text : ''))
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    return text;
-  }
-  return '';
 }
 
 function SessionsSwitcherOverlay({ columns, overlay }: { columns: number; overlay: SessionsOverlayState }) {
@@ -613,6 +721,7 @@ export function FloatingOverlay({ columns, overlay, pageSize = DEFAULT_PAGER_PAG
   if (overlay.kind === 'pager') return <PagerOverlay columns={columns} overlay={overlay} pageSize={pageSize} />;
   if (overlay.kind === 'skills') return <SkillsHubOverlay columns={columns} overlay={overlay} />;
   if (overlay.kind === 'sessions') return <SessionsSwitcherOverlay columns={columns} overlay={overlay} />;
+  if (overlay.kind === 'tasks') return <TasksHubOverlay columns={columns} overlay={overlay} />;
   if (overlay.kind === 'tools') return <ToolsHubOverlay columns={columns} overlay={overlay} />;
   return null;
 }

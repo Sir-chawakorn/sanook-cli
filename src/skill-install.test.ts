@@ -105,4 +105,27 @@ describe('installSkill local directory safety', () => {
       'Visible instructions.',
     );
   });
+
+  it('installNamedSkill copies a bundled catalog skill by name', async () => {
+    home = await mkdtemp(join(tmpdir(), 'sanook-home-'));
+    sources.push(home);
+    vi.stubEnv('HOME', home);
+
+    const { installNamedSkill } = await import('./skill-install.js');
+    const [result] = await installNamedSkill('git-commit-pr');
+
+    expect(result).toMatchObject({ name: 'git-commit-pr' });
+    expect(await readFile(join(home, '.sanook', 'skills', 'git-commit-pr', 'SKILL.md'), 'utf8')).toContain(
+      'Conventional Commits',
+    );
+  });
+
+  it('installNamedSkill rejects unknown bundled names with a helpful error', async () => {
+    home = await mkdtemp(join(tmpdir(), 'sanook-home-'));
+    sources.push(home);
+    vi.stubEnv('HOME', home);
+
+    const { installNamedSkill } = await import('./skill-install.js');
+    await expect(installNamedSkill('definitely-not-a-real-skill')).rejects.toThrow(/bundled skill/);
+  });
 });

@@ -12,6 +12,7 @@ import {
   type SubagentRunner,
   type SubagentSpec,
   type SubagentOutcome,
+  type TaskRecord,
 } from '../orchestrate.js';
 import { runInWorktrees, getRepoRoot } from '../worktree.js';
 
@@ -25,12 +26,30 @@ const SUB_MAX_STEPS = 15;
 
 // read-only = อ่าน/ค้นเท่านั้น — ตัด run_bash ออก (shell = เลี่ยง read-only contract ได้)
 // 'task'/'task_parallel' อยู่ใน set → nested orchestration ได้ (depth cap กันไม่จบ)
-const READ_TOOLS = ['read_file', 'list_dir', 'glob', 'grep', 'git_status', 'git_diff', 'git_log', 'recall', 'skill', 'find_skills', 'task', 'task_parallel'];
+const READ_TOOLS = ['read_file', 'list_dir', 'glob', 'grep', 'git_status', 'git_diff', 'git_log', 'recall', 'skill', 'find_skills', 'web_fetch', 'task', 'task_parallel'];
 // sub-agent ห้ามมี: scheduling + background orchestration (เป็น side-effect ของ main agent — detached task ที่ subagent spawn จะ outlive มันงงๆ)
 const SUBAGENT_EXCLUDE = ['schedule_task', 'list_scheduled', 'cancel_scheduled', 'task_spawn', 'task_collect', 'task_cancel', 'task_status'];
 
 // registry ของ background task — อยู่ระดับ process (อยู่ข้าม tool call ใน session เดียว)
 const registry = new TaskRegistry();
+
+export function listBackgroundTasks(): TaskRecord[] {
+  return registry.list();
+}
+
+export function backgroundTaskRunningCount(): number {
+  return registry.runningCount();
+}
+
+export function formatBackgroundTaskLine(rec: TaskRecord, now = Date.now()): string {
+  const elapsed =
+    rec.state === 'running'
+      ? `${((now - rec.startedMs) / 1000).toFixed(0)}s…`
+      : rec.endedMs
+        ? `${((rec.endedMs - rec.startedMs) / 1000).toFixed(1)}s`
+        : '—';
+  return `${rec.id}  ${rec.state.padEnd(8)} ${elapsed}  — ${rec.description}`;
+}
 
 function trimmedString(v: unknown): string | undefined {
   if (typeof v !== 'string') return undefined;

@@ -186,14 +186,14 @@ export async function inspectWebSurface(options: InspectWebSurfaceOptions = {}):
   const entries = mcpHubEntriesFromConfig(config).entries;
   const candidatesByName = new Map<string, WebCandidate>();
 
-  for (const entry of entries) {
+  for (const entry of entries.filter((item) => item.enabled)) {
     const candidate = candidateFromEntry(entry);
     if (candidate) candidatesByName.set(entry.name, candidate);
   }
 
   if (options.probe && entries.length) {
     const probe = options.probeServer ?? probeMcpServer;
-    for (const entry of entries) {
+    for (const entry of entries.filter((item) => item.enabled)) {
       const merged = mergeProbe(entry, candidatesByName.get(entry.name), await probe(entry.config));
       if (merged) candidatesByName.set(entry.name, merged);
     }

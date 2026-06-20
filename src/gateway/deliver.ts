@@ -54,9 +54,63 @@ export interface DeliverResult {
   messageCount?: number;
 }
 
-function deliveryText(message: string): string {
+const MOBILE_CHAT_PLATFORMS = new Set([
+  'telegram',
+  'discord',
+  'slack',
+  'mattermost',
+  'line',
+  'signal',
+  'whatsapp',
+  'matrix',
+  'googlechat',
+  'bluebubbles',
+  'teams',
+  'sms',
+]);
+
+export interface MobileChatFormatOptions {
+  maxCodeBlockLines?: number;
+  maxCodeBlockChars?: number;
+  maxSummaryChars?: number;
+}
+
+/** Shorten agent output for phone-sized chat surfaces — truncate fenced code, cap overall length. */
+export function formatMobileChatReply(message: string, options: MobileChatFormatOptions = {}): string {
+  const maxCodeBlockLines = options.maxCodeBlockLines ?? 8;
+  const maxCodeBlockChars = options.maxCodeBlockChars ?? 400;
+  const maxSummaryChars = options.maxSummaryChars ?? 3500;
+
+  let text = message.replace(/\r\n/g, '\n');
+
+  text = text.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (_match, lang: string, body: string) => {
+    const normalized = body.replace(/^\n/, '');
+    const lines = normalized.split('\n');
+    const tooLong = lines.length > maxCodeBlockLines || normalized.length > maxCodeBlockChars;
+    if (!tooLong) return `\`\`\`${lang}\n${normalized}\`\`\``;
+    const truncated = lines.slice(0, maxCodeBlockLines).join('\n').slice(0, maxCodeBlockChars).trimEnd();
+    const label = lang ? lang : 'code';
+    return `\`\`\`${lang}\n${truncated}\n… (${label} truncated for mobile)\`\`\``;
+  });
+
+  text = text.replace(/\n{3,}/g, '\n\n').trim();
+
+  if (text.length > maxSummaryChars) {
+    text = `${text.slice(0, maxSummaryChars).trimEnd()}\n\n… (summary truncated for mobile)`;
+  }
+
+  return text || '(ไม่มีผลลัพธ์)';
+}
+
+function isMobileChatPlatform(platform: string): boolean {
+  return MOBILE_CHAT_PLATFORMS.has(platform);
+}
+
+function deliveryText(message: string, platform?: string): string {
   const trimmed = message.trim();
-  return trimmed || '(ไม่มีผลลัพธ์)';
+  const base = trimmed || '(ไม่มีผลลัพธ์)';
+  if (platform && isMobileChatPlatform(platform)) return formatMobileChatReply(base);
+  return base;
 }
 
 function normalizeBlueBubblesAllowTarget(config: ReturnType<typeof resolveBlueBubblesConfig>, raw: string | undefined): string | undefined {
@@ -73,7 +127,7 @@ export async function deliverToTarget(rawTarget: string, message: string, option
   const target = parseSendTarget(rawTarget);
   const config = options.config ?? (await readGatewayConfig());
   const env = options.env ?? process.env;
-  const text = deliveryText(message);
+  const text = deliveryText(message, target.platform);
 
   if (target.platform === 'telegram') {
     const telegram = resolveTelegramConfig(config, env);

@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from 'react';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ModelMessage } from 'ai';
-import { Box, Text, Static, useApp, useInput, useStdout } from 'ink';
+import { Box, Text, useApp, useInput, useStdout } from 'ink';
+import { homedir } from 'node:os';
 import {
   BUILTIN_COMMANDS,
   HELP_TEXT,
@@ -12,7 +13,7 @@ import {
   parseSlashInvocation,
 } from '../commands.js';
 import { runAgent, type AgentEvent } from '../loop.js';
-import { saveSession, newSessionId, listSessions, removeSession, type Session } from '../session.js';
+import { saveSession, newSessionId, listSessions, removeSession, renameSession, type Session } from '../session.js';
 import { TOOL_CATALOG } from '../tool-catalog.js';
 import { getBrainPath, appendBrainWorklog } from '../memory.js';
 import { autoCompact, estimateTokens, summarizeCompact } from '../compaction.js';
@@ -32,11 +33,13 @@ import { useGitBranch } from './useGitBranch.js';
 import { loadHistory, appendHistory } from './history.js';
 import { expandMentions } from './mentions.js';
 import { BRAND } from '../brand.js';
+import { backgroundTaskRunningCount, listBackgroundTasks } from '../tools/task.js';
 import { Banner, type BannerSignal } from './banner.js';
-import { CompletionOverlay, FloatingOverlay, type OverlayState } from './overlay.js';
+import { CompletionOverlay, FloatingOverlay, firstUserSummary, type OverlayState } from './overlay.js';
 import { clampQueueActiveIndex, compactPreview, getQueueWindow, queueActiveIndexAfterDelete } from './queue.js';
 import { MarkdownText, StreamingMarkdownText } from './markdown.js';
-import { SessionPanel } from './session-panel.js';
+import { SessionPanel, type StartupSectionPreview } from './session-panel.js';
+import { getTranscriptWindow, transcriptScrollStep, transcriptWindowSize } from './transcript.js';
 import { footerStatus } from './status.js';
 import { thinkingPanelLines, snapshotThinking, type DetailsDisplayMode } from './thinking-panel.js';
 import { toolTrailLines, updateToolTrailOnEvent, type ToolTrailDisplayMode, type ToolTrailItem } from './tool-trail.js';
@@ -66,11 +69,12 @@ interface LastRun extends Mark {
 
 interface StartupReadiness {
   brain: 'checking' | 'missing' | 'ready';
-  mcp: 'checking' | number;
-  skills: 'checking' | number;
+  mcp: 'checking' | StartupSectionPreview;
+  skills: 'checking' | StartupSectionPreview;
 }
 
-const startupCount = (value: 'checking' | number): string => (value === 'checking' ? 'checking' : value ? `${value}` : 'none');
+const startupCount = (value: 'checking' | StartupSectionPreview): string =>
+  value === 'checking' ? 'checking' : value.count ? `${value.count}` : 'none';
 
 const shortSignal = (value: string, max = 18): string =>
   value.length > max ? `…${value.slice(Math.max(0, value.length - max + 1))}` : value;
@@ -108,6 +112,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const [toolTrailMode, setToolTrailModeState] = useState<ToolTrailDisplayMode>('expanded');
   const [thinkingMode, setThinkingMode] = useState<DetailsDisplayMode>('collapsed');
   const [contextCompression, setContextCompression] = useState<'headroom' | 'off' | 'selective' | undefined>();
+  const [transcriptScroll, setTranscriptScroll] = useState(0);
   const idRef = useRef(0);
   const lastCost = useRef<string>('');
   const nextToolTrailId = useRef(0);
@@ -132,6 +137,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const abortRef = useRef<AbortController | null>(null);
   const queueRef = useRef<string[]>([]);
   const [queued, setQueued] = useState<string[]>([]);
+  const [bgTaskCount, setBgTaskCount] = useState(0);
   const enqueue = (msg: string): void => {
     queueRef.current.push(msg);
     setQueued([...queueRef.current]);
@@ -213,7 +219,8 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     noteToolTrailMode(changeToolTrailMode(nextToolMode));
   };
 
-  const addTurn = (role: Turn['role'], text: string, extras?: { thinking?: string; toolTrail?: ToolTrailItem[] }): void =>
+  const addTurn = (role: Turn['role'], text: string, extras?: { thinking?: string; toolTrail?: ToolTrailItem[] }): void => {
+    setTranscriptScroll(0);
     setHistory((h) => [
       ...h,
       {
@@ -224,6 +231,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         toolTrail: extras?.toolTrail?.length ? extras.toolTrail.map((item) => ({ ...item })) : undefined,
       },
     ]);
+  };
 
   const recordToolTrailEvent = (event: AgentEvent): void => {
     if (event.type !== 'tool-call' && event.type !== 'tool-result' && event.type !== 'error') return;
@@ -240,11 +248,13 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
 
   const replaceHistory = (next: Turn[]): void => {
     setHistoryResetKey((key) => key + 1);
+    setTranscriptScroll(0);
     setHistory(next);
   };
 
   const filterHistory = (predicate: (turn: Turn) => boolean): void => {
     setHistoryResetKey((key) => key + 1);
+    setTranscriptScroll(0);
     setHistory((h) => h.filter(predicate));
   };
 
@@ -276,8 +286,14 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       if (!alive) return;
       setStartupReadiness({
         brain: brain.status === 'fulfilled' && brain.value ? 'ready' : 'missing',
-        mcp: mcp.status === 'fulfilled' ? mcp.value.entries.length : 0,
-        skills: skills.status === 'fulfilled' ? skills.value.length : 0,
+        mcp:
+          mcp.status === 'fulfilled'
+            ? { count: mcp.value.entries.length, names: mcp.value.entries.map((entry) => entry.name) }
+            : { count: 0, names: [] },
+        skills:
+          skills.status === 'fulfilled'
+            ? { count: skills.value.length, names: skills.value.map((skill) => skill.name) }
+            : { count: 0, names: [] },
       });
     });
     return () => {
@@ -285,10 +301,17 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     };
   }, [cwd]);
 
+  useEffect(() => {
+    const refresh = (): void => setBgTaskCount(backgroundTaskRunningCount());
+    refresh();
+    const timer = setInterval(refresh, 2000);
+    return () => clearInterval(timer);
+  }, []);
+
   const bannerSignals: BannerSignal[] = [
     { label: 'brain', tone: startupReadiness.brain === 'ready' ? 'ready' : startupReadiness.brain === 'checking' ? 'muted' : 'warn', value: startupReadiness.brain },
-    { label: 'mcp', tone: startupReadiness.mcp === 'checking' ? 'muted' : startupReadiness.mcp ? 'ready' : 'warn', value: startupCount(startupReadiness.mcp) },
-    { label: 'skills', tone: startupReadiness.skills === 'checking' ? 'muted' : startupReadiness.skills ? 'ready' : 'warn', value: startupCount(startupReadiness.skills) },
+    { label: 'mcp', tone: startupReadiness.mcp === 'checking' ? 'muted' : startupReadiness.mcp.count ? 'ready' : 'warn', value: startupCount(startupReadiness.mcp) },
+    { label: 'skills', tone: startupReadiness.skills === 'checking' ? 'muted' : startupReadiness.skills.count ? 'ready' : 'warn', value: startupCount(startupReadiness.skills) },
     ...(gitBranch ? [{ label: 'git', tone: 'ready' as const, value: shortSignal(gitBranch) }] : []),
   ];
 
@@ -442,6 +465,19 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     setOverlay({ detail: false, kind: 'tools', selected: 0, tools: TOOL_CATALOG });
   };
 
+  const openTasksHub = (): void => {
+    const tasks = listBackgroundTasks().sort((a, b) => b.startedMs - a.startedMs);
+    setOverlay({ detail: false, kind: 'tasks', selected: 0, tasks });
+  };
+
+  const moveTasksHub = (delta: number): void => {
+    setOverlay((current) => {
+      if (current?.kind !== 'tasks' || current.detail) return current;
+      const last = Math.max(0, current.tasks.length - 1);
+      return { ...current, selected: Math.max(0, Math.min(last, current.selected + delta)) };
+    });
+  };
+
   const copyLatestAssistant = async (): Promise<void> => {
     const latest = [...history].reverse().find((turn) => turn.role === 'assistant' && turn.text.trim());
     if (!latest) {
@@ -474,8 +510,8 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
 
   const openSessionsHub = async (): Promise<void> => {
     try {
-      const sessions = await listSessions({ cwd: process.cwd(), limit: 20 });
-      setOverlay({ kind: 'sessions', selected: 0, sessions });
+      const sessions = await listSessions({ cwd: null, limit: 20 });
+      setOverlay({ currentCwd: cwd, kind: 'sessions', selected: 0, sessions });
     } catch (e) {
       addTurn('system', `sessions: ${(e as Error).message}`);
     }
@@ -512,7 +548,56 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     setModel(session.model);
     resetLiveToolTrail();
     resetLiveThinking();
-    replaceHistory([{ id: idRef.current++, role: 'system', text: `↻ เปิด session ${session.id} (${session.messages.length} messages)` }]);
+    const crossProject = session.cwd !== cwd;
+    const cwdNote = crossProject ? ` · cwd ${session.cwd.replace(homedir(), '~')}` : '';
+    replaceHistory([
+      {
+        id: idRef.current++,
+        role: 'system',
+        text: `↻ เปิด session ${session.id} (${session.messages.length} messages)${cwdNote}${crossProject ? ' · --continue-any' : ''}`,
+      },
+    ]);
+  };
+
+  const startSessionRename = (current: OverlayState): void => {
+    if (current.kind !== 'sessions') return;
+    const session = current.sessions[current.selected];
+    if (!session) return;
+    const draft = session.title || firstUserSummary(session) || '';
+    setOverlay({
+      ...current,
+      detail: false,
+      notice: undefined,
+      pendingDeleteId: undefined,
+      renaming: draft,
+    });
+  };
+
+  const confirmSessionRename = async (current: OverlayState): Promise<void> => {
+    if (current.kind !== 'sessions' || current.renaming === undefined) return;
+    const session = current.sessions[current.selected];
+    if (!session) return;
+    const title = current.renaming.trim();
+    if (!title) {
+      setOverlay({ ...current, notice: 'rename: title cannot be empty' });
+      return;
+    }
+    try {
+      const updated = await renameSession(session.id, title);
+      if (!updated) {
+        setOverlay({ ...current, notice: `rename failed: ${session.id} not found` });
+        return;
+      }
+      const sessions = current.sessions.map((item) => (item.id === session.id ? updated : item));
+      setOverlay({
+        ...current,
+        notice: `renamed → ${title}`,
+        renaming: undefined,
+        sessions,
+      });
+    } catch (e) {
+      setOverlay({ ...current, notice: `rename failed: ${(e as Error).message}` });
+    }
   };
 
   const deleteSessionFromOverlay = async (current: OverlayState): Promise<void> => {
@@ -582,10 +667,18 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         return;
       }
       if (overlay.kind === 'sessions') {
+        if (overlay.renaming !== undefined) {
+          if (key.escape) setOverlay({ ...overlay, notice: undefined, renaming: undefined });
+          else if (key.return) void confirmSessionRename(overlay);
+          else if (key.backspace || key.delete) setOverlay({ ...overlay, renaming: overlay.renaming.slice(0, -1) });
+          else if (input && !key.ctrl && !key.meta) setOverlay({ ...overlay, renaming: overlay.renaming + input });
+          return;
+        }
         if (input === 'q' || input === 'Q') setOverlay(null);
         else if (overlay.detail && key.escape) setOverlay({ ...overlay, detail: false, notice: undefined, pendingDeleteId: undefined });
         else if (key.escape) setOverlay(null);
         else if (input === 'd' || input === 'D') void deleteSessionFromOverlay(overlay);
+        else if (input === 'r' || input === 'R') startSessionRename(overlay);
         else if (input === 'i' || input === 'I') inspectSessionFromOverlay(overlay);
         else if (key.return) resumeSessionFromOverlay(overlay);
         else if (!overlay.detail && (key.downArrow || input === 'j' || input === 'J')) moveSessionsHub(1);
@@ -599,6 +692,15 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         else if (key.return && overlay.tools.length) setOverlay({ ...overlay, detail: true });
         else if (key.downArrow || input === 'j' || input === 'J') moveToolsHub(1);
         else if (key.upArrow || input === 'k' || input === 'K') moveToolsHub(-1);
+        return;
+      }
+      if (overlay.kind === 'tasks') {
+        if (input === 'q' || input === 'Q') setOverlay(null);
+        else if (overlay.detail && (key.escape || key.return)) setOverlay({ ...overlay, detail: false, tasks: listBackgroundTasks().sort((a, b) => b.startedMs - a.startedMs) });
+        else if (key.escape) setOverlay(null);
+        else if (key.return && overlay.tasks.length) setOverlay({ ...overlay, detail: true });
+        else if (key.downArrow || input === 'j' || input === 'J') moveTasksHub(1);
+        else if (key.upArrow || input === 'k' || input === 'K') moveTasksHub(-1);
         return;
       }
       if (key.escape || key.return || input === 'q' || input === 'Q') setOverlay(null);
@@ -667,6 +769,21 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     if (key.ctrl && input === 't') {
       noteToolTrailMode(changeToolTrailMode());
       return;
+    }
+    const transcriptLimit = transcriptWindowSize(stdout?.rows);
+    const transcriptStep = transcriptScrollStep(transcriptLimit);
+    if (history.length > transcriptLimit) {
+      if (key.pageUp || (key.ctrl && input === 'u')) {
+        setTranscriptScroll((scroll) => {
+          const max = Math.max(0, history.length - transcriptLimit);
+          return Math.min(max, scroll + transcriptStep);
+        });
+        return;
+      }
+      if (key.pageDown || (key.ctrl && input === 'd')) {
+        setTranscriptScroll((scroll) => Math.max(0, scroll - transcriptStep));
+        return;
+      }
     }
     const action = editor.handleKey(input, key);
     if (action === 'submit') void submit(editor.value);
@@ -846,6 +963,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         void openSessionsHub();
         return;
       }
+      if (cmd.action === 'tasksHub') {
+        openTasksHub();
+        return;
+      }
       if (cmd.modelChange) setModel(cmd.modelChange);
       if (cmd.message) addTurn('system', cmd.message);
       return;
@@ -973,20 +1094,34 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const queueWindow = getQueueWindow(queued.length, activeQueueIndex);
   const toolTrailView = toolTrailLines(toolTrail, columns, toolTrailMode);
   const thinkingView = thinkingPanelLines(thinking, columns, thinkingMode);
+  const transcriptLimit = transcriptWindowSize(stdout?.rows);
+  const transcriptView = getTranscriptWindow(history.length, transcriptLimit, transcriptScroll);
+  const visibleHistory = history.slice(transcriptView.start, transcriptView.end);
 
   return (
     <Box flexDirection="column">
       {history.length === 0 ? (
         <>
           <Banner columns={columns} model={model} mode={permissionMode === 'ask' ? 'ask' : 'auto'} signals={bannerSignals} />
-          <SessionPanel columns={columns} model={model} mode={permissionMode === 'ask' ? 'ask' : 'auto'} />
+          <SessionPanel
+            columns={columns}
+            cwd={cwd}
+            mcp={startupReadiness.mcp}
+            model={model}
+            mode={permissionMode === 'ask' ? 'ask' : 'auto'}
+            skills={startupReadiness.skills}
+          />
         </>
       ) : null}
-      <Static key={historyResetKey} items={history}>
-        {(turn) => (
-          <TurnView key={turn.id} columns={columns} thinkingMode={thinkingMode} toolTrailMode={toolTrailMode} turn={turn} />
-        )}
-      </Static>
+      {transcriptView.showOlder ? (
+        <Text dimColor>… {transcriptView.start} older turns · PgUp/Ctrl+U scroll · PgDn/Ctrl+D newer</Text>
+      ) : null}
+      {visibleHistory.map((turn) => (
+        <TurnView key={`${historyResetKey}-${turn.id}`} columns={columns} thinkingMode={thinkingMode} toolTrailMode={toolTrailMode} turn={turn} />
+      ))}
+      {transcriptView.showNewer ? (
+        <Text dimColor>… {transcriptView.scrollFromBottom} newer turns hidden · PgDn/Ctrl+D to catch up</Text>
+      ) : null}
       {thinkingView.length ? <ThinkingView columns={columns} mode={thinkingMode} text={thinking} /> : null}
       {streaming ? (
         <Box flexDirection="column" marginTop={1}>
@@ -1030,6 +1165,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       <Text dimColor>
         {footerStatus({
           branch: gitBranch,
+          backgroundTaskCount: bgTaskCount,
           busy,
           columns,
           contextCompression,

@@ -38,6 +38,8 @@ export interface McpServerConfig {
   /** remote MCP (Streamable-HTTP) — มี url = ใช้ http transport, ไม่งั้น stdio */
   url?: string;
   headers?: Record<string, string>;
+  /** false = เก็บ config ไว้แต่ไม่โหลด tools ตอน runtime (default: enabled) */
+  enabled?: boolean;
 }
 interface McpConfig {
   mcpServers?: Record<string, McpServerConfig>;
@@ -53,6 +55,29 @@ export interface McpProbeResult {
   transport: 'http' | 'stdio';
   tools: McpToolDef[];
   error?: string;
+  /** setup hints when hosted remotes reject auth (e.g. HTTP 401) */
+  authHints?: string[];
+}
+
+export function isMcpServerEnabled(cfg: McpServerConfig): boolean {
+  return cfg.enabled !== false;
+}
+
+/** auth hints for hosted MCP remotes that return HTTP 401 */
+export function mcpAuthHints(cfg: McpServerConfig, error?: string): string[] {
+  if (!cfg.url || !error || !/\b401\b/.test(error)) return [];
+  const hints: string[] = [];
+  const authHeader = cfg.headers?.Authorization ?? cfg.headers?.authorization;
+  if (!authHeader) {
+    hints.push('remote server ตอบ 401 — เพิ่ม Authorization header ใน ~/.sanook/mcp.json หรือตอน install: --header Authorization=\'Bearer <token>\'');
+  } else {
+    hints.push('remote server ตอบ 401 แม้มี Authorization header — ตรวจว่า token หมดอายุ, scope ไม่พอ, หรือ header name/format ไม่ตรงที่ server ต้องการ');
+  }
+  if (!Object.keys(cfg.env ?? {}).length) {
+    hints.push('บาง hosted MCP ใช้ API key ผ่าน env แทน header — ดู requirements: sanook mcp info <registry-server-name>');
+  }
+  hints.push('ทดสอบหลังแก้: sanook mcp test <name>');
+  return hints;
 }
 
 export function isValidMcpServerName(name: string): boolean {
@@ -236,7 +261,11 @@ class HttpTransport implements Transport {
     });
     const sid = res.headers.get('mcp-session-id');
     if (sid) this.sessionId = sid;
-    if (!res.ok) throw new Error(`mcp http ${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      const err = new Error(`mcp http ${res.status} ${res.statusText}`) as Error & { status?: number };
+      err.status = res.status;
+      throw err;
+    }
     const ctype = res.headers.get('content-type') ?? '';
     if (ctype.includes('text/event-stream')) return this.parseSse(await res.text(), id);
     const json = (await res.json()) as { result?: unknown; error?: { message?: string } };
@@ -314,7 +343,9 @@ export async function probeMcpServer(cfg: McpServerConfig, timeoutMs = REQUEST_T
     const tools = await client.listTools(remaining('tools/list'));
     return { ok: true, transport, tools };
   } catch (e) {
-    return { ok: false, transport, tools: [], error: (e as Error).message };
+    const error = (e as Error).message;
+    const authHints = mcpAuthHints(cfg, error);
+    return { ok: false, transport, tools: [], error, ...(authHints.length ? { authHints } : {}) };
   } finally {
     client.close();
   }
@@ -340,6 +371,8 @@ function sanitizeMcpServerConfig(raw: unknown): McpServerConfig | null {
   if (env) cfg.env = env;
   const headers = stringRecord(r.headers);
   if (headers) cfg.headers = headers;
+  if (r.enabled === false) cfg.enabled = false;
+  else if (r.enabled === true) cfg.enabled = true;
   return cfg.command || cfg.url ? cfg : null;
 }
 
@@ -374,6 +407,27 @@ export async function loadMcpConfig(onLog?: (m: string) => void, cwd: string = p
   return merged;
 }
 
+/** หา path ของไฟล์ config ที่เก็บ server นี้ (global หรือ trusted project) */
+export async function findMcpServerConfigPath(name: string, cwd: string = process.cwd()): Promise<string | undefined> {
+  const globalPath = appHomePath('mcp.json');
+  try {
+    const cfg = JSON.parse(await readFile(globalPath, 'utf8')) as McpConfig;
+    if (cfg.mcpServers && isValidMcpServerName(name) && name in cfg.mcpServers) return globalPath;
+  } catch {
+    /* no global config */
+  }
+  const root = await projectRoot(cwd);
+  const projectPath = await projectConfigPathIfTrusted('mcp.json', root);
+  if (!projectPath) return undefined;
+  try {
+    const cfg = JSON.parse(await readFile(projectPath, 'utf8')) as McpConfig;
+    if (cfg.mcpServers && isValidMcpServerName(name) && name in cfg.mcpServers) return projectPath;
+  } catch {
+    /* unreadable project config */
+  }
+  return undefined;
+}
+
 let cachePromise: Promise<ToolSet> | null = null;
 let activeClients: McpClient[] = []; // sync ref สำหรับ closeMcp ใน exit handler
 
@@ -390,6 +444,10 @@ async function buildMcpTools(onLog?: (m: string) => void): Promise<ToolSet> {
   const clients: McpClient[] = [];
   activeClients = clients; // ref เดียวกัน → closeMcp kill client ที่ spawn ระหว่าง build ได้ด้วย
   for (const [serverName, cfg] of Object.entries(config)) {
+    if (!isMcpServerEnabled(cfg)) {
+      onLog?.(`MCP "${serverName}" disabled — ข้าม`);
+      continue;
+    }
     if (!cfg.url && !cfg.command) {
       onLog?.(`MCP "${serverName}" ข้าม: ต้องมี "command" (stdio) หรือ "url" (remote)`);
       continue;

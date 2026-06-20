@@ -187,7 +187,7 @@ export async function inspectBrainContext(options: InspectBrainContextOptions = 
     };
   }
 
-  const parts = await buildBrainContextParts(brainPath);
+  const parts = await buildBrainContextParts(brainPath, { taskQuery: options.task });
   const context = renderBrainContext(brainPath, parts);
   const sourceReports = parts.map((part) => ({
     id: part.id,

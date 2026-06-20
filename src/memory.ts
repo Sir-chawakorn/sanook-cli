@@ -1,5 +1,6 @@
 import { readFile, writeFile, stat } from 'node:fs/promises';
 import { join, dirname, resolve } from 'node:path';
+import { buildContextPackBlock, listContextPacks, readContextPackExcerpt, selectContextPack } from './context-pack.js';
 import { appHomePath, BRAND, persistenceEnabled, worklogEnabled } from './brand.js';
 import { redactKey } from './providers/keys.js';
 import { loadStore, saveStore, mergeFact, maybeConsolidate, consolidate, renderPromptBlock, type NoteType } from './memory-store.js';
@@ -86,7 +87,7 @@ export async function loadBrainContext(): Promise<string> {
 export type BrainContextPartStatus = 'present' | 'empty' | 'missing';
 
 export interface BrainContextPart {
-  id: 'ai-context-index' | 'current-state' | 'memory-inbox';
+  id: 'ai-context-index' | 'current-state' | 'memory-inbox' | 'context-pack';
   label: string;
   relPath: string;
   path: string;
@@ -96,8 +97,13 @@ export interface BrainContextPart {
   status: BrainContextPartStatus;
 }
 
+export interface BuildBrainContextOptions {
+  /** When set, auto-select a matching Shared/Context-Packs/ bundle for this task. */
+  taskQuery?: string;
+}
+
 /** ประกอบ source parts ชุดเดียวกับที่ inject เข้า prompt จริง — ให้ CLI inspect ได้โดยไม่ drift */
-export async function buildBrainContextParts(brainPath: string): Promise<BrainContextPart[]> {
+export async function buildBrainContextParts(brainPath: string, options: BuildBrainContextOptions = {}): Promise<BrainContextPart[]> {
   const idx = await readTrimmedPart({
     id: 'ai-context-index',
     label: 'AI Context Index',
@@ -114,7 +120,29 @@ export async function buildBrainContextParts(brainPath: string): Promise<BrainCo
     wrap: (content) => `## current-state\n${content}`,
   });
   const inbox = await readInboxPart(brainPath, 'Shared/Memory-Inbox/memory-inbox.md', 1200);
-  return [idx, currentState, inbox];
+  const parts: BrainContextPart[] = [idx, currentState, inbox];
+  const taskQuery = options.taskQuery?.trim();
+  if (taskQuery) {
+    const packs = await listContextPacks(brainPath);
+    const selected = selectContextPack(taskQuery, packs);
+    if (selected) {
+      const relPath = selected.pack.relPath;
+      const path = join(brainPath, relPath);
+      const maxChars = 1200;
+      const excerpt = await readContextPackExcerpt(brainPath, selected.pack, maxChars);
+      parts.push({
+        id: 'context-pack',
+        label: `Context Pack (${selected.pack.slug})`,
+        relPath,
+        path,
+        content: excerpt,
+        chars: excerpt.length,
+        maxChars,
+        status: excerpt ? 'present' : 'empty',
+      });
+    }
+  }
+  return parts;
 }
 
 export function renderBrainContext(brainPath: string, parts: readonly BrainContextPart[]): string {
@@ -123,10 +151,13 @@ export function renderBrainContext(brainPath: string, parts: readonly BrainConte
   return `<brain_vault path="${brainPath}" note="second-brain ของ user — สิ่งที่จำไว้/state ปัจจุบันอยู่ใน block นี้; route โน้ตตาม Vault Structure Map; อ่าน/เขียนไฟล์ใน vault ด้วย absolute path ได้">\n${content.join('\n\n')}\n</brain_vault>`;
 }
 
-/** ประกอบ brain context จาก vault path (pure → testable) — entry + current-state + remembered facts */
-export async function buildBrainContext(brainPath: string): Promise<string> {
-  return renderBrainContext(brainPath, await buildBrainContextParts(brainPath));
+/** ประกอบ brain context จาก vault path (pure → testable) — entry + current-state + remembered facts + optional context pack */
+export async function buildBrainContext(brainPath: string, options: BuildBrainContextOptions = {}): Promise<string> {
+  return renderBrainContext(brainPath, await buildBrainContextParts(brainPath, options));
 }
+
+/** Build a standalone context-pack block for per-turn injection (turn-retrieval path). */
+export { buildContextPackBlock };
 
 async function readTrimmedPart(input: {
   id: BrainContextPart['id'];

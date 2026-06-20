@@ -1,4 +1,5 @@
 import type { McpServerConfig } from './mcp.js';
+import { inferRegistryServerRisk, formatMcpRiskLabel } from './mcp-risk.js';
 import { inlineValue, takeValue } from './cli-option-values.js';
 
 export const MCP_REGISTRY_BASE_URL = 'https://registry.modelcontextprotocol.io/v0';
@@ -138,6 +139,33 @@ export const MCP_PRESETS: McpPreset[] = [
 ];
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Pick<Response, 'ok' | 'status' | 'statusText' | 'json'>>;
+
+const REGISTRY_CACHE_TTL_MS = 5 * 60 * 1000;
+const registryCache = new Map<string, { expiresAt: number; value: unknown }>();
+
+export function clearMcpRegistryCache(): void {
+  registryCache.clear();
+}
+
+function cacheKey(url: string): string {
+  return url;
+}
+
+function readRegistryCache<T>(url: string): T | undefined {
+  const entry = registryCache.get(cacheKey(url));
+  if (!entry) return undefined;
+  if (Date.now() >= entry.expiresAt) {
+    registryCache.delete(cacheKey(url));
+    return undefined;
+  }
+  return entry.value as T;
+}
+
+function writeRegistryCache(url: string, value: unknown): void {
+  registryCache.set(cacheKey(url), { expiresAt: Date.now() + REGISTRY_CACHE_TTL_MS, value });
+}
+
+export { REGISTRY_CACHE_TTL_MS };
 
 interface RawRegistryEntry {
   server?: {
@@ -392,7 +420,7 @@ export function formatRegistrySearch(result: McpRegistrySearchResult): string {
   if (!result.servers.length) return `${lines[0]}\n(no matches)`;
   for (const server of result.servers) {
     lines.push(`${server.name}${server.version ? `@${server.version}` : ''} — ${server.description ?? '(no description)'}`);
-    lines.push(`  transport: ${transportSummary(server)}${server.repositoryUrl ? ` · repo: ${server.repositoryUrl}` : ''}`);
+    lines.push(`  transport: ${transportSummary(server)} · risk: ${formatMcpRiskLabel(inferRegistryServerRisk(server))}${server.repositoryUrl ? ` · repo: ${server.repositoryUrl}` : ''}`);
   }
   if (result.nextCursor) lines.push(`next: --cursor ${result.nextCursor}`);
   return lines.join('\n');
@@ -403,6 +431,7 @@ export function formatRegistryInfo(server: McpRegistryServer): string {
   if (server.repositoryUrl) lines.push(`repo: ${server.repositoryUrl}`);
   if (server.websiteUrl) lines.push(`website: ${server.websiteUrl}`);
   lines.push(`transport: ${transportSummary(server)}`);
+  lines.push(`risk: ${formatMcpRiskLabel(inferRegistryServerRisk(server))}`);
   if (server.remotes.length) {
     lines.push('remotes:');
     for (const remote of server.remotes) {
@@ -461,9 +490,13 @@ function latestOnly(servers: McpRegistryServer[]): McpRegistryServer[] {
 }
 
 async function fetchRegistryJson(url: string, fetchImpl: FetchLike = fetch): Promise<Record<string, any>> {
+  const cached = readRegistryCache<Record<string, any>>(url);
+  if (cached) return cached;
   const res = await fetchImpl(url, { headers: { accept: 'application/json' } });
   if (!res.ok) throw new Error(`registry ${res.status} ${res.statusText}`);
-  return (await res.json()) as Record<string, any>;
+  const json = (await res.json()) as Record<string, any>;
+  writeRegistryCache(url, json);
+  return json;
 }
 
 function transportSummary(server: McpRegistryServer): string {

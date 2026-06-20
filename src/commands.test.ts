@@ -181,6 +181,11 @@ describe('parseCommand', () => {
     expect(msg).toContain('Agents:');
     expect(msg).toContain('task/task_parallel/task_spawn/task_collect');
   });
+  it('/tasks → เปิด background tasks overlay', () => {
+    const result = parseCommand('/tasks', ctx);
+    expect(result.action).toBe('tasksHub');
+    expect(result.message).toContain('task_spawn');
+  });
   it('/trail → toggle or set tool trail display mode', () => {
     expect(parseCommand('/trail', ctx)).toMatchObject({ action: 'toolTrail', handled: true });
     expect(parseCommand('/trail compact', ctx)).toMatchObject({ action: 'toolTrail', toolTrailMode: 'compact' });

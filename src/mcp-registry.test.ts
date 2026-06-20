@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   aliasFromRegistryName,
   buildMcpInstallPlan,
+  clearMcpRegistryCache,
   formatPreset,
   formatRegistryInfo,
   formatRegistrySearch,
@@ -202,6 +203,28 @@ describe('mcp registry helpers', () => {
     expect(result.servers[0]).toMatchObject({ name: 'x/demo', version: '1.1.0' });
     expect(result.nextCursor).toBe('next');
     expect(formatRegistrySearch(result)).toContain('x/demo@1.1.0');
+    expect(formatRegistrySearch(result)).toContain('risk:');
+  });
+
+  it('caches registry responses for repeated queries', async () => {
+    clearMcpRegistryCache();
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls += 1;
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({
+          servers: [{ server: { name: 'x/demo', version: '1.0.0', description: 'demo' }, _meta: { 'io.modelcontextprotocol.registry/official': { isLatest: true } } }],
+        }),
+      };
+    };
+
+    await searchMcpRegistry('demo', { fetchImpl, limit: 1 });
+    await searchMcpRegistry('demo', { fetchImpl, limit: 1 });
+    expect(calls).toBe(1);
+    clearMcpRegistryCache();
   });
 
   it('gets latest version and formats info', async () => {
@@ -220,6 +243,7 @@ describe('mcp registry helpers', () => {
     const server = await getMcpRegistryServer('x/demo', { fetchImpl });
     expect(server?.version).toBe('1.1.0');
     expect(formatRegistryInfo(server!)).toContain('demo-mcp@1.1.0');
+    expect(formatRegistryInfo(server!)).toContain('risk:');
   });
 
   it('builds remote and package install plans, including missing secrets', () => {
