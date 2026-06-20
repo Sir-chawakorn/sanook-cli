@@ -4,9 +4,14 @@ const I18N = {
     tagline: 'Configure models, sessions, MCP, gateway, and your second brain',
     nav: {
       home: 'Home',
+      terminal: 'Terminal',
       chat: 'Chat',
       models: 'Models',
       sessions: 'Sessions',
+      skills: 'Skills',
+      memory: 'Memory',
+      usage: 'Usage',
+      selfimprove: 'Self-improve',
       files: 'Files',
       logs: 'Logs',
       cron: 'Cron',
@@ -14,7 +19,24 @@ const I18N = {
       config: 'Config',
       mcp: 'MCP',
       brain: 'Brain',
+      install: 'Install',
     },
+    terminal: {
+      title: 'Web terminal',
+      hint: 'Run Sanook AI right here — streams text, tools, 🧠 memory and ✨ skills like the real REPL.',
+      agent: 'Agent console',
+      shell: 'Raw shell',
+      run: 'Run',
+      stop: 'Stop',
+      placeholder: 'Type a prompt and press Enter (Shift+Enter = newline)…',
+      shellOff: 'Raw shell is disabled. Install optional deps to enable: npm i node-pty ws',
+      thinking: 'thinking…',
+    },
+    skills: { title: 'Skills', empty: 'No skills yet — Sanook will auto-create them from repeated tasks.', auto: 'auto', when: 'When to use' },
+    memory: { title: 'Memory', empty: 'No remembered facts yet. Ask Sanook to remember something.', brain: 'Also synced to second brain', importance: 'importance' },
+    usage: { title: 'Usage & cost', empty: 'No usage recorded yet.', turns: 'turns', tokens: 'tokens', cost: 'cost', daily: 'Daily breakdown' },
+    selfimprove: { title: 'Self-improvement', empty: 'No recurring tasks detected yet.', enabled: 'enabled', disabled: 'disabled', threshold: 'threshold', repeats: 'repeats', skill: 'skill' },
+    install: { title: 'Install Sanook CLI', ready: 'Ready', soon: 'Needs infra' },
     home: {
       title: 'System status',
       cliVersion: 'CLI version',
@@ -42,9 +64,14 @@ const I18N = {
     tagline: 'จัดการ model, session, MCP, gateway และ second brain',
     nav: {
       home: 'หน้าแรก',
+      terminal: 'เทอร์มินอล',
       chat: 'Chat',
       models: 'Models',
       sessions: 'Sessions',
+      skills: 'Skills',
+      memory: 'Memory',
+      usage: 'การใช้งาน',
+      selfimprove: 'เรียนรู้เอง',
       files: 'Files',
       logs: 'Logs',
       cron: 'Cron',
@@ -52,7 +79,24 @@ const I18N = {
       config: 'Config',
       mcp: 'MCP',
       brain: 'Brain',
+      install: 'ติดตั้ง',
     },
+    terminal: {
+      title: 'เทอร์มินอลในเว็บ',
+      hint: 'รัน Sanook AI ได้เลยในเว็บ — สตรีมข้อความ, tool, 🧠 ความจำ และ ✨ skill เหมือน REPL จริง',
+      agent: 'Agent console',
+      shell: 'Raw shell',
+      run: 'รัน',
+      stop: 'หยุด',
+      placeholder: 'พิมพ์คำสั่งแล้วกด Enter (Shift+Enter = ขึ้นบรรทัดใหม่)…',
+      shellOff: 'Raw shell ปิดอยู่ — ติดตั้ง dependency เสริมเพื่อเปิด: npm i node-pty ws',
+      thinking: 'กำลังคิด…',
+    },
+    skills: { title: 'Skills', empty: 'ยังไม่มี skill — Sanook จะสร้างให้อัตโนมัติจากงานที่ทำซ้ำ', auto: 'อัตโนมัติ', when: 'ใช้เมื่อ' },
+    memory: { title: 'ความจำ', empty: 'ยังไม่มีสิ่งที่จำไว้ — ลองสั่งให้ Sanook จำอะไรดู', brain: 'sync เข้า second brain ด้วย', importance: 'ความสำคัญ' },
+    usage: { title: 'การใช้งาน & ค่าใช้จ่าย', empty: 'ยังไม่มีข้อมูลการใช้งาน', turns: 'turn', tokens: 'tokens', cost: 'ค่าใช้จ่าย', daily: 'แยกตามวัน' },
+    selfimprove: { title: 'การเรียนรู้เอง (Self-improvement)', empty: 'ยังไม่เจองานที่ทำซ้ำ', enabled: 'เปิด', disabled: 'ปิด', threshold: 'เกณฑ์', repeats: 'ครั้ง', skill: 'skill' },
+    install: { title: 'ติดตั้ง Sanook CLI', ready: 'พร้อมใช้', soon: 'ต้องตั้ง infra' },
     home: {
       title: 'สถานะระบบ',
       cliVersion: 'เวอร์ชัน CLI',
@@ -76,9 +120,14 @@ const I18N = {
 
 const routes = [
   { id: 'home', path: '#/' },
+  { id: 'terminal', path: '#/terminal' },
   { id: 'chat', path: '#/chat' },
   { id: 'models', path: '#/models' },
   { id: 'sessions', path: '#/sessions' },
+  { id: 'skills', path: '#/skills' },
+  { id: 'memory', path: '#/memory' },
+  { id: 'usage', path: '#/usage' },
+  { id: 'selfimprove', path: '#/selfimprove' },
   { id: 'files', path: '#/files' },
   { id: 'logs', path: '#/logs' },
   { id: 'cron', path: '#/cron' },
@@ -86,9 +135,17 @@ const routes = [
   { id: 'config', path: '#/config' },
   { id: 'mcp', path: '#/mcp' },
   { id: 'brain', path: '#/brain' },
+  { id: 'install', path: '#/install' },
 ];
 
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
 let filesPath = '';
+let termSessionId = localStorage.getItem('sanook-term-session') || `web-${Math.random().toString(36).slice(2, 10)}`;
+localStorage.setItem('sanook-term-session', termSessionId);
+let termAbort = null;
 
 function locale() {
   return localStorage.getItem('sanook-dashboard-locale') || 'en';
@@ -239,6 +296,292 @@ async function renderBrain(page) {
     <p>${brainPath ?? `<span class="hint">${t('brain.empty')}</span>`}</p></div>`;
 }
 
+async function renderSkills(page) {
+  const { skills } = await api('/api/skills');
+  if (!skills?.length) {
+    page.innerHTML = `<div class="card"><h2>${t('skills.title')}</h2><p class="hint">${t('skills.empty')}</p></div>`;
+    return;
+  }
+  const cards = skills
+    .map((s) => `<div class="card" style="margin-bottom:10px;">
+      <h3 style="margin:0 0 4px;">${escapeHtml(s.name)} ${s.auto ? `<span class="pill" style="background:#1e3a2f;color:#7ee0a8;">✨ ${t('skills.auto')}</span>` : ''}</h3>
+      <p style="margin:0 0 6px;">${escapeHtml(s.description)}</p>
+      ${s.whenToUse ? `<p class="hint" style="margin:0;">${t('skills.when')}: ${escapeHtml(s.whenToUse)}</p>` : ''}
+    </div>`)
+    .join('');
+  page.innerHTML = `<h2 style="margin:0 0 12px;">${t('skills.title')} <span class="pill">${skills.length}</span></h2>${cards}`;
+}
+
+async function renderMemory(page) {
+  const { facts, brainPath } = await api('/api/memory');
+  if (!facts?.length) {
+    page.innerHTML = `<div class="card"><h2>🧠 ${t('memory.title')}</h2><p class="hint">${t('memory.empty')}</p></div>`;
+    return;
+  }
+  const rows = facts
+    .map((f) => `<tr>
+      <td>${escapeHtml(f.text)}</td>
+      <td><span class="pill">${escapeHtml(f.noteType)}</span></td>
+      <td>${escapeHtml(f.trust)}${f.tier === 'protected' ? ' 🔒' : ''}</td>
+      <td>${f.importance}</td>
+    </tr>`)
+    .join('');
+  page.innerHTML = `<div class="card"><h2>🧠 ${t('memory.title')} <span class="pill">${facts.length}</span></h2>
+    ${brainPath ? `<p class="hint">${t('memory.brain')}: ${escapeHtml(brainPath)}</p>` : ''}
+    <table class="table"><thead><tr><th>fact</th><th>type</th><th>trust</th><th>${t('memory.importance')}</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+
+async function renderUsage(page) {
+  const { totals, daily } = await api('/api/usage');
+  if (!totals || totals.turns === 0) {
+    page.innerHTML = `<div class="card"><h2>💰 ${t('usage.title')}</h2><p class="hint">${t('usage.empty')}</p></div>`;
+    return;
+  }
+  const fmt = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : `${n}`);
+  const rows = daily
+    .map((d) => `<tr><td>${escapeHtml(d.label)}</td><td>${d.turns}</td><td>${fmt(d.totalTokens)}</td><td>$${d.costUsd.toFixed(4)}</td></tr>`)
+    .reverse()
+    .join('');
+  page.innerHTML = `<div class="card"><h2>💰 ${t('usage.title')}</h2>
+    <dl class="kv">
+      <dt>${t('usage.turns')}</dt><dd><span class="pill">${totals.turns}</span></dd>
+      <dt>${t('usage.tokens')}</dt><dd>${fmt(totals.totalTokens)}</dd>
+      <dt>${t('usage.cost')}</dt><dd><strong>$${totals.costUsd.toFixed(4)}</strong></dd>
+    </dl></div>
+    <div class="card"><h3>${t('usage.daily')}</h3>
+    <table class="table"><thead><tr><th>date</th><th>${t('usage.turns')}</th><th>${t('usage.tokens')}</th><th>${t('usage.cost')}</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+
+async function renderSelfimprove(page) {
+  const data = await api('/api/self-improve');
+  const head = `<div class="card"><h2>📈 ${t('selfimprove.title')}</h2>
+    <dl class="kv">
+      <dt>status</dt><dd><span class="pill" style="background:${data.enabled ? '#1e3a2f' : '#3a1e1e'};color:${data.enabled ? '#7ee0a8' : '#e0a8a8'};">${data.enabled ? t('selfimprove.enabled') : t('selfimprove.disabled')}</span></dd>
+      <dt>${t('selfimprove.threshold')}</dt><dd>${data.threshold} ${t('selfimprove.repeats')}</dd>
+    </dl></div>`;
+  if (!data.families?.length) {
+    page.innerHTML = `${head}<div class="card"><p class="hint">${t('selfimprove.empty')}</p></div>`;
+    return;
+  }
+  const rows = data.families
+    .map((f) => {
+      const pct = Math.min(100, Math.round((f.count / data.threshold) * 100));
+      const bar = `<div style="background:#1a2236;border-radius:6px;overflow:hidden;height:8px;width:120px;"><div style="background:${f.skillCreated ? '#7ee0a8' : '#38bdf8'};height:8px;width:${pct}%;"></div></div>`;
+      return `<tr>
+        <td>${escapeHtml(f.sample)}</td>
+        <td>${f.count}/${data.threshold} ${bar}</td>
+        <td>${f.skillCreated ? `✨ ${escapeHtml(f.skillName ?? '')}` : '—'}</td>
+      </tr>`;
+    })
+    .join('');
+  page.innerHTML = `${head}<div class="card">
+    <table class="table"><thead><tr><th>task</th><th>${t('selfimprove.repeats')}</th><th>${t('selfimprove.skill')}</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+
+async function renderInstall(page) {
+  const data = await api('/api/install');
+  const blocks = data.methods
+    .map((m) => {
+      const badge = m.ready
+        ? `<span class="pill" style="background:#1e3a2f;color:#7ee0a8;">${t('install.ready')}</span>`
+        : `<span class="pill" style="background:#3a341e;color:#e0d08a;">${t('install.soon')}</span>`;
+      const cmds = m.commands
+        .map((c) => `<div style="margin:6px 0;"><div class="hint" style="margin:0 0 2px;">${escapeHtml(c.os)}</div>
+          <div style="display:flex;gap:8px;align-items:center;"><code style="flex:1;background:#0a1020;border:1px solid #2a3550;border-radius:8px;padding:8px 10px;display:block;overflow-x:auto;">${escapeHtml(c.cmd)}</code>
+          <button class="copy-btn" data-cmd="${escapeHtml(c.cmd)}" style="padding:6px 10px;border-radius:8px;border:0;background:#243049;color:#cfe0ff;cursor:pointer;">copy</button></div></div>`)
+        .join('');
+      return `<div class="card" style="margin-bottom:12px;">
+        <h3 style="margin:0 0 8px;">${escapeHtml(m.label)} ${m.recommended ? '<span class="pill">recommended</span>' : ''} ${badge}</h3>
+        ${cmds}
+        ${m.note ? `<p class="hint" style="margin:8px 0 0;">${escapeHtml(m.note)}</p>` : ''}
+      </div>`;
+    })
+    .join('');
+  page.innerHTML = `<h2 style="margin:0 0 12px;">${t('install.title')}</h2>${blocks}`;
+  page.querySelectorAll('.copy-btn').forEach((el) => {
+    el.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(el.getAttribute('data-cmd') ?? '');
+        const prev = el.textContent;
+        el.textContent = '✓';
+        setTimeout(() => (el.textContent = prev), 1200);
+      } catch {
+        /* clipboard may be blocked on http */
+      }
+    };
+  });
+}
+
+function appendConsole(out, html) {
+  const atBottom = out.scrollHeight - out.scrollTop - out.clientHeight < 40;
+  out.insertAdjacentHTML('beforeend', html);
+  if (atBottom) out.scrollTop = out.scrollHeight;
+}
+
+async function streamAgentRun(prompt, out, opts) {
+  const ctrl = new AbortController();
+  termAbort = ctrl;
+  appendConsole(out, `<div class="term-line term-user">❯ ${escapeHtml(prompt)}</div>`);
+  const answerEl = document.createElement('div');
+  answerEl.className = 'term-line term-assistant';
+  out.appendChild(answerEl);
+  let answer = '';
+  try {
+    const res = await fetch('/api/terminal/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, sessionId: termSessionId, autoApprove: opts.autoApprove }),
+      signal: ctrl.signal,
+    });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
+      for (const part of parts) {
+        const line = part.split('\n').find((l) => l.startsWith('data: '));
+        if (!line) continue;
+        let ev;
+        try {
+          ev = JSON.parse(line.slice(6));
+        } catch {
+          continue;
+        }
+        if (ev.type === 'text') {
+          answer += ev.text;
+          answerEl.textContent = answer;
+          if (out.scrollHeight - out.scrollTop - out.clientHeight < 80) out.scrollTop = out.scrollHeight;
+        } else if (ev.type === 'status') {
+          // lightweight status, skip noisy
+        } else if (ev.type === 'tool-call') {
+          appendConsole(out, `<div class="term-line term-tool">› ${escapeHtml(ev.tool)} ${escapeHtml(ev.detail || '')}</div>`);
+        } else if (ev.type === 'memory') {
+          appendConsole(out, `<div class="term-line term-memory">🧠 ${escapeHtml(ev.fact)}</div>`);
+        } else if (ev.type === 'skill') {
+          appendConsole(out, `<div class="term-line term-skill">✨ Self-improvement: สร้าง skill \`${escapeHtml(ev.name)}\` จากงานที่ทำซ้ำ ${ev.count ?? ''} ครั้ง</div>`);
+        } else if (ev.type === 'error') {
+          appendConsole(out, `<div class="term-line term-error">⚠ ${escapeHtml(ev.message)}</div>`);
+        }
+      }
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') appendConsole(out, `<div class="term-line term-error">⚠ ${escapeHtml(e.message)}</div>`);
+  } finally {
+    termAbort = null;
+  }
+}
+
+async function renderTerminal(page) {
+  const tab = localStorage.getItem('sanook-term-tab') || 'agent';
+  page.innerHTML = `<div class="card">
+    <h2>${t('terminal.title')}</h2>
+    <p class="hint">${t('terminal.hint')}</p>
+    <div class="term-tabs">
+      <button class="term-tab${tab === 'agent' ? ' active' : ''}" data-tab="agent">${t('terminal.agent')}</button>
+      <button class="term-tab${tab === 'shell' ? ' active' : ''}" data-tab="shell">${t('terminal.shell')}</button>
+    </div>
+    <div id="term-body"></div>
+  </div>`;
+  page.querySelectorAll('.term-tab').forEach((el) => {
+    el.onclick = () => {
+      localStorage.setItem('sanook-term-tab', el.getAttribute('data-tab'));
+      renderTerminal(page);
+    };
+  });
+  const body = page.querySelector('#term-body');
+  if (tab === 'agent') renderAgentConsole(body);
+  else renderRawShell(body);
+}
+
+function renderAgentConsole(body) {
+  body.innerHTML = `
+    <div id="term-out" class="term-out"></div>
+    <div class="term-input-row">
+      <textarea id="term-input" rows="1" placeholder="${t('terminal.placeholder')}"></textarea>
+      <button id="term-run" class="term-run">${t('terminal.run')}</button>
+    </div>
+    <label class="term-approve"><input type="checkbox" id="term-auto" checked /> auto-approve tools</label>`;
+  const out = body.querySelector('#term-out');
+  const input = body.querySelector('#term-input');
+  const runBtn = body.querySelector('#term-run');
+  const auto = body.querySelector('#term-auto');
+  const submit = async () => {
+    const prompt = input.value.trim();
+    if (!prompt || termAbort) return;
+    input.value = '';
+    runBtn.textContent = t('terminal.stop');
+    await streamAgentRun(prompt, out, { autoApprove: auto.checked });
+    runBtn.textContent = t('terminal.run');
+  };
+  runBtn.onclick = () => {
+    if (termAbort) {
+      termAbort.abort();
+      return;
+    }
+    void submit();
+  };
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void submit();
+    }
+  };
+  input.focus();
+}
+
+async function renderRawShell(body) {
+  body.innerHTML = `<p class="hint">Loading…</p>`;
+  const status = await api('/api/terminal/shell-status');
+  if (!status.available) {
+    body.innerHTML = `<div class="term-out term-disabled"><p>${t('terminal.shellOff')}</p><p class="hint">${escapeHtml(status.reason)}</p></div>`;
+    return;
+  }
+  body.innerHTML = `<div id="xterm" class="term-xterm"></div>`;
+  try {
+    await loadXterm();
+  } catch {
+    body.innerHTML = `<div class="term-out term-disabled"><p>${t('terminal.shellOff')}</p><p class="hint">xterm.js failed to load (offline?)</p></div>`;
+    return;
+  }
+  const term = new window.Terminal({ cursorBlink: true, fontSize: 13, theme: { background: '#0a1020' } });
+  term.open(body.querySelector('#xterm'));
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/api/terminal/shell`);
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'data') term.write(msg.data);
+    } catch {
+      /* ignore */
+    }
+  };
+  term.onData((d) => ws.readyState === 1 && ws.send(JSON.stringify({ type: 'data', data: d })));
+  term.onResize(({ cols, rows }) => ws.readyState === 1 && ws.send(JSON.stringify({ type: 'resize', cols, rows })));
+  ws.onclose = () => term.write('\r\n\x1b[31m[shell closed]\x1b[0m\r\n');
+}
+
+function loadXterm() {
+  if (window.Terminal) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css';
+    document.head.appendChild(css);
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('xterm load failed'));
+    document.head.appendChild(s);
+  });
+}
+
 async function renderRoute() {
   const hash = location.hash.replace(/^#/, '') || '/';
   const route = routes.find((r) => r.path === `#${hash}`) ?? routes[0];
@@ -251,9 +594,14 @@ async function renderRoute() {
   try {
     const map = {
       home: renderHome,
+      terminal: renderTerminal,
       chat: renderChat,
       models: renderModels,
       sessions: renderSessions,
+      skills: renderSkills,
+      memory: renderMemory,
+      usage: renderUsage,
+      selfimprove: renderSelfimprove,
       files: renderFiles,
       logs: renderLogs,
       cron: renderCron,
@@ -261,6 +609,7 @@ async function renderRoute() {
       config: renderConfig,
       mcp: renderMcp,
       brain: renderBrain,
+      install: renderInstall,
     };
     await (map[route.id] ?? renderHome)(page);
   } catch (e) {

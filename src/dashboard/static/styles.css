@@ -83,3 +83,36 @@ nav { display: flex; flex-direction: column; gap: 0.35rem; flex: 1; }
   .shell { grid-template-columns: 1fr; }
   .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
 }
+
+/* ---- Web terminal ---- */
+.term-tabs { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+.term-tab {
+  background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
+  border-radius: 10px; padding: 0.4rem 0.9rem; cursor: pointer; font-size: 0.9rem;
+}
+.term-tab.active { color: #041018; background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; font-weight: 600; }
+.term-out {
+  background: #0a1020; border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px; height: 52vh; min-height: 280px; overflow-y: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; line-height: 1.5;
+}
+.term-line { white-space: pre-wrap; word-break: break-word; margin: 2px 0; }
+.term-user { color: var(--accent); font-weight: 600; margin-top: 10px; }
+.term-assistant { color: var(--text); }
+.term-tool { color: #c7a3ff; }
+.term-memory { color: var(--good); }
+.term-skill { color: #ffd479; }
+.term-error { color: #ff8a8a; }
+.term-disabled { display: grid; place-items: center; text-align: center; gap: 6px; }
+.term-input-row { display: flex; gap: 8px; margin-top: 10px; align-items: flex-end; }
+.term-input-row textarea {
+  flex: 1; resize: none; background: #0a1020; color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+  font-family: ui-monospace, monospace; font-size: 13px; max-height: 160px;
+}
+.term-run {
+  padding: 10px 18px; border-radius: 10px; border: 0; cursor: pointer; font-weight: 600;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #041018;
+}
+.term-approve { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.82rem; margin-top: 8px; }
+.term-xterm { height: 56vh; min-height: 300px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; padding: 6px; background: #0a1020; }

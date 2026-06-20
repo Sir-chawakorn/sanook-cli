@@ -73,7 +73,7 @@ async function runHeadless(
     process.stderr.write(`${DIM}⚠ fallback model ${fallbackModel} ไม่มี pricing → budget cap จะไม่ทำงานถ้า fallback ถูกใช้${RESET}\n`);
   }
   try {
-    const { cost, messages } = await runAgent({
+    const { cost, messages, text } = await runAgent({
       model,
       fallbackModel,
       prompt,
@@ -100,12 +100,31 @@ async function runHeadless(
     }
     // จำ session ไว้ทำงานต่อได้ (sanook --continue "...") — แก้ concern AI ลืมว่าทำถึงไหน
     const now = new Date().toISOString();
-    await saveSession({ id: newSessionId(), created: now, updated: now, model, cwd: process.cwd(), messages });
-    // auto-worklog เข้า second-brain (ถ้าตั้ง brainPath) — "vault จำว่าวันนี้ทำอะไร"
-    const { getBrainPath, appendBrainWorklog } = await import('./memory.js');
+    const headlessSessionId = newSessionId();
+    await saveSession({ id: headlessSessionId, created: now, updated: now, model, cwd: process.cwd(), messages });
+    // auto-worklog (ย่อ) + บทสนทนาเต็ม (ถ้าเปิด brainTranscript) เข้า second-brain
+    const { getBrainPath, appendBrainWorklog, appendBrainTranscript } = await import('./memory.js');
     const brain = await getBrainPath();
     if (brain) {
       await appendBrainWorklog(brain, { prompt, summary: cost.summary(), model, today: now.slice(0, 10) }).catch(() => {});
+      await appendBrainTranscript(brain, {
+        sessionId: headlessSessionId,
+        prompt,
+        answer: text,
+        model,
+        createdIso: now,
+      }).catch(() => {});
+    }
+    // self-improvement: งานเดิมที่สั่งซ้ำถึง threshold → สร้าง skill อัตโนมัติ + แจ้งใน stderr
+    try {
+      const { maybeAutoSkill } = await import('./self-improve.js');
+      const { defaultSkillSynthesizer } = await import('./self-improve-synth.js');
+      const { loadSkills, saveSkill } = await import('./skills.js');
+      const existing = new Set((await loadSkills()).map((s) => s.name));
+      const auto = await maybeAutoSkill(prompt, { synthesize: defaultSkillSynthesizer(model), saveSkill, existingSkillNames: existing });
+      if (auto.created && auto.announcement) process.stderr.write(`${auto.announcement}\n`);
+    } catch {
+      /* best-effort */
     }
     // opt-in (experimental, default OFF): auto-distill durable decisions/gotchas/preferences from this
     // session into the compounding memory store so the self-retrieving brain surfaces them next time.
@@ -3648,6 +3667,7 @@ async function runConfig(args: string[]): Promise<void> {
     'maxSteps',
     'permissionMode',
     'brainPath',
+    'brainTranscript',
     'pricing',
     'cacheTtl',
     'compaction',
@@ -3698,6 +3718,14 @@ async function runConfig(args: string[]): Promise<void> {
       // store absolute — getBrainPath() is read from arbitrary cwd, so a relative path drifts
       const { expandHome } = await import('./brain.js');
       value = resolve(expandHome(raw.trim()));
+    } else if (key === 'brainTranscript') {
+      const v = raw.trim().toLowerCase();
+      if (['on', 'true', '1', 'yes'].includes(v)) value = true;
+      else if (['off', 'false', '0', 'no'].includes(v)) value = false;
+      else {
+        console.error('brainTranscript ต้องเป็น on/off, true/false หรือ yes/no');
+        process.exit(1);
+      }
     } else if (key === 'thinking') {
       // เก็บเป็น number (budget) หรือ boolean ให้ตรง ConfigSchema (ไม่เก็บ string)
       value = parseThinkingConfigValue(raw);

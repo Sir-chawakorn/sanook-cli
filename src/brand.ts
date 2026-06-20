@@ -27,6 +27,9 @@ export const BRAND_ENV = {
   disableUpdateCheck: 'SANOOK_DISABLE_UPDATE_CHECK',
   disableWorklog: 'SANOOK_DISABLE_WORKLOG',
   disableUsageLedger: 'SANOOK_DISABLE_USAGE',
+  brainTranscript: 'SANOOK_BRAIN_TRANSCRIPT',
+  disableSelfImprove: 'SANOOK_DISABLE_SELF_IMPROVE',
+  selfImproveThreshold: 'SANOOK_SELF_IMPROVE_THRESHOLD',
   trustProject: 'SANOOK_TRUST_PROJECT',
 };
 
@@ -57,4 +60,21 @@ export function worklogEnabled(): boolean {
 
 export function usageLedgerEnabled(): boolean {
   return persistenceEnabled() && !envFlag(BRAND_ENV.disableUsageLedger);
+}
+
+/** env-level force for full-transcript-to-vault; config.brainTranscript is the persistent toggle */
+export function brainTranscriptEnvForced(): boolean {
+  return envFlag(BRAND_ENV.brainTranscript);
+}
+
+/** self-improvement (auto-skill จากงานที่ทำซ้ำ) — เปิด default, ปิดด้วย SANOOK_DISABLE_SELF_IMPROVE=1 */
+export function selfImproveEnabled(): boolean {
+  return persistenceEnabled() && !envFlag(BRAND_ENV.disableSelfImprove);
+}
+
+/** จำนวนครั้งที่งานคล้ายกันต้องเกิดก่อน auto-สร้าง skill (default 3) — override ด้วย env */
+export function selfImproveThreshold(): number {
+  const raw = process.env[BRAND_ENV.selfImproveThreshold]?.trim();
+  const n = raw ? Number(raw) : NaN;
+  return Number.isInteger(n) && n >= 2 ? n : 3;
 }

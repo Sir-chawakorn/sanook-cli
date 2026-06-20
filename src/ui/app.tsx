@@ -16,7 +16,7 @@ import { runAgent, type AgentEvent } from '../loop.js';
 import { finalizeReplSession, formatFinalizeMessage } from '../session-brain.js';
 import { saveSession, newSessionId, listSessions, removeSession, renameSession, type Session } from '../session.js';
 import { TOOL_CATALOG } from '../tool-catalog.js';
-import { getBrainPath, appendBrainWorklog } from '../memory.js';
+import { getBrainPath, appendBrainWorklog, appendBrainTranscript } from '../memory.js';
 import { autoCompact, estimateTokens, summarizeCompact } from '../compaction.js';
 import { makeSummarizer } from '../summarize.js';
 import { agentTuning, patchGlobalConfig } from '../config.js';
@@ -31,7 +31,9 @@ import {
   modelProviderEntries,
 } from '../model-picker.js';
 import { clampCompletionIndex, completionForInput, completionReplaceValue } from '../slash-completion.js';
-import { loadSkills } from '../skills.js';
+import { loadSkills, saveSkill } from '../skills.js';
+import { maybeAutoSkill } from '../self-improve.js';
+import { defaultSkillSynthesizer } from '../self-improve-synth.js';
 import { copyTextToClipboard } from '../clipboard.js';
 import { useEditor } from './useEditor.js';
 import { useBusyElapsedSeconds } from './useBusyElapsed.js';
@@ -47,6 +49,7 @@ import { MarkdownText, StreamingMarkdownText } from './markdown.js';
 import { SessionPanel, type StartupSectionPreview } from './session-panel.js';
 import { getTranscriptWindow, transcriptScrollStep, transcriptWindowSize } from './transcript.js';
 import { footerStatus } from './status.js';
+import { inputViewport, graphemesOf, cursorGraphemeIndex, SCROLL_LEAD, SCROLL_TAIL } from './input-view.js';
 import { thinkingPanelLines, snapshotThinking, type DetailsDisplayMode } from './thinking-panel.js';
 import { toolTrailLines, updateToolTrailOnEvent, type ToolTrailDisplayMode, type ToolTrailItem } from './tool-trail.js';
 
@@ -1064,6 +1067,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     let reasoningBuf = '';
     let lastFlush = 0;
     let lastThinkingFlush = 0;
+    const rememberedFacts: string[] = []; // 🧠 ที่ user สั่งจำใน turn นี้ → โชว์ indicator ใน terminal
     try {
       const { cost, messages, text } = await runAgent({
         model,
@@ -1088,6 +1092,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
               lastFlush = now;
             }
           } else if (e.type === 'tool-call') {
+            if (e.tool === 'remember') {
+              const fact = (e.detail as { fact?: unknown } | undefined)?.fact;
+              if (typeof fact === 'string' && fact.trim()) rememberedFacts.push(fact.trim());
+            }
             recordToolTrailEvent(e);
           } else if (e.type === 'tool-result' || e.type === 'error') {
             recordToolTrailEvent(e);
@@ -1104,7 +1112,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       });
       msgsRef.current = messages;
       lastCost.current = cost.summary();
-      addTurn('assistant', buf.trim() || text.trim(), { thinking: snapshotThinking(reasoningBuf), toolTrail: snapshotToolTrail() });
+      const answerText = buf.trim() || text.trim();
+      addTurn('assistant', answerText, { thinking: snapshotThinking(reasoningBuf), toolTrail: snapshotToolTrail() });
+      // 🧠 indicator: ผู้ใช้สั่งให้จำ → บันทึกถาวรแล้ว (memory + second-brain ถ้าตั้งไว้)
+      for (const fact of rememberedFacts) addTurn('system', `🧠 จำไว้แล้ว: ${fact}`);
       // เซฟ session ทุกรอบ → resume ได้ด้วย sanook -c
       void saveSession({
         id: sessionId.current,
@@ -1114,7 +1125,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         cwd: process.cwd(),
         messages,
       });
-      // worklog เข้า second-brain — vault จำว่าทำอะไรใน session นี้
+      // worklog (ย่อ) + บทสนทนาเต็ม (ถ้าเปิด brainTranscript) เข้า second-brain
       void (async () => {
         const brain = await getBrainPath();
         if (brain) {
@@ -1124,6 +1135,27 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
             model,
             today: new Date().toISOString().slice(0, 10),
           }).catch(() => {});
+          await appendBrainTranscript(brain, {
+            sessionId: sessionId.current,
+            prompt: promptText,
+            answer: answerText,
+            model,
+            createdIso: sessionCreated.current,
+          }).catch(() => {});
+        }
+      })();
+      // self-improvement: งานเดิมที่สั่งซ้ำถึง threshold → สร้าง skill อัตโนมัติ + แจ้งใน terminal
+      void (async () => {
+        try {
+          const existing = new Set((await loadSkills()).map((s) => s.name));
+          const result = await maybeAutoSkill(promptText, {
+            synthesize: defaultSkillSynthesizer(model),
+            saveSkill,
+            existingSkillNames: existing,
+          });
+          if (result.created && result.announcement) addTurn('system', result.announcement);
+        } catch {
+          /* self-improvement เป็น best-effort — ไม่ให้ล้ม turn */
         }
       })();
     } catch (err) {
@@ -1218,10 +1250,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
       ) : (
         <Box marginTop={1} borderStyle="round" borderColor={busy ? 'gray' : 'blue'} paddingX={1}>
           <Text color={busy ? 'gray' : 'cyan'}>{busy ? '· ' : '› '}</Text>
-          <InputView value={editor.value} cursor={editor.cursor} busy={busy} agentStatus={agentStatus} toolTrail={toolTrail} />
+          <InputView value={editor.value} cursor={editor.cursor} busy={busy} agentStatus={agentStatus} toolTrail={toolTrail} columns={columns} />
         </Box>
       )}
-      <Text dimColor>
+      <Text dimColor wrap="truncate-end">
         {footerStatus({
           branch: gitBranch,
           backgroundTaskCount: bgTaskCount,
@@ -1248,32 +1280,63 @@ function InputView({
   busy,
   agentStatus,
   toolTrail,
+  columns = 80,
 }: {
   value: string;
   cursor: number;
   busy: boolean;
   agentStatus?: string;
   toolTrail?: ToolTrailItem[];
+  columns?: number;
 }) {
   if (busy && !value) {
     const runningTool = toolTrail?.find((item) => item.status === 'running');
     const detail = agentStatus || (runningTool ? `Tool · ${runningTool.name}` : 'Working…');
+    // wrap="truncate-end": status ต้องอยู่ 1 บรรทัดเสมอ — กัน timer/elapsed ทำบรรทัดเด้งหลังส่ง prompt
     return (
-      <Text dimColor>
+      <Text dimColor wrap="truncate-end">
         {detail} · Esc/Ctrl+C หยุด · พิมพ์เพื่อต่อคิว (⏎)
       </Text>
     );
   }
-  if (!busy && !value) return <Text dimColor>ถามอะไรก็ได้ — /help ดูคำสั่ง · /tools ดู tools · @ไฟล์ แนบ context/รูป</Text>;
-  const before = value.slice(0, cursor);
-  const at = value.slice(cursor, cursor + 1) || ' ';
-  const after = value.slice(cursor + 1);
+  if (!busy && !value) {
+    return (
+      <Text dimColor wrap="truncate-end">
+        ถามอะไรก็ได้ — /help ดูคำสั่ง · /tools ดู tools · @ไฟล์ แนบ context/รูป
+      </Text>
+    );
+  }
+
+  // multiline (กด Alt+Enter / ลงท้าย \) — สูงหลายบรรทัดตั้งใจอยู่แล้ว: render grapheme-cursor แบบ wrap ปกติ
+  if (value.includes('\n')) {
+    const ci = cursorGraphemeIndex(value, cursor);
+    const graphemes = graphemesOf(value);
+    const before = graphemes.slice(0, ci).join('');
+    const at = ci < graphemes.length ? graphemes[ci] : ' ';
+    const after = ci < graphemes.length ? graphemes.slice(ci + 1).join('') : '';
+    return (
+      <Text>
+        {before}
+        <Text inverse>{at}</Text>
+        {after}
+        {busy ? <Text dimColor>{'  '}(⏎ ต่อคิว)</Text> : null}
+      </Text>
+    );
+  }
+
+  // บรรทัดเดียว: viewport กว้างคงที่ (เลื่อนแนวนอนแทน wrap) → กล่อง input สูง 1 บรรทัดเสมอ ไม่เด้งตอนพิมพ์ไทย
+  // เผื่อ overhead: border(2) + paddingX(2) + prefix "› "(2) + ช่อง cursor/suffix ~2
+  const queueHint = busy ? '  (⏎ ต่อคิว)' : '';
+  const reserved = 8 + queueHint.length;
+  const vp = inputViewport(value, cursor, Math.max(8, columns - reserved));
   return (
-    <Text>
-      {before}
-      <Text inverse>{at}</Text>
-      {after}
-      {busy ? <Text dimColor>{'  '}(⏎ ต่อคิว)</Text> : null}
+    <Text wrap="truncate-end">
+      {vp.lead ? <Text dimColor>{SCROLL_LEAD}</Text> : null}
+      {vp.before}
+      <Text inverse>{vp.at}</Text>
+      {vp.after}
+      {vp.tail ? <Text dimColor>{SCROLL_TAIL}</Text> : null}
+      {queueHint ? <Text dimColor>{queueHint}</Text> : null}
     </Text>
   );
 }

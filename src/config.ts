@@ -42,6 +42,8 @@ export const ConfigSchema = z.object({
   permissionMode: z.enum(['auto', 'ask']).default('ask'),
   // path ของ second-brain workspace ที่ scaffold ไว้ (sanook brain) — optional
   brainPath: z.string().optional(),
+  // เก็บบทสนทนาเต็ม (prompt + คำตอบ AI ทุก turn) ลง vault Sessions/*-chat.md — opt-in (vault โตไว)
+  brainTranscript: z.boolean().optional().catch(undefined),
   // pricing override/extension per "provider:model" → ทำให้ budget cap ใช้ได้กับ model ที่ยังไม่มีในตาราง
   pricing: PricingOverrideSchema.optional(),
   // ── token/cost tuning (ดู agentTuning) — .catch กันค่า config.json ผิดทำ boot พัง (agentTuning อ่าน raw + coerce เองด้วย) ──

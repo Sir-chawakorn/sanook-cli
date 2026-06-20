@@ -1,41 +1,60 @@
-<div align="center">
+<p align="center">
+  <br />
+  <strong>Sanook CLI</strong>
+  <br />
+  <br />
+  <em>The terminal AI coding agent with a memory that outlives the session.</em>
+  <br />
+  <br />
+  <sub>Bring your own key · 9 providers · MCP · Obsidian second brain · gateway & cron</sub>
+  <br />
+  <br />
+  🇹🇭 <a href="README.th.md">อ่านภาษาไทย</a>
+</p>
 
-# Sanook CLI
+<p align="center">
+  <a href="https://www.npmjs.com/package/sanook-cli"><img src="https://img.shields.io/npm/v/sanook-cli.svg?style=flat-square&color=111827&labelColor=1f2937" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/sanook-cli"><img src="https://img.shields.io/npm/dm/sanook-cli.svg?style=flat-square&color=111827&labelColor=1f2937" alt="downloads" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-22c55e?style=flat-square&labelColor=1f2937" alt="license" /></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A5%2022-339933?style=flat-square&labelColor=1f2937&logo=node.js&logoColor=white" alt="node" /></a>
+  <a href="#development"><img src="https://img.shields.io/badge/tests-passing-22c55e?style=flat-square&labelColor=1f2937" alt="tests" /></a>
+  <a href="https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Sir-chawakorn/sanook-cli/ci.yml?style=flat-square&labelColor=1f2937" alt="CI" /></a>
+</p>
 
-**The open-source terminal AI coding agent that remembers across sessions.**
-
-Bring your own key · 9 providers · MCP · a built-in **"second brain"** that gives the AI durable memory across sessions — the thing Claude Code, Codex, and Gemini CLI lose at the session boundary.
-
-🇹🇭 [อ่านภาษาไทย](README.th.md)
-
-[![npm](https://img.shields.io/npm/v/sanook-cli.svg?color=2563eb)](https://www.npmjs.com/package/sanook-cli)
-[![downloads](https://img.shields.io/npm/dm/sanook-cli.svg?color=2563eb)](https://www.npmjs.com/package/sanook-cli)
-[![License](https://img.shields.io/badge/license-Apache--2.0-22c55e.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Tests](https://img.shields.io/badge/tests-passing-22c55e.svg)](#development)
-[![CI](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml)
-
-[Quickstart](#quickstart) · [Providers](#providers) · [Usage](#usage) · [Gateway](#gateway--scheduling) · [Skills](#skills) · [MCP](#mcp) · [Security](#security)
+<p align="center">
+  <a href="#quickstart"><strong>Quickstart</strong></a>
+  &nbsp;·&nbsp;
+  <a href="#memory--second-brain"><strong>Memory</strong></a>
+  &nbsp;·&nbsp;
+  <a href="#providers"><strong>Providers</strong></a>
+  &nbsp;·&nbsp;
+  <a href="#usage"><strong>Usage</strong></a>
+  &nbsp;·&nbsp;
+  <a href="#gateway--scheduling"><strong>Gateway</strong></a>
+  &nbsp;·&nbsp;
+  <a href="#mcp"><strong>MCP</strong></a>
+  &nbsp;·&nbsp;
+  <a href="#security"><strong>Security</strong></a>
+</p>
 
 <!-- 📹 DEMO GIF — record the close-session → reopen → "it remembered" loop (asciinema + agg), save to docs/demo.gif, then uncomment: -->
-<!-- ![sanook-cli demo](docs/demo.gif) -->
+<!-- <p align="center"><img src="docs/demo.gif" alt="sanook-cli demo" width="720" /></p> -->
 
-</div>
-
----
+<br />
 
 ## Overview
 
-Sanook is a small, transparent coding agent for your terminal. At its heart is a single loop —
+> **Close the terminal. Come back tomorrow. Sanook still knows what you decided.**
 
-```
+Sanook is a transparent coding agent for your terminal — one loop, no magic:
+
+```text
 prompt → LLM → tool call → result → loop → answer
 ```
 
-— wrapped with everything that makes it usable for real work: a permission gate, a memory the agent writes itself, a long-running gateway with cron and chat channels, on-demand skills, MCP servers, and first-class git awareness.
+Wrapped in the things real work needs: a permission gate, **structured memory across sessions**, a long-running gateway with cron and chat channels, on-demand skills, MCP servers, and first-class git awareness.
 
-It is **BYOK (bring your own key)** by design. Every provider connects with a **direct API key from that provider's own console** — Sanook never reuses OAuth or subscription credentials, because that violates provider terms and gets accounts banned.
+**BYOK by design.** Every provider uses a **direct API key from that provider's console** — Sanook never reuses OAuth or subscription credentials, because that violates provider terms and gets accounts banned.
 
 ## How it compares
 
@@ -56,6 +75,67 @@ The agent loop, BYOK, and MCP are table stakes now. What Sanook has that the big
 | **Local gateway + cron + messaging** | ✅ | ❌ | ❌ | ❌ |
 
 On raw benchmark scores the frontier vendors win — Sanook's bet is **portability + persistent memory**, not beating Opus on SWE-bench. Use whatever fits; this one remembers.
+
+## Memory & second brain
+
+Sanook does **not** dump everything into one folder. Memory is layered — some lives in your Obsidian vault, some in `~/.sanook/` for speed and resume. Both are wired together at runtime.
+
+```mermaid
+flowchart LR
+  subgraph vault["Your vault · config.brainPath"]
+    WL["Sessions/YYYY-MM-DD-worklog.md"]
+    SN["Sessions/YYYY-MM-DD-*-session.md"]
+    IN["Shared/Memory-Inbox/"]
+    PJ["Projects/&lt;slug&gt;/"]
+  end
+  subgraph local["~/.sanook/"]
+    AM["memory/memory.json"]
+    SS["sessions/*.json"]
+    IX["search/index.json"]
+  end
+  subgraph inject["Injected every turn"]
+    SP["System prompt"]
+  end
+  vault --> SP
+  local --> SP
+  AM --> IN
+```
+
+### What goes where
+
+| Data | Stored at | When | Purpose |
+|---|---|---|---|
+| **Worklog** | `{brainPath}/Sessions/YYYY-MM-DD-worklog.md` | After every agent turn (REPL + headless) | Daily trace of prompts & cost summary |
+| **Full transcript** *(opt-in)* | `{brainPath}/Sessions/YYYY-MM-DD-<id>-chat.md` | After every turn, when `brainTranscript` is on | The actual conversation — your prompt **and** the AI's reply |
+| **Session note** | `{brainPath}/Sessions/YYYY-MM-DD-<id>-session.md` | On REPL exit (`/quit` or Ctrl+C at empty prompt) | AI/heuristic summary + key facts |
+| **Memory inbox** | `{brainPath}/Shared/Memory-Inbox/memory-inbox.md` | When the agent calls `remember` | Candidate facts for vault curation |
+| **Project workspace** | `{brainPath}/Projects/<slug>/` | Setup wizard / `sanook brain init` links your repo | Project-scoped notes & hot context |
+| **Auto-memory** | `~/.sanook/memory/memory.json` | When the agent calls `remember` | Structured facts (merge, rank, inject) |
+| **Session JSON** | `~/.sanook/sessions/*.json` | Every turn | `--continue` / `--resume` transcript |
+| **Search index** | `~/.sanook/search/` | `sanook index` (incremental) | BM25 / hybrid retrieval |
+| **Usage ledger** | `~/.sanook/usage/events.jsonl` | Every turn | Token/cost tracking — **not** semantic memory |
+
+**Read at session start:** hierarchical `SANOOK.md` (global → project root → cwd), auto-memory block, vault hot files (`AI-Context-Index`, `current-state`, inbox, matched `Projects/<slug>/`), plus per-turn retrieval over vault + memory + past sessions.
+
+**Setup links your repo to the vault:** the first-run wizard (or `sanook brain init`) saves `brainPath` in `~/.sanook/config.json`, scaffolds `Projects/<slug>/` inside the vault, and creates `SANOOK.md` in your repo if missing.
+
+```bash
+sanook brain init                  # pick vault folder + identity
+sanook brain context               # inspect what gets injected from cwd
+sanook brain projects list         # vault projects ↔ repo paths
+sanook memory stats                # auto-memory store overview
+sanook usage daily                 # token/cost ledger (ccusage-style)
+```
+
+**Want the entire conversation in your vault?** Turn on full transcripts — every prompt and reply is appended to `Sessions/*-chat.md` per session:
+
+```bash
+sanook config set brainTranscript on   # or env: SANOOK_BRAIN_TRANSCRIPT=1
+```
+
+> It is **opt-in** because verbatim transcripts of long coding sessions grow a vault fast. Worklog (always on) keeps a lighter daily trace; the full transcript is the complete record.
+
+Disable persistence: `SANOOK_DISABLE_PERSISTENCE=1` · worklog only: `SANOOK_DISABLE_WORKLOG=1` · usage ledger: `SANOOK_DISABLE_USAGE=1`
 
 ## Quickstart
 
@@ -106,7 +186,7 @@ sanook dump                     # support snapshot; raw secrets are never printe
 | **Approval** | `ask` mode is the default and prompts `y/n` before any file write or shell command. `--yes` for auto-approve; headless ask-mode safely denies mutations when no approval UI exists. |
 | **Input** | Multiline editing, `↑`/`↓` persisted prompt history, readline keys (Ctrl-A/E/U/K/W), and `@file` mentions that inline a file's contents (or attach an **image** for vision-capable models). |
 | **Checkpoint** | A shadow-git snapshot is taken before each turn; `/rewind` restores the files **and** truncates the conversation — recoverable (it stashes the current state first). |
-| **Memory** | The agent writes its own notes (`remember`), recalls them across past sessions (`recall`), `--continue` resumes the latest run for the current project, `--resume <id>` resumes a specific run, and `sanook sessions` audits/exports/renames/prunes saved conversations. |
+| **Memory** | Layered memory: `remember` / `recall`, hierarchical `SANOOK.md`, Obsidian vault injection, per-turn retrieval, `--continue` / `--resume`, session notes on exit, daily worklogs, and `sanook memory` / `sanook usage` inspect commands. |
 | **Familiar CLI surfaces** | `sanook setup`, `sanook model`, `sanook auth`, `sanook chat -q`, `sanook gateway`, `sanook status`, `sanook sessions`, `sanook dump`, `sanook tools`, and `sanook send` provide familiar management entry points, all Sanook-branded. |
 | **Startup cockpit** | The interactive REPL opens with a Sanook-branded wordmark, service routes (Code, Brain, Connect, Ship), and live readiness signals for second-brain, MCP servers, installed skills, and the current git branch. |
 | **Web grounding** | `sanook web status` separates local brain search from true internet search, detects configured MCP web/search/fetch candidates, and prints Sanook's citation + prompt-injection policy for current external facts. |
@@ -170,6 +250,7 @@ sanook sessions stats [--all]
 sanook sessions prune --keep N [--all] [--yes]
 sanook sessions rm <id>
 sanook dump [--show-keys] support dump (keys are still redacted)
+sanook usage [daily|weekly|monthly|session] [--days N] [--json]
 sanook prompt-size [--json] inspect system/brain/skill/tool context budget
 sanook runtimes [--json]   inspect optional Python/Rust runtime surface
 sanook web status [--json] inspect true web-search/fetch readiness
@@ -424,16 +505,18 @@ sanook skill remove my-skill
 
 ## Second brain
 
-Scaffold a structured [Obsidian](https://obsidian.md) workspace for organising your work and giving the agent a durable, cross-session memory:
+Scaffold a structured [Obsidian](https://obsidian.md) workspace — the durable layer Sanook reads and writes alongside `~/.sanook/`:
 
 ```bash
 sanook brain init                  # interactive — asks where + a few identity questions
 sanook brain init ~/notes/brain    # non-interactive (with --yes)
 ```
 
-It creates a full folder taxonomy (`Projects/`, `Sessions/`, `Shared/` memory layer, `Goals/`, `Research/`, `Skills/`, …), an `_Index.md` in every folder, seed memory files, and a portable AI **operating constitution** (`CLAUDE.md` / `GEMINI.md` / `AGENTS.md` / `SANOOK.md`) so any AI agent works with the vault consistently. It ships with research-backed operating rules — context-assembly (anti context-rot), an intake quarantine + injection-scan gate, bi-temporal fact validity, provenance tracking, a verification-gated `Skills/` library, and sleep-time consolidation. The first-run setup wizard also offers to create one.
+The wizard creates a full folder taxonomy (`Projects/`, `Sessions/`, `Shared/` memory layer, `Goals/`, `Research/`, `Skills/`, …), an `_Index.md` in every folder, seed memory files, and a portable AI **operating constitution** (`CLAUDE.md` / `GEMINI.md` / `AGENTS.md` / `SANOOK.md`). It ships with research-backed operating rules — context-assembly (anti context-rot), an intake quarantine + injection-scan gate, bi-temporal fact validity, provenance tracking, a verification-gated `Skills/` library, and sleep-time consolidation.
 
-Everything is **create-if-missing** — re-running never overwrites your notes. Point an Obsidian or filesystem MCP server at the workspace to let the agent read and write it.
+**Create-if-missing** — re-running never overwrites your notes. On init, Sanook also links your current repo (`Projects/<slug>/` + `SANOOK.md`) and can wire a filesystem MCP server so the agent reads and writes the vault directly.
+
+See [Memory & second brain](#memory--second-brain) for the exact routing table (worklog, session notes, inbox, auto-memory, sessions).
 
 ### Brain search
 
@@ -503,16 +586,19 @@ sanook trust remove
 Everything lives under `~/.sanook/` (with per-project `.sanook/` overrides where relevant):
 
 ```
+~/.sanook/config.json        brainPath, model, tuning knobs
 ~/.sanook/auth.json          API keys (chmod 600)
-~/.sanook/memory/            auto-memory the agent writes
-~/.sanook/search/            brain-search index + optional embedding vectors (regenerable via `sanook index`)
+~/.sanook/memory/            auto-memory store (memory.json + MEMORY.md view)
+~/.sanook/usage/             token/cost ledger (events.jsonl)
+~/.sanook/search/            brain-search index + optional embedding vectors
 ~/.sanook/sessions/          saved conversations (for --continue)
 ~/.sanook/skills/<name>/     installed SKILL.md files
 ~/.sanook/mcp.json           MCP servers  { "mcpServers": { … } }
 ~/.sanook/hooks.json         PreToolUse / PostToolUse hooks
 ~/.sanook/gateway/           gateway token + task ledger
-~/.sanook/trusted-projects.json project roots allowed to load project .sanook extensions
-SANOOK.md                    project memory (hierarchical, like a system prompt)
+~/.sanook/trusted-projects.json
+SANOOK.md                    project memory (hierarchical, cwd → project root → global)
+{brainPath}/                 your Obsidian vault — worklogs, session notes, Projects/, Shared/
 ```
 
 Untrusted project config can set ordinary project defaults, but it cannot lower `permissionMode` to `auto`; trust the project first if you want project-local config to control mutation approval.
@@ -530,6 +616,7 @@ Quality-neutral knobs in `~/.sanook/config.json` (or the matching `SANOOK_*` env
 | — | `SANOOK_SUBAGENT_MODEL=haiku` | run all sub-agent work (exploration/search) on a cheaper model while the main agent keeps the strong one |
 | `summaryModel <spec>` | `SANOOK_SUMMARY_MODEL=<spec>` | model used for summarize-compaction (default: the fast sibling of your main model) |
 | `embeddingModel <spec>` | `SANOOK_EMBEDDING_MODEL=<spec>` | model used for semantic search embeddings (for example `openai:text-embedding-3-small`) |
+| `brainTranscript on` | `SANOOK_BRAIN_TRANSCRIPT=1` | append the **full conversation** (prompt + reply, every turn) to `{brainPath}/Sessions/*-chat.md` (default off) |
 | `thinking on` / `thinking 4000` | `SANOOK_THINKING=on` / `4000` | opt-in Anthropic extended thinking on the main agent; use `on`, `true`, or `yes` for the default budget, `off`, `false`, or `no` to disable, or a positive integer for `budgetTokens` |
 
 Read-side savings are automatic: the agent reads file ranges (`read_file` with `offset`/`limit`) and edits with minimal `old_string` / `replace_all` rather than rewriting whole files.
@@ -544,6 +631,7 @@ SANOOK_HOOKS_INHERIT_ENV=1          # pass full env to hooks instead of a minima
 SANOOK_DISABLE_PERSISTENCE=1        # do not save sessions, memory, prompt history, or worklogs
 SANOOK_DISABLE_UPDATE_CHECK=1       # do not show interactive update prompts
 SANOOK_DISABLE_WORKLOG=1            # do not append second-brain worklogs
+SANOOK_DISABLE_USAGE=1              # do not append token/cost usage events
 SANOOK_TRUST_PROJECT=1              # temporary trust override for project .sanook extensions
 ```
 
@@ -590,12 +678,19 @@ CI runs the suite across macOS / Linux / Windows on Node 22 and 24. Requires **N
 
 ---
 
-<div align="center">
-
-**Built by [Sanook AI](https://www.facebook.com/sanookai)** — AI tools & education 🇹🇭
-
-[Facebook](https://www.facebook.com/sanookai) · [X / Twitter](https://x.com/sanook_ai)
-
-<sub>Built from scratch in TypeScript on the Vercel AI SDK — no framework, no magic.</sub>
-
-</div>
+<p align="center">
+  <br />
+  <strong>Built by <a href="https://www.facebook.com/sanookai">Sanook AI</a></strong>
+  <br />
+  <sub>AI tools & education · 🇹🇭</sub>
+  <br />
+  <br />
+  <a href="https://www.facebook.com/sanookai">Facebook</a>
+  &nbsp;·&nbsp;
+  <a href="https://x.com/sanook_ai">X / Twitter</a>
+  <br />
+  <br />
+  <sub>TypeScript · Vercel AI SDK · no framework, no magic</sub>
+  <br />
+  <br />
+</p>

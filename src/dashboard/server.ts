@@ -111,6 +111,56 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, pathname: st
     return true;
   }
 
+  if (req.method === 'GET' && pathname === '/api/skills') {
+    const { dashboardSkills } = await import('./api-helpers.js');
+    json(res, 200, await dashboardSkills());
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/memory') {
+    const { dashboardMemory } = await import('./api-helpers.js');
+    json(res, 200, await dashboardMemory());
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/usage') {
+    const { dashboardUsage } = await import('./api-helpers.js');
+    json(res, 200, await dashboardUsage());
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/self-improve') {
+    const { dashboardSelfImprove } = await import('./api-helpers.js');
+    json(res, 200, await dashboardSelfImprove());
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/install') {
+    const { dashboardInstall } = await import('./api-helpers.js');
+    json(res, 200, dashboardInstall());
+    return true;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/terminal/run') {
+    const { handleTerminalRun } = await import('./terminal.js');
+    await handleTerminalRun(req, res);
+    return true;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/terminal/reset') {
+    const url = new URL(req.url ?? '/', 'http://local');
+    const { resetTerminalSession } = await import('./terminal.js');
+    resetTerminalSession(url.searchParams.get('session') ?? 'web');
+    json(res, 200, { ok: true });
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/terminal/shell-status') {
+    const { shellStatus } = await import('./terminal.js');
+    json(res, 200, await shellStatus());
+    return true;
+  }
+
   if (req.method === 'GET' && pathname === '/api/chat/status') {
     json(res, 200, {
       hint: `Use ${BRAND.cliName} in terminal, or start ${BRAND.cliName} serve for HTTP chat`,
@@ -192,6 +242,14 @@ export async function startDashboardServer(opts: DashboardServerOptions = {}): P
     server.once('error', reject);
     server.listen(port, host, () => resolve());
   });
+
+  // raw shell over ws (no-op if node-pty/ws not installed)
+  try {
+    const { attachShell } = await import('./terminal.js');
+    await attachShell(server);
+  } catch {
+    /* optional */
+  }
 
   log(`Sanook Dashboard — http://${host}:${port}`);
   return () => server.close();

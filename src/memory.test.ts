@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendToVaultInbox, appendBrainWorklog, buildBrainContext, buildBrainContextParts } from './memory.js';
+import { appendToVaultInbox, appendBrainWorklog, appendBrainTranscript, brainTranscriptEnabled, buildBrainContext, buildBrainContextParts, seedPersonaMemory } from './memory.js';
+import { MEMORY_DIR, loadStore, activeFacts } from './memory-store.js';
 
 describe('appendToVaultInbox (remember → second brain)', () => {
   let vault: string;
@@ -142,5 +143,131 @@ describe('appendBrainWorklog (auto worklog → vault Sessions)', () => {
     vi.stubEnv('SANOOK_DISABLE_PERSISTENCE', '1');
     expect(await appendBrainWorklog(vault, { prompt: 'private task', summary: 'done', model: 'm', today: '2026-06-15' })).toBe(false);
     await expect(readFile(join(vault, 'Sessions', '2026-06-15-worklog.md'), 'utf8')).rejects.toThrow();
+  });
+});
+
+describe('appendBrainTranscript (full conversation → vault Sessions)', () => {
+  let vault: string;
+  beforeEach(async () => {
+    vi.stubEnv('SANOOK_DISABLE_PERSISTENCE', '');
+    vi.stubEnv('SANOOK_BRAIN_TRANSCRIPT', '1'); // env force ON (ไม่ต้องพึ่ง config.json)
+    vault = await mkdtemp(join(tmpdir(), 'vault-'));
+    await mkdir(join(vault, 'Sessions'), { recursive: true });
+  });
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    await rm(vault, { recursive: true, force: true });
+  });
+
+  const chatFile = (sid: string, day = '2026-06-15') => join(vault, 'Sessions', `${day}-${sid.slice(-6)}-chat.md`);
+
+  it('เก็บทั้ง prompt และคำตอบ AI ลงไฟล์ chat ต่อ session', async () => {
+    expect(
+      await appendBrainTranscript(vault, {
+        sessionId: 'sess_abc123',
+        prompt: 'อธิบาย memory ของ sanook',
+        answer: 'memory มีหลายชั้น...',
+        model: 'codex:gpt-5',
+        createdIso: '2026-06-15T03:00:00.000Z',
+      }),
+    ).toBe(true);
+    const c = await readFile(chatFile('sess_abc123'), 'utf8');
+    expect(c).toContain('tags: [session, transcript, chat]');
+    expect(c).toContain('**You:**');
+    expect(c).toContain('อธิบาย memory ของ sanook');
+    expect(c).toContain('memory มีหลายชั้น...');
+    expect(c.trimEnd().endsWith('up:: [[Sessions/_Index]]')).toBe(true);
+  });
+
+  it('append turn ที่ 2 เข้าไฟล์เดิม (up:: ไม่ซ้ำ)', async () => {
+    await appendBrainTranscript(vault, { sessionId: 's_xyz999', prompt: 'q1', answer: 'a1', model: 'm', createdIso: '2026-06-15T03:00:00.000Z' });
+    await appendBrainTranscript(vault, { sessionId: 's_xyz999', prompt: 'q2', answer: 'a2', model: 'm', createdIso: '2026-06-15T03:05:00.000Z' });
+    const c = await readFile(chatFile('s_xyz999'), 'utf8');
+    expect(c).toContain('q1');
+    expect(c).toContain('a1');
+    expect(c).toContain('q2');
+    expect(c).toContain('a2');
+    expect((c.match(/up:: \[\[Sessions/g) || []).length).toBe(1);
+  });
+
+  it('redact API key ออกจากบทสนทนา', async () => {
+    await appendBrainTranscript(vault, {
+      sessionId: 's_redact',
+      prompt: 'ใช้ key sk-ant-api03-SECRETSECRETSECRET ได้ไหม',
+      answer: 'ได้',
+      model: 'm',
+      createdIso: '2026-06-15T03:00:00.000Z',
+    });
+    const c = await readFile(chatFile('s_redact'), 'utf8');
+    expect(c).not.toContain('SECRETSECRETSECRET');
+  });
+
+  it('ปิดไว้โดย default (ไม่มี env / config) → ไม่เขียน', async () => {
+    vi.stubEnv('SANOOK_BRAIN_TRANSCRIPT', '');
+    vi.stubEnv('HOME', vault); // config.json ไม่มี → brainTranscript undefined
+    expect(await brainTranscriptEnabled()).toBe(false);
+    expect(await appendBrainTranscript(vault, { sessionId: 's_off', prompt: 'q', answer: 'a', model: 'm', createdIso: '2026-06-15T03:00:00.000Z' })).toBe(false);
+    await expect(readFile(chatFile('s_off'), 'utf8')).rejects.toThrow();
+  });
+
+  it('ไม่เขียนถ้าไม่มี Sessions/ (ไม่ใช่ vault)', async () => {
+    const notVault = await mkdtemp(join(tmpdir(), 'x-'));
+    expect(await appendBrainTranscript(notVault, { sessionId: 's', prompt: 'q', answer: 'a', model: 'm', createdIso: '2026-06-15T03:00:00.000Z' })).toBe(false);
+    await rm(notVault, { recursive: true, force: true });
+  });
+
+  it('ปิด persistence ทั้งหมด → ไม่เขียนแม้ env force', async () => {
+    vi.stubEnv('SANOOK_DISABLE_PERSISTENCE', '1');
+    expect(await appendBrainTranscript(vault, { sessionId: 's_p', prompt: 'q', answer: 'a', model: 'm', createdIso: '2026-06-15T03:00:00.000Z' })).toBe(false);
+  });
+});
+
+describe('seedPersonaMemory (persona ตอน setup → durable memory ขั้นที่ 9)', () => {
+  beforeEach(async () => {
+    vi.stubEnv('SANOOK_DISABLE_PERSISTENCE', '');
+    await rm(MEMORY_DIR, { recursive: true, force: true });
+  });
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    await rm(MEMORY_DIR, { recursive: true, force: true });
+  });
+
+  it('เขียน owner/AI/language/autonomy เป็น durable fact', async () => {
+    const n = await seedPersonaMemory({
+      ownerName: 'ปิ๊ก',
+      aiName: 'น้องสนุก',
+      language: 'ไทย + tech-en',
+      autonomy: 'ask-on-risk',
+      defaults: { ownerName: 'Owner', aiName: 'ผู้ช่วย' },
+    });
+    expect(n).toBe(4);
+    const facts = activeFacts(await loadStore());
+    const text = facts.map((f) => f.text).join('\n');
+    expect(text).toContain('ปิ๊ก');
+    expect(text).toContain('น้องสนุก');
+    expect(text).toContain('ask-on-risk');
+    expect(facts.some((f) => f.tier === 'protected' && f.trust === 'owner')).toBe(true);
+  });
+
+  it('ข้ามค่า default (ownerName/aiName เท่า default = ไม่เขียน)', async () => {
+    const n = await seedPersonaMemory({
+      ownerName: 'Owner',
+      aiName: 'ผู้ช่วย',
+      defaults: { ownerName: 'Owner', aiName: 'ผู้ช่วย' },
+    });
+    expect(n).toBe(0);
+  });
+
+  it('idempotent — เรียกซ้ำไม่เพิ่ม fact ใหม่', async () => {
+    const input = { ownerName: 'เอก', aiName: 'มะนาว', defaults: { ownerName: 'Owner', aiName: 'ผู้ช่วย' } };
+    await seedPersonaMemory(input);
+    await seedPersonaMemory(input);
+    const facts = activeFacts(await loadStore());
+    expect(facts).toHaveLength(2);
+  });
+
+  it('ปิด persistence → ไม่เขียน (คืน 0)', async () => {
+    vi.stubEnv('SANOOK_DISABLE_PERSISTENCE', '1');
+    expect(await seedPersonaMemory({ ownerName: 'x', defaults: { ownerName: 'Owner' } })).toBe(0);
   });
 });

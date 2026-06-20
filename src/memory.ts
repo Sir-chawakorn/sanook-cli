@@ -2,9 +2,9 @@ import { readFile, writeFile, stat } from 'node:fs/promises';
 import { join, dirname, resolve } from 'node:path';
 import { buildContextPackBlock, listContextPacks, readContextPackExcerpt, selectContextPack } from './context-pack.js';
 import { buildProjectContextBlock, resolveVaultProject } from './project-registry.js';
-import { appHomePath, BRAND, persistenceEnabled, worklogEnabled } from './brand.js';
+import { appHomePath, BRAND, brainTranscriptEnvForced, persistenceEnabled, worklogEnabled } from './brand.js';
 import { redactKey } from './providers/keys.js';
-import { loadStore, saveStore, mergeFact, maybeConsolidate, consolidate, renderPromptBlock, type NoteType } from './memory-store.js';
+import { loadStore, saveStore, mergeFact, maybeConsolidate, consolidate, renderPromptBlock, type NoteType, type Incoming } from './memory-store.js';
 
 const MEMORY_FILE = BRAND.memoryFileName;
 // auto-memory (สิ่งที่ agent จำเองข้าม session) ย้ายไปอยู่ใน ./memory-store.ts —
@@ -286,6 +286,23 @@ export async function getBrainPath(): Promise<string | undefined> {
 }
 
 /**
+ * เปิด/ปิดการเก็บ "บทสนทนาเต็ม" (prompt + คำตอบ AI ทุก turn) ลง vault หรือไม่ —
+ * config.brainTranscript = true (persistent) หรือ env SANOOK_BRAIN_TRANSCRIPT (force ชั่วคราว)
+ */
+export async function brainTranscriptEnabled(): Promise<boolean> {
+  if (!persistenceEnabled()) return false;
+  if (brainTranscriptEnvForced()) return true;
+  try {
+    const cfg = JSON.parse(await readFile(appHomePath('config.json'), 'utf8')) as {
+      brainTranscript?: boolean;
+    };
+    return cfg.brainTranscript === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * route fact เข้า vault Memory-Inbox (candidate buffer ตาม §4) — "AI เขียนลง second brain ของคุณ"
  * เขียนเฉพาะถ้า memory-inbox.md มีจริง (กันสร้างไฟล์ใน path ที่ไม่ใช่ vault) · คืน true ถ้าเขียน
  */
@@ -333,6 +350,44 @@ export async function appendBrainWorklog(
   return true;
 }
 
+/**
+ * เก็บ "บทสนทนาเต็ม" ลง vault Sessions/<date>-<sid>-chat.md — ต่อ 1 turn = 1 block (prompt + คำตอบ AI)
+ * ต่างจาก worklog (ย่อ prompt + cost): อันนี้เก็บข้อความจริงที่คุยกัน เพื่อ "ทุกอย่างที่คุยไปอยู่ใน second brain"
+ * - gate: brainTranscriptEnabled() (config.brainTranscript / env) + ต้องมีโฟลเดอร์ Sessions/ (เป็น vault จริง)
+ * - redact API key ทั้ง 2 ฝั่ง · serialize การเขียนไฟล์เดียวกันด้วย withMemLock กัน turn ชนกัน
+ */
+export async function appendBrainTranscript(
+  brainPath: string,
+  entry: { sessionId: string; prompt: string; answer: string; model: string; createdIso?: string },
+): Promise<boolean> {
+  if (!(await brainTranscriptEnabled())) return false;
+  const dir = join(brainPath, 'Sessions');
+  if (!(await exists(dir))) return false; // ไม่ใช่ vault → ข้าม
+  const created = entry.createdIso ?? new Date().toISOString();
+  const today = created.slice(0, 10);
+  const sid = entry.sessionId.slice(-6) || 'session';
+  const file = join(dir, `${today}-${sid}-chat.md`);
+  const time = new Date().toISOString().slice(11, 16); // HH:MM (UTC)
+  const prompt = redactKey(entry.prompt).trim();
+  const answer = redactKey(entry.answer).trim();
+  if (!prompt && !answer) return false;
+
+  return withMemLock(async () => {
+    let content: string;
+    try {
+      content = await readFile(file, 'utf8');
+    } catch {
+      content = `---\ntags: [session, transcript, chat]\nnote_type: session-log\ncreated: ${today}\nupdated: ${today}\nparent: "[[Sessions/_Index]]"\nai_surface: history\n---\n\n# ${today} — Chat transcript (auto by ${BRAND.cliName})\n\n> บทสนทนาเต็มของ session นี้ — เก็บอัตโนมัติทุก turn\n\nup:: [[Sessions/_Index]]\n`;
+    }
+    const block = [`\n## ${time} · ${entry.model}`, '', '**You:**', '', prompt || '_(empty)_', '', `**${BRAND.agentName}:**`, '', answer || '_(no text output)_', ''].join('\n');
+    const out = content.includes('\nup:: ')
+      ? content.replace(/\nup:: .*$/s, `\n${block}\nup:: [[Sessions/_Index]]\n`)
+      : `${content.trimEnd()}\n${block}`;
+    await writeFile(file, out);
+    return true;
+  });
+}
+
 // in-process write serializer: the AI SDK runs tool calls from one model step concurrently, so two
 // `remember` calls in a turn would otherwise load → mergeFact → save on the SAME baseline and the
 // last save would clobber the first (lost update). Chaining the read-modify-write makes them sequential.
@@ -364,4 +419,43 @@ export async function appendMemory(fact: string, noteType?: NoteType): Promise<v
     const brain = await getBrainPath();
     if (brain) await appendToVaultInbox(brain, safeFact).catch(() => false);
   });
+}
+
+/**
+ * เขียน persona/identity ที่เก็บตอน setup (ขั้นที่ 9) ลง durable auto-memory เป็น owner ground-truth
+ * (tier protected, trust owner) → หลัง setup เสร็จ agent "จำ" ว่าเจ้าของชื่ออะไร / เรียก AI ว่าอะไร /
+ * ภาษา + autonomy ทันที โดยไม่ต้องรอ remember. ใช้คู่กับ scaffoldBrain ที่ substitute ลงไฟล์ vault อยู่แล้ว.
+ * idempotent: เขียนซ้ำ = NOOP (mergeFact). ข้ามค่า default/ว่าง เพื่อไม่ปน noise.
+ */
+export async function seedPersonaMemory(input: {
+  ownerName?: string;
+  aiName?: string;
+  language?: string;
+  autonomy?: string;
+  defaults?: { ownerName?: string; aiName?: string };
+}): Promise<number> {
+  if (!persistenceEnabled()) return 0;
+  const facts: Incoming[] = [];
+  const owner = input.ownerName?.trim();
+  const ai = input.aiName?.trim();
+  const lang = input.language?.trim();
+  const autonomy = input.autonomy?.trim();
+  if (owner && owner !== input.defaults?.ownerName) facts.push({ text: `เจ้าของชื่อ ${owner} — เรียกเจ้าของด้วยชื่อนี้`, noteType: 'entity', trust: 'owner', tier: 'protected' });
+  if (ai && ai !== input.defaults?.aiName) facts.push({ text: `AI เรียกตัวเองว่า "${ai}" เมื่อคุยกับเจ้าของ`, noteType: 'preference', trust: 'owner', tier: 'protected' });
+  if (lang) facts.push({ text: `ภาษาที่เจ้าของต้องการให้ตอบ: ${lang}`, noteType: 'preference', trust: 'owner', tier: 'protected' });
+  if (autonomy) facts.push({ text: `ระดับ autonomy ที่เจ้าของเลือก: ${autonomy}`, noteType: 'preference', trust: 'owner', tier: 'protected' });
+  if (!facts.length) return 0;
+  let written = 0;
+  await withMemLock(async () => {
+    let store = await loadStore();
+    for (const inc of facts) {
+      const { store: next, op } = mergeFact(store, { ...inc, text: redactKey(inc.text) });
+      if (op !== 'PROTECTED_HALT') {
+        store = next;
+        written += 1;
+      }
+    }
+    await saveStore(store);
+  });
+  return written;
 }

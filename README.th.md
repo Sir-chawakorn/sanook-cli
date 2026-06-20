@@ -2,15 +2,15 @@
 
 # Sanook CLI
 
-**AI coding agent ใน terminal ที่ "จำงานข้ามวันได้" — open-source**
+**AI coding agent ใน terminal ที่จำงานข้าม session ได้ — open-source**
 
-ใส่ API key ของคุณเอง (BYOK) · 9 providers · MCP · มี **"สมองที่สอง" (second brain)** ที่ทำให้ AI จำ context ข้าม session ได้ — สิ่งที่ Claude Code / Codex / Gemini CLI ลืมทุกครั้งที่ปิด terminal
+<sub>BYOK · 9 providers · MCP · Obsidian second brain · gateway & cron</sub>
 
-[![npm](https://img.shields.io/npm/v/sanook-cli.svg?color=2563eb)](https://www.npmjs.com/package/sanook-cli)
-[![downloads](https://img.shields.io/npm/dm/sanook-cli.svg?color=2563eb)](https://www.npmjs.com/package/sanook-cli)
-[![License](https://img.shields.io/badge/license-Apache--2.0-22c55e.svg)](LICENSE)
+[![npm](https://img.shields.io/npm/v/sanook-cli.svg?style=flat-square&color=111827&labelColor=1f2937)](https://www.npmjs.com/package/sanook-cli)
+[![downloads](https://img.shields.io/npm/dm/sanook-cli.svg?style=flat-square&color=111827&labelColor=1f2937)](https://www.npmjs.com/package/sanook-cli)
+[![License](https://img.shields.io/badge/license-Apache--2.0-22c55e?style=flat-square&labelColor=1f2937)](LICENSE)
 
-🇬🇧 [Read in English](README.md)
+🇬🇧 [Read in English](README.md) · รายละเอียด memory / second brain อัปเดตใน [README ภาษาอังกฤษ § Memory](README.md#memory--second-brain)
 
 </div>
 

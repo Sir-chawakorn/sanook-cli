@@ -5,6 +5,7 @@ import { SetupWizard, type SetupResult } from './setup.js';
 import { BrainWizard, type BrainAnswers } from './brain-wizard.js';
 import { saveKey, saveGlobalConfig, saveBrainPath } from '../config.js';
 import { BRAND } from '../brand.js';
+import type { AppLocale } from '../i18n/index.js';
 
 // Ink needs raw mode; mounting on a non-TTY stdin (piped/redirected/cron/CI) throws
 // 'Raw mode is not supported' deep in react-reconciler and — worse — exits 0, so a
@@ -25,6 +26,13 @@ export interface RootProps {
   /** true = first run ยังไม่ตั้ง provider → โชว์ wizard ก่อนเข้า REPL */
   needsSetup: boolean;
   appProps: AppProps;
+  /** เคลียร์ terminal (scrollback + Ink frame) ก่อนเข้า REPL — ให้ banner เด้งบนจอว่าง */
+  clearScreen?: () => void;
+}
+
+/** locale → ค่า language ที่เก็บลง persona ของ second brain (ขั้นที่ 9) */
+function languageForLocale(locale: AppLocale): string {
+  return locale === 'en' ? 'English + tech-en' : 'ไทย + tech-en';
 }
 
 /**
@@ -34,10 +42,17 @@ export interface RootProps {
  * พอ instance แรก unmount, stdin raw-mode/keypress listener ไม่ reattach กับ instance ที่ 2
  * → พิมพ์ในช่องแชทไม่ได้. รวมเป็น tree เดียว (React สลับ component ภายใน) stdin ต่อเนื่องไม่หลุด.
  */
-export function Root({ needsSetup, appProps }: RootProps) {
+export function Root({ needsSetup, appProps, clearScreen }: RootProps) {
   const [phase, setPhase] = useState<Phase>(needsSetup ? 'setup' : 'app');
   const [model, setModel] = useState(appProps.initialModel);
   const [brainNote, setBrainNote] = useState<string | undefined>(undefined);
+  const [locale, setLocale] = useState<AppLocale>('th');
+
+  // เข้า REPL: เคลียร์จอที่เต็มไปด้วย wizard ก่อน → banner "Sanook AI" เด้งบนจอว่าง
+  const enterApp = (): void => {
+    clearScreen?.();
+    setPhase('app');
+  };
 
   if (phase === 'setup') {
     const onComplete = (r: SetupResult): void => {
@@ -50,7 +65,9 @@ export function Root({ needsSetup, appProps }: RootProps) {
           permissionMode: r.permissionMode,
         });
         setModel(r.model);
-        setPhase(r.createBrain ? 'brain' : 'app');
+        setLocale(r.locale);
+        if (r.createBrain) setPhase('brain');
+        else enterApp();
       })();
     };
     return <SetupWizard onComplete={onComplete} />;
@@ -61,30 +78,42 @@ export function Root({ needsSetup, appProps }: RootProps) {
       void (async () => {
         const { scaffoldBrain, BRAIN_DEFAULTS, expandHome, wireBrainMcp } = await import('../brain.js');
         const { linkBrainToProject } = await import('../brain-link.js');
+        const { seedPersonaMemory } = await import('../memory.js');
         const today = new Date().toISOString().slice(0, 10);
         const target = expandHome(a.path);
+        const language = languageForLocale(locale);
         try {
           const res = await scaffoldBrain(target, {
             ...BRAIN_DEFAULTS,
             ownerName: a.ownerName,
             aiName: a.aiName,
             autonomy: a.autonomy,
+            language,
             today,
           });
           await saveBrainPath(target);
           const wired = await wireBrainMcp(target).catch(() => 'skip');
           const linked = await linkBrainToProject({ brainPath: target, cwd: process.cwd(), today }).catch(() => null);
+          // เซฟ persona/identity ที่เก็บใน wizard ลง durable memory (owner ground-truth) → agent จำได้ทันที
+          const seeded = await seedPersonaMemory({
+            ownerName: a.ownerName,
+            aiName: a.aiName,
+            language,
+            autonomy: a.autonomy,
+            defaults: { ownerName: BRAIN_DEFAULTS.ownerName, aiName: BRAIN_DEFAULTS.aiName },
+          }).catch(() => 0);
           const linkNote = linked?.projectRelDir
             ? ` · project ${linked.projectRelDir} · ${linked.memoryCreated ? 'created' : 'linked'} ${BRAND.memoryFileName}`
             : '';
+          const memNote = seeded ? ` · จำ persona ${seeded} ข้อ` : '';
           setBrainNote(
             `✅ second-brain — ${target} · สร้าง ${res.created.length} ไฟล์ · ` +
-              `${wired === 'added' ? 'wire filesystem MCP เข้า vault แล้ว' : 'MCP เดิมอยู่แล้ว (ไม่ทับ)'}${linkNote} · เปิดใน Obsidian: Open folder as vault`,
+              `${wired === 'added' ? 'wire filesystem MCP เข้า vault แล้ว' : 'MCP เดิมอยู่แล้ว (ไม่ทับ)'}${linkNote}${memNote} · เปิดใน Obsidian: Open folder as vault`,
           );
         } catch (e) {
           setBrainNote(`⚠ สร้าง second-brain ไม่สำเร็จ: ${(e as Error).message} — ลองใหม่ด้วย ${'`'}sanook brain init${'`'}`);
         }
-        setPhase('app');
+        enterApp();
       })();
     };
     return <BrainWizard onComplete={onComplete} />;
@@ -97,7 +126,14 @@ export function Root({ needsSetup, appProps }: RootProps) {
 /** เปิดแอป: wizard (ถ้า first-run) → REPL — Ink render ครั้งเดียว (fix: พิมพ์ในช่องแชทไม่ได้) */
 export function startApp(props: RootProps): void {
   requireInteractiveTTY();
-  render(<Root {...props} />);
+  let instance: ReturnType<typeof render> | undefined;
+  // \x1b[2J เคลียร์จอ · \x1b[3J เคลียร์ scrollback · \x1b[H cursor กลับมุมซ้ายบน
+  // instance.clear() ลบ frame ล่าสุดที่ Ink จำไว้ → App วาดใหม่จากบนสุดไม่เหลือเศษ wizard
+  const clearScreen = (): void => {
+    process.stdout.write('\x1b[2J\x1b[3J\x1b[H');
+    instance?.clear();
+  };
+  instance = render(<Root {...props} clearScreen={clearScreen} />);
 }
 
 /** เปิด REPL ตรงๆ (ไม่ผ่าน wizard) — เก็บไว้เผื่อ caller อื่น */
@@ -115,6 +151,7 @@ export function startBrainSetup(): Promise<void> {
       void (async () => {
         const { scaffoldBrain, BRAIN_DEFAULTS, expandHome, wireBrainMcp } = await import('../brain.js');
         const { linkBrainToProject } = await import('../brain-link.js');
+        const { seedPersonaMemory } = await import('../memory.js');
         const today = new Date().toISOString().slice(0, 10);
         const target = expandHome(a.path);
         const res = await scaffoldBrain(target, {
@@ -127,6 +164,12 @@ export function startBrainSetup(): Promise<void> {
         await saveBrainPath(target);
         const wired = await wireBrainMcp(target).catch(() => 'skip');
         const linked = await linkBrainToProject({ brainPath: target, cwd: process.cwd(), today }).catch(() => null);
+        await seedPersonaMemory({
+          ownerName: a.ownerName,
+          aiName: a.aiName,
+          autonomy: a.autonomy,
+          defaults: { ownerName: BRAIN_DEFAULTS.ownerName, aiName: BRAIN_DEFAULTS.aiName },
+        }).catch(() => 0);
         unmount();
         const linkLine = linked?.projectRelDir ? `\n   linked repo → ${linked.projectRelDir} · ${BRAND.memoryFileName} in cwd` : '';
         process.stdout.write(
