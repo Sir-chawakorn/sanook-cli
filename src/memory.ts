@@ -5,6 +5,7 @@ import { buildProjectContextBlock, resolveVaultProject } from './project-registr
 import { appHomePath, BRAND, brainTranscriptEnvForced, persistenceEnabled, worklogEnabled } from './brand.js';
 import { redactKey } from './providers/keys.js';
 import { loadStore, saveStore, mergeFact, maybeConsolidate, consolidate, renderPromptBlock, type NoteType, type Incoming } from './memory-store.js';
+import { renderPersonaProfile, type PersonaAnswers } from './persona.js';
 
 const MEMORY_FILE = BRAND.memoryFileName;
 // auto-memory (สิ่งที่ agent จำเองข้าม session) ย้ายไปอยู่ใน ./memory-store.ts —
@@ -458,4 +459,46 @@ export async function seedPersonaMemory(input: {
     await saveStore(store);
   });
   return written;
+}
+
+/**
+ * เขียน persona facts จาก `sanook persona` ลง durable auto-memory เป็น owner ground-truth
+ * (tier protected, trust owner) → agent "จำ" persona ทันทีทุก session โดยไม่ต้องรอ remember.
+ * idempotent: เขียนซ้ำ = merge/NOOP. รับ plain-string facts (สร้างจาก personaFacts()).
+ */
+export async function seedPersonaFacts(facts: string[]): Promise<number> {
+  if (!persistenceEnabled()) return 0;
+  const list = facts.map((f) => f.trim()).filter(Boolean);
+  if (!list.length) return 0;
+  let written = 0;
+  await withMemLock(async () => {
+    let store = await loadStore();
+    for (const text of list) {
+      const { store: next, op } = mergeFact(store, {
+        text: redactKey(text),
+        noteType: 'preference',
+        trust: 'owner',
+        tier: 'protected',
+      });
+      if (op !== 'PROTECTED_HALT') {
+        store = next;
+        written += 1;
+      }
+    }
+    await saveStore(store);
+  });
+  return written;
+}
+
+/**
+ * เขียนโปรไฟล์ persona ลง second-brain vault ที่ Shared/User-Persona/persona.md
+ * (เขียนทับเสมอ — ไฟล์นี้เป็น canonical output ของ `sanook persona`). คืน false ถ้าไม่ใช่ vault จริง.
+ */
+export async function writePersonaProfile(brainPath: string, answers: PersonaAnswers): Promise<boolean> {
+  const personaDir = join(brainPath, 'Shared', 'User-Persona');
+  if (!(await exists(personaDir))) return false; // ไม่ใช่ vault ที่ scaffold แล้ว → ข้าม
+  const today = new Date().toISOString().slice(0, 10);
+  const md = redactKey(renderPersonaProfile(answers, today));
+  await writeFile(join(personaDir, 'persona.md'), md);
+  return true;
 }

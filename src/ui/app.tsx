@@ -51,7 +51,7 @@ import { getTranscriptWindow, transcriptScrollStep, transcriptWindowSize } from 
 import { footerStatus } from './status.js';
 import { inputViewport, graphemesOf, cursorGraphemeIndex, SCROLL_LEAD, SCROLL_TAIL } from './input-view.js';
 import { thinkingPanelLines, snapshotThinking, type DetailsDisplayMode } from './thinking-panel.js';
-import { toolTrailLines, updateToolTrailOnEvent, type ToolTrailDisplayMode, type ToolTrailItem } from './tool-trail.js';
+import { toolTrailLines, toolTrailHeader, toolTrailWidth, updateToolTrailOnEvent, type ToolTrailDisplayMode, type ToolTrailItem } from './tool-trail.js';
 
 const execFileP = promisify(execFile);
 const PRE_TURN_COMPACT_TOKENS = 100_000; // session ยาวมากเท่านั้นถึง summarize ก่อน turn (mode summarize)
@@ -1341,27 +1341,73 @@ function InputView({
   );
 }
 
-function ToolTrailView({ columns, items, mode }: { columns: number; items: ToolTrailItem[]; mode: ToolTrailDisplayMode }) {
-  const lines = toolTrailLines(items, columns, mode);
-  if (!lines.length) return null;
+function statusColor(status: ToolTrailItem['status']): string {
+  return status === 'error' ? 'red' : status === 'running' ? 'yellow' : 'green';
+}
+
+function statusMarker(status: ToolTrailItem['status']): string {
+  return status === 'error' ? '✗' : status === 'running' ? '›' : '✓';
+}
+
+/** one tool's activity: a friendly title line + colored diff (green +, red -) */
+function ActivityRow({ item, width }: { item: ToolTrailItem; width: number }) {
+  const title = item.activity?.title ?? item.name;
+  const diff = item.activity?.diff;
   return (
-    <Box flexDirection="column" marginTop={1}>
-      {lines.map((line, index) => {
-        const isRunning = line.startsWith('>');
-        const isError = line.startsWith('!');
-        const isDone = line.startsWith('+');
-        const isMeta = line.startsWith('view:') || line.startsWith('tools:');
-        return (
-          <Text
-            key={`${index}-${line}`}
-            color={index === 0 ? 'cyan' : isError ? 'red' : isRunning ? 'yellow' : undefined}
-            dimColor={isDone || isMeta}
-            wrap="truncate-end"
-          >
+    <Box flexDirection="column">
+      <Text color={statusColor(item.status)} wrap="truncate-end">
+        {statusMarker(item.status)} {title}
+      </Text>
+      {diff?.map((line, idx) => (
+        <Text
+          key={`d-${item.id}-${idx}`}
+          color={line.sign === '+' ? 'green' : line.sign === '-' ? 'red' : undefined}
+          dimColor={line.sign === ' '}
+          wrap="truncate-end"
+        >
+          {'  '}
+          {line.sign === ' ' ? ' ' : line.sign} {line.text.slice(0, Math.max(0, width - 4))}
+        </Text>
+      ))}
+      {item.status !== 'running' && item.detail ? (
+        <Text color={item.status === 'error' ? 'red' : undefined} dimColor wrap="truncate-end">
+          {'    ↳ '}
+          {item.detail.slice(0, Math.max(0, width - 6))}
+        </Text>
+      ) : null}
+    </Box>
+  );
+}
+
+function ToolTrailView({ columns, items, mode }: { columns: number; items: ToolTrailItem[]; mode: ToolTrailDisplayMode }) {
+  if (mode === 'hidden' || !items.length) return null;
+  const header = toolTrailHeader(items, mode);
+  // compact mode keeps the terse one-line string rendering
+  if (mode === 'compact') {
+    const lines = toolTrailLines(items, columns, mode);
+    return (
+      <Box flexDirection="column" marginTop={1}>
+        {lines.map((line, index) => (
+          <Text key={`${index}-${line}`} color={index === 0 ? 'cyan' : undefined} dimColor={index > 0} wrap="truncate-end">
             {line}
           </Text>
-        );
-      })}
+        ))}
+      </Box>
+    );
+  }
+  // expanded: rich, colored per-tool activity with diffs
+  const width = toolTrailWidth(columns);
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Text color="cyan" wrap="truncate-end">
+        {header[0]}
+      </Text>
+      <Text dimColor wrap="truncate-end">
+        {header[1]}
+      </Text>
+      {items.map((item) => (
+        <ActivityRow key={item.id} item={item} width={width} />
+      ))}
     </Box>
   );
 }

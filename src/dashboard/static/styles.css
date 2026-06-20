@@ -100,6 +100,9 @@ nav { display: flex; flex-direction: column; gap: 0.35rem; flex: 1; }
 .term-user { color: var(--accent); font-weight: 600; margin-top: 10px; }
 .term-assistant { color: var(--text); }
 .term-tool { color: #c7a3ff; }
+.term-add { color: #7ee0a8; background: rgba(74, 222, 128, 0.08); }
+.term-del { color: #ff9b9b; background: rgba(248, 113, 113, 0.08); }
+.term-ctx { color: var(--muted); }
 .term-memory { color: var(--good); }
 .term-skill { color: #ffd479; }
 .term-error { color: #ff8a8a; }

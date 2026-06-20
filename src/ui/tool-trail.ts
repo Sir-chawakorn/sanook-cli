@@ -1,4 +1,5 @@
 import { inspect } from 'node:util';
+import { describeToolCall, type ToolActivity } from './tool-activity.js';
 
 export type ToolTrailStatus = 'done' | 'error' | 'running';
 export type ToolTrailDisplayMode = 'compact' | 'expanded' | 'hidden';
@@ -8,6 +9,8 @@ export interface ToolTrailItem {
   id: number;
   name: string;
   status: ToolTrailStatus;
+  /** human-friendly activity (title + colored diff) computed from the tool input */
+  activity?: ToolActivity;
 }
 
 export interface ToolTrailEvent {
@@ -65,7 +68,10 @@ export function updateToolTrailOnEvent(items: ToolTrailItem[], event: ToolTrailE
   if (event.type === 'tool-call') {
     const name = event.tool?.trim() || 'tool';
     return {
-      items: trimItems([...items, { detail: compactToolDetail(event.detail), id: nextId, name, status: 'running' }]),
+      items: trimItems([
+        ...items,
+        { detail: compactToolDetail(event.detail), id: nextId, name, status: 'running', activity: describeToolCall(name, event.detail) },
+      ]),
       nextId: nextId + 1,
     };
   }
@@ -102,6 +108,16 @@ function statusSummary(items: ToolTrailItem[]): string {
   const done = items.filter((item) => item.status === 'done').length;
   const error = items.filter((item) => item.status === 'error').length;
   return [`${done} done`, running ? `${running} running` : '', error ? `${error} error` : ''].filter(Boolean).join(' / ');
+}
+
+/** the 2 header lines (title + view/status meta) shared by string + rich rendering */
+export function toolTrailHeader(items: ToolTrailItem[], mode: ToolTrailDisplayMode): string[] {
+  return [`Sanook tool trail (${items.length})`, `view: ${mode} | ${statusSummary(items)} | Ctrl+T / /trail`];
+}
+
+/** width budget for a rich activity row (mirrors toolTrailLines clipping) */
+export function toolTrailWidth(columns: number): number {
+  return Math.max(24, Math.min(Math.max(30, columns - 4), 96));
 }
 
 export function toolTrailLines(items: ToolTrailItem[], columns: number, mode: ToolTrailDisplayMode = 'expanded'): string[] {

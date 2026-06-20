@@ -461,7 +461,13 @@ async function streamAgentRun(prompt, out, opts) {
         } else if (ev.type === 'status') {
           // lightweight status, skip noisy
         } else if (ev.type === 'tool-call') {
-          appendConsole(out, `<div class="term-line term-tool">› ${escapeHtml(ev.tool)} ${escapeHtml(ev.detail || '')}</div>`);
+          appendConsole(out, `<div class="term-line term-tool">› ${escapeHtml(ev.title || ev.tool || '')}</div>`);
+          if (Array.isArray(ev.diff)) {
+            for (const d of ev.diff) {
+              const cls = d.sign === '+' ? 'term-add' : d.sign === '-' ? 'term-del' : 'term-ctx';
+              appendConsole(out, `<div class="term-line ${cls}">  ${d.sign === ' ' ? ' ' : escapeHtml(d.sign)} ${escapeHtml(d.text)}</div>`);
+            }
+          }
         } else if (ev.type === 'memory') {
           appendConsole(out, `<div class="term-line term-memory">🧠 ${escapeHtml(ev.fact)}</div>`);
         } else if (ev.type === 'skill') {

@@ -1,0 +1,17 @@
+# WinGet installer manifest (template).
+# WinGet installs a packaged artifact (zip/exe/msi), NOT an npm package — so you must publish a
+# Windows build artifact on a GitHub Release first (see docs/INSTALL_INFRA.md), then fill in the
+# release URL + SHA256 below and submit this folder to microsoft/winget-pkgs.
+PackageIdentifier: Sanook.SanookCLI
+PackageVersion: 0.5.7
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: sanook.exe
+    PortableCommandAlias: sanook
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/Sir-chawakorn/sanook-cli/releases/download/v0.5.7/sanook-cli-win-x64.zip
+    InstallerSha256: REPLACE_WITH_SHA256_OF_THE_ZIP
+ManifestType: installer
+ManifestVersion: 1.6.0

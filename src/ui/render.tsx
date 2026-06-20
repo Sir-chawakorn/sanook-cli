@@ -3,6 +3,8 @@ import { render } from 'ink';
 import { App, type AppProps } from './app.js';
 import { SetupWizard, type SetupResult } from './setup.js';
 import { BrainWizard, type BrainAnswers } from './brain-wizard.js';
+import { PersonaWizard } from './persona-wizard.js';
+import type { PersonaAnswers } from '../persona.js';
 import { saveKey, saveGlobalConfig, saveBrainPath } from '../config.js';
 import { BRAND } from '../brand.js';
 import type { AppLocale } from '../i18n/index.js';
@@ -182,6 +184,38 @@ export function startBrainSetup(): Promise<void> {
       })();
     };
     const instance = render(<BrainWizard onComplete={onComplete} />);
+    unmount = instance.unmount;
+  });
+}
+
+/** standalone `sanook persona` (interactive): ถามชุดคำถาม persona → seed auto-memory + เขียนโปรไฟล์ลง vault */
+export function startPersonaSetup(): Promise<void> {
+  requireInteractiveTTY();
+  return new Promise((resolve) => {
+    let unmount: () => void = () => {};
+    const onComplete = (answers: PersonaAnswers): void => {
+      void (async () => {
+        const { personaFacts } = await import('../persona.js');
+        const { seedPersonaFacts, writePersonaProfile, getBrainPath } = await import('../memory.js');
+        const facts = personaFacts(answers);
+        const written = await seedPersonaFacts(facts).catch(() => 0);
+        const brain = await getBrainPath().catch(() => undefined);
+        const vaultWritten = brain ? await writePersonaProfile(brain, answers).catch(() => false) : false;
+        unmount();
+        const memLine =
+          written > 0
+            ? `   จำเข้า memory แล้ว ${written} ข้อ (protected — agent อ่านทุก session)`
+            : `   ไม่มีข้อมูลใหม่ที่ต้องจำ (ข้ามหมด/ตรงกับของเดิม)`;
+        const vaultLine = vaultWritten
+          ? `\n   เขียนโปรไฟล์ลง vault → ${brain}/Shared/User-Persona/persona.md`
+          : brain
+            ? ''
+            : `\n   (ยังไม่มี second-brain — รัน \`${BRAND.cliName} brain init\` เพื่อเก็บโปรไฟล์ลง vault ด้วย)`;
+        process.stdout.write(`\n✅ บันทึก Persona เรียบร้อย\n${memLine}${vaultLine}\n`);
+        resolve();
+      })();
+    };
+    const instance = render(<PersonaWizard onComplete={onComplete} />);
     unmount = instance.unmount;
   });
 }

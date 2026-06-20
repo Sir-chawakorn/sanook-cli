@@ -26,6 +26,10 @@
   &nbsp;·&nbsp;
   <a href="#memory--second-brain"><strong>Memory</strong></a>
   &nbsp;·&nbsp;
+  <a href="#persona"><strong>Persona</strong></a>
+  &nbsp;·&nbsp;
+  <a href="#dashboard"><strong>Dashboard</strong></a>
+  &nbsp;·&nbsp;
   <a href="#providers"><strong>Providers</strong></a>
   &nbsp;·&nbsp;
   <a href="#usage"><strong>Usage</strong></a>
@@ -110,7 +114,8 @@ flowchart LR
 | **Session note** | `{brainPath}/Sessions/YYYY-MM-DD-<id>-session.md` | On REPL exit (`/quit` or Ctrl+C at empty prompt) | AI/heuristic summary + key facts |
 | **Memory inbox** | `{brainPath}/Shared/Memory-Inbox/memory-inbox.md` | When the agent calls `remember` | Candidate facts for vault curation |
 | **Project workspace** | `{brainPath}/Projects/<slug>/` | Setup wizard / `sanook brain init` links your repo | Project-scoped notes & hot context |
-| **Auto-memory** | `~/.sanook/memory/memory.json` | When the agent calls `remember` | Structured facts (merge, rank, inject) |
+| **Persona profile** | `{brainPath}/Shared/User-Persona/persona.md` | `sanook persona` (see [Persona](#persona)) | Who you are + how you want the agent to work |
+| **Auto-memory** | `~/.sanook/memory/memory.json` | When the agent calls `remember`, or `sanook persona` (protected) | Structured facts (merge, rank, inject) |
 | **Session JSON** | `~/.sanook/sessions/*.json` | Every turn | `--continue` / `--resume` transcript |
 | **Search index** | `~/.sanook/search/` | `sanook index` (incremental) | BM25 / hybrid retrieval |
 | **Usage ledger** | `~/.sanook/usage/events.jsonl` | Every turn | Token/cost tracking — **not** semantic memory |
@@ -139,11 +144,48 @@ Disable persistence: `SANOOK_DISABLE_PERSISTENCE=1` · worklog only: `SANOOK_DIS
 
 ## Quickstart
 
-Install **globally** — the `-g` is required (needs **Node ≥ 22**; check with `node -v`):
+Install with whichever method fits your platform (needs **Node ≥ 22**; check with `node -v`):
+
+<table>
+<tr><th>Method</th><th>Command</th><th>Status</th></tr>
+<tr><td><b>npm / npx</b> (recommended)</td><td>
 
 ```bash
-npm install -g sanook-cli
+npm install -g sanook-cli   # or: npx sanook-cli
 ```
+
+</td><td>✅ Ready</td></tr>
+<tr><td><b>Install script</b> · macOS / Linux / WSL</td><td>
+
+```bash
+curl -fsSL https://sanook.ai/install.sh | bash
+```
+
+</td><td>⏳ needs infra</td></tr>
+<tr><td><b>Install script</b> · Windows PowerShell</td><td>
+
+```powershell
+irm https://sanook.ai/install.ps1 | iex
+```
+
+</td><td>⏳ needs infra</td></tr>
+<tr><td><b>Homebrew</b> · macOS / Linux</td><td>
+
+```bash
+brew tap Sir-chawakorn/tap && brew install sanook-cli
+```
+
+</td><td>⏳ needs tap</td></tr>
+<tr><td><b>WinGet</b> · Windows</td><td>
+
+```powershell
+winget install Sanook.SanookCLI
+```
+
+</td><td>⏳ needs manifest</td></tr>
+</table>
+
+Only **npm/npx** works today. The other channels are scaffolded (`scripts/install.{sh,ps1}`, `packaging/homebrew`, `packaging/winget`) and turn on after a one-time setup — see **[docs/INSTALL_INFRA.md](docs/INSTALL_INFRA.md)**. The Dashboard **Install** page shows the same commands with live copy buttons.
 
 > ⚠️ **`'sanook' is not recognized` / command not found?** You installed it locally — `npm i sanook-cli` (without `-g`) drops it into the current folder, **not on your PATH**, so the `sanook` command isn't found. Fix: reinstall with `npm install -g sanook-cli`, or just run it via **`npx sanook`** (uses the local copy you already installed).
 > Run **`npx sanook doctor`** to auto-diagnose Node version / PATH / install state and print the exact fix for your OS (incl. a safe Windows PATH one-liner).
@@ -153,6 +195,7 @@ Run the setup wizard or set an API key manually:
 ```bash
 sanook setup                    # provider + model wizard; offers to create a second brain
 sanook model                    # re-run provider/model setup later
+sanook persona                  # tell the agent who you are + how you like to work
 sanook auth add anthropic --api-key sk-ant-... --use
 
 export ANTHROPIC_API_KEY=sk-ant-...        # macOS / Linux
@@ -204,6 +247,44 @@ sanook dump                     # support snapshot; raw secrets are never printe
 | **Prompt budget inspectability** | `sanook prompt-size [--json]` reports the offline size of Sanook's system prompt, personality overlay, auto-memory, skills index, second-brain context, project memory, repo map, git context, and built-in tool schemas. |
 | **Polyglot runtime surface** | `sanook runtimes [--json]` shows optional Python/Rust readiness. The agent gets `run_python` for data/document/ML-style helper scripts and `run_rust` for small performance/safety-critical helpers, both approval-gated and no-shell. |
 | **Second brain** | `sanook brain init` scaffolds a structured Obsidian "second-brain" workspace (folders + `_Index` + a portable AI operating constitution) for organising work and giving the agent durable, cross-session memory. |
+| **Self-improvement** | Sanook watches for repeated tasks and, past a threshold, **auto-authors a skill** for the pattern — announced in the terminal and surfaced on the Dashboard. Tune with `SANOOK_SELF_IMPROVE_THRESHOLD`; disable with `SANOOK_DISABLE_SELF_IMPROVE=1`. |
+| **Persona** | `sanook persona` runs a short questionnaire (who you are, language, tone, autonomy, stack, preferences) and stores the answers as **protected memory** plus a vault profile so every session starts in context. |
+
+## Persona
+
+Teach the agent who you are once, and it carries that context into every session — name, language, tone, autonomy, your stack, and what you like (or don't like) it to do.
+
+```bash
+sanook persona                  # short questionnaire (A/B/C/D + free-text)
+```
+
+A mix of multiple-choice and free-text questions. Answers are saved in two places, wired into the agent automatically:
+
+- **Auto-memory** (`~/.sanook/memory/memory.json`) as **protected, owner-trust facts** — injected at the start of every run, so the agent immediately knows how to address you and how you want it to work.
+- **Second brain** (`{brainPath}/Shared/User-Persona/persona.md`) as a readable profile note you can edit by hand — written only when a vault exists.
+
+Re-run any time to update; the questionnaire pre-fills nothing sensitive, blanks are skipped, and the vault profile is rewritten in place. The brain wizard (`sanook brain init`) already seeds a lighter identity (name + AI name + autonomy); `sanook persona` is the deeper, standalone pass.
+
+## Dashboard
+
+A local, Hermes-style admin panel for everything the CLI knows — open it in a browser and drive Sanook without leaving the page.
+
+```bash
+sanook dashboard                # http://127.0.0.1:9119
+sanook dashboard --port 8080
+```
+
+| Page | What it shows |
+|---|---|
+| **Terminal** | A real web terminal — an **Agent console** (the Sanook REPL, streamed over SSE with live tool activity + color-coded diffs) and an optional **Raw shell** (a system PTY via `xterm.js`, enabled when the `node-pty` + `ws` optional deps are installed). |
+| **Skills** | Built-in and installed skills, including the ones Sanook auto-authored from repeated tasks. |
+| **Memory** | Your structured auto-memory facts (incl. persona) with tier/trust. |
+| **Usage** | Token/cost ledger, daily/weekly/monthly. |
+| **Self-improve** | The task ledger — what's repeating and which skills were created. |
+| **Install** | The multi-platform install commands (see [Quickstart](#quickstart)), with copy buttons. |
+| **Sessions · Models · Files · Logs · Cron · Channels · Config · MCP · Brain** | Inspect and manage the same surfaces as the CLI. |
+
+It binds to **loopback only** and reads the same `~/.sanook/` state as the CLI, so the Dashboard and terminal always agree.
 
 ## Providers
 
@@ -239,6 +320,8 @@ sanook chat -q "<query>" direct one-shot query
 sanook                   interactive REPL
 sanook setup [section]   setup model/gateway/tools/agent/brain
 sanook model             choose provider + model
+sanook persona           questionnaire → durable persona (memory + second brain)
+sanook dashboard [--port] local web admin UI (terminal, skills, memory, usage, install)
 sanook status            redacted install/config status
 sanook auth list         redacted provider key status
 sanook auth add openai --api-key <key> [--use]
@@ -513,6 +596,8 @@ sanook brain init ~/notes/brain    # non-interactive (with --yes)
 ```
 
 The wizard creates a full folder taxonomy (`Projects/`, `Sessions/`, `Shared/` memory layer, `Goals/`, `Research/`, `Skills/`, …), an `_Index.md` in every folder, seed memory files, and a portable AI **operating constitution** (`CLAUDE.md` / `GEMINI.md` / `AGENTS.md` / `SANOOK.md`). It ships with research-backed operating rules — context-assembly (anti context-rot), an intake quarantine + injection-scan gate, bi-temporal fact validity, provenance tracking, a verification-gated `Skills/` library, and sleep-time consolidation.
+
+**Every folder documents its own job.** Each folder gets a generated `_Index.md` stating its role, what goes there, what doesn't, and an AI routing contract — and a top-level `Vault Structure Map.md` lists the whole taxonomy in one place. So both you and the agent always know where a note belongs. Identity lives in `Shared/User-Persona/` (see [Persona](#persona)); what the agent learns over time lives in `Shared/User-Memory/`.
 
 **Create-if-missing** — re-running never overwrites your notes. On init, Sanook also links your current repo (`Projects/<slug>/` + `SANOOK.md`) and can wire a filesystem MCP server so the agent reads and writes the vault directly.
 

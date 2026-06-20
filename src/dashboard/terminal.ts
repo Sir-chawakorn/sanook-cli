@@ -11,6 +11,7 @@ import type { ModelMessage } from 'ai';
 import { runAgent, type AgentEvent } from '../loop.js';
 import { loadConfig } from '../config.js';
 import { redactKey } from '../providers/keys.js';
+import { describeToolCall } from '../ui/tool-activity.js';
 
 const HISTORY = new Map<string, ModelMessage[]>(); // sessionId → conversation (localhost single-user)
 const MAX_HISTORY_SESSIONS = 20;
@@ -78,7 +79,8 @@ export async function handleTerminalRun(req: IncomingMessage, res: ServerRespons
               const fact = (e.detail as { fact?: unknown } | undefined)?.fact;
               if (typeof fact === 'string' && fact.trim()) rememberedFacts.push(fact.trim());
             }
-            sseSend(res, { type: 'tool-call', tool: e.tool, detail: summarizeDetail(e.detail) });
+            const activity = describeToolCall(e.tool ?? 'tool', e.detail);
+            sseSend(res, { type: 'tool-call', tool: e.tool, title: activity.title, diff: activity.diff ?? null });
             break;
           }
           case 'tool-result':
@@ -115,16 +117,6 @@ export async function handleTerminalRun(req: IncomingMessage, res: ServerRespons
   }
   sseSend(res, { type: 'done' });
   res.end();
-}
-
-function summarizeDetail(detail: unknown): string {
-  if (detail == null) return '';
-  if (typeof detail === 'string') return detail.slice(0, 120);
-  try {
-    return JSON.stringify(detail).slice(0, 120);
-  } catch {
-    return '';
-  }
 }
 
 export function resetTerminalSession(sessionId: string): void {

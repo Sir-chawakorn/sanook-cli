@@ -63,14 +63,17 @@ describe('App tool trail', () => {
     h.opts!.onEvent?.({ detail: { path: 'src/app.tsx' }, tool: 'read_file', type: 'tool-call' });
     await waitFor(() => (lastFrame() ?? '').includes('Sanook tool trail (1)'));
 
-    expect(lastFrame()).toContain('read_file');
-    expect(lastFrame()).toContain('running');
+    // friendly activity title shows the file being read, with the running marker '›'
+    expect(lastFrame()).toContain('อ่านไฟล์');
+    expect(lastFrame()).toContain('src/app.tsx');
+    expect(lastFrame()).toContain('›');
 
     h.opts!.onEvent?.({ detail: 'detail-visible', tool: 'read_file', type: 'tool-result' });
     await waitFor(() => (lastFrame() ?? '').includes('detail-visible'));
 
-    expect(lastFrame()).toContain('read_file');
-    expect(lastFrame()).toContain('detail-visible');
+    expect(lastFrame()).toContain('อ่านไฟล์');
+    expect(lastFrame()).toContain('detail-visible'); // result outcome line
+    expect(lastFrame()).toContain('✓'); // done marker
 
     unmount();
   });
@@ -95,8 +98,8 @@ describe('App tool trail', () => {
     await waitFor(() => (lastFrame() ?? '').includes('Sanook tool trail (1)'));
 
     const frame = lastFrame() ?? '';
-    expect(frame).toContain('read_file');
-    expect(frame).toContain('done');
+    expect(frame).toContain('อ่านไฟล์');
+    expect(frame).toContain('✓'); // done marker
     expect(frame).toContain('detail-visible');
     expect(frame.match(/Sanook tool trail/g)).toHaveLength(1);
 

@@ -195,6 +195,7 @@ usage:
   ${BRAND.cliName} setup [section]      setup wizard (model | gateway | tools | agent | brain)
   ${BRAND.cliName} dashboard [--port]   Sanook Dashboard (local web admin UI)
   ${BRAND.cliName} model                choose provider + model
+  ${BRAND.cliName} persona              ตอบคำถาม persona → AI เข้าใจคุณ (เก็บลง memory + second-brain)
   ${BRAND.cliName} --json "<task>"     headless, JSONL output (for CI/scripts)
   ${BRAND.cliName} sessions             list/resume-audit saved conversation sessions
   ${BRAND.cliName} insights             local usage/session insights
@@ -376,6 +377,17 @@ async function runDashboard(args: string[] = []): Promise<void> {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+}
+
+async function runPersona(args: string[] = []): Promise<void> {
+  if (args[0] === '-h' || args[0] === '--help') {
+    console.log(`ใช้: ${BRAND.cliName} persona`);
+    console.log('ตอบคำถามสั้นๆ เพื่อบอก AI ว่าคุณเป็นใคร + อยากให้ทำงานยังไง');
+    console.log('— บันทึกลง auto-memory (protected) และโปรไฟล์ใน second-brain vault');
+    return;
+  }
+  const { startPersonaSetup } = await import('./ui/render.js');
+  await startPersonaSetup();
 }
 
 async function runTools(_args: string[] = []): Promise<void> {
@@ -4338,6 +4350,7 @@ async function main(): Promise<void> {
   if (argv[0] === 'dashboard' && (argv.length === 1 || !argv[1].startsWith('-') || argv[1] === '--port')) {
     return runDashboard(argv.slice(1));
   }
+  if (argv[0] === 'persona' && (argv.length === 1 || argv[1].startsWith('-'))) return runPersona(argv.slice(1));
   if (argv[0] === 'web' && ['status', 'doctor', 'fetch', 'search', 'setup', undefined].includes(argv[1])) return runWeb(argv.slice(1));
   if (argv[0] === 'tools' && (argv.length === 1 || argv[1].startsWith('--'))) return runTools(argv.slice(1));
   if (argv[0] === 'send') return runSend(argv.slice(1));

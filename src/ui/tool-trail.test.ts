@@ -2,19 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { compactToolDetail, TOOL_TRAIL_LIMIT, toolTrailLines, updateToolTrailOnEvent, type ToolTrailItem } from './tool-trail.js';
 
 describe('tool trail', () => {
-  it('adds a running row for tool-call events', () => {
+  it('adds a running row for tool-call events with a friendly activity', () => {
     const next = updateToolTrailOnEvent([], { detail: { path: 'src/app.tsx' }, tool: 'read_file', type: 'tool-call' }, 0);
 
     expect(next.nextId).toBe(1);
-    expect(next.items).toEqual([{ detail: '{"path":"src/app.tsx"}', id: 0, name: 'read_file', status: 'running' }]);
+    expect(next.items[0]).toMatchObject({ detail: '{"path":"src/app.tsx"}', id: 0, name: 'read_file', status: 'running' });
+    expect(next.items[0].activity?.title).toContain('src/app.tsx');
   });
 
-  it('marks the latest matching running tool as done', () => {
+  it('marks the latest matching running tool as done (keeping its activity)', () => {
     const started = updateToolTrailOnEvent([], { detail: { path: 'src/app.tsx' }, tool: 'read_file', type: 'tool-call' }, 0);
     const finished = updateToolTrailOnEvent(started.items, { detail: 'ok', tool: 'read_file', type: 'tool-result' }, started.nextId);
 
     expect(finished.nextId).toBe(1);
-    expect(finished.items).toEqual([{ detail: 'ok', id: 0, name: 'read_file', status: 'done' }]);
+    expect(finished.items[0]).toMatchObject({ detail: 'ok', id: 0, name: 'read_file', status: 'done' });
+    expect(finished.items[0].activity?.title).toContain('อ่านไฟล์');
   });
 
   it('marks the latest running tool as errored', () => {
