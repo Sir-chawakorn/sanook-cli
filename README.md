@@ -86,24 +86,101 @@ Sanook does **not** dump everything into one folder. Memory is layered — some 
 
 ```mermaid
 flowchart LR
-  subgraph vault["Your vault · config.brainPath"]
-    WL["Sessions/YYYY-MM-DD-worklog.md"]
-    SN["Sessions/YYYY-MM-DD-*-session.md"]
-    IN["Shared/Memory-Inbox/"]
-    PJ["Projects/&lt;slug&gt;/"]
+  START([Start<br/>sanook / gateway / cron / resume]):::start
+  CFG["Load config<br/>~/.sanook/config.json"]:::local
+  MODE{"brainPath is set<br/>and vault is reachable?"}:::gate
+  LOCALONLY([Fallback end<br/>answer works with local session + usage only]):::warn
+
+  subgraph read["1. Read path · gather memory before the turn"]
+    direction TB
+    HIER["Hierarchical SANOOK.md<br/>global -> repo -> cwd instructions"]:::inject
+    AM["Auto-memory<br/>~/.sanook/memory/memory.json"]:::local
+    RESUME["Resume context<br/>~/.sanook/sessions/*.json"]:::local
+    HOT["Vault hot files<br/>AI-Context-Index + current-state + inbox"]:::vault
+    PROJECT["Project hot context<br/>Projects/&lt;slug&gt;/ matched from cwd"]:::vault
+    PACK["Context pack<br/>Shared/Context-Packs/*.md selected by task"]:::vault
+    SEARCH["Per-turn retrieval<br/>search/index.json over vault + memory + sessions + skills"]:::local
   end
-  subgraph local["~/.sanook/"]
-    AM["memory/memory.json"]
-    SS["sessions/*.json"]
-    IX["search/index.json"]
+
+  subgraph inject["2. Injection · build the model input"]
+    direction TB
+    STATIC["Static brain block<br/>stable context injected at session start"]:::inject
+    RECALLED["Recalled context block<br/>fresh matches for this prompt"]:::inject
+    SYS["System prompt<br/>policy + tools + memory + repo state"]:::inject
+    USER["User prompt<br/>or incoming gateway message"]:::process
   end
-  subgraph inject["Injected every turn"]
-    SP["System prompt"]
+
+  subgraph loop["3. Agent loop · act, observe, answer"]
+    direction TB
+    LLM["LLM reasoning step"]:::process
+    NEED{"Need tools?"}:::gate
+    TOOLS["Tool calls<br/>files, shell, git, MCP, skills"]:::process
+    RESULT["Tool results<br/>fed back into context"]:::process
+    ANSWER["Final answer<br/>terminal or gateway reply"]:::finish
   end
-  vault --> SP
-  local --> SP
-  AM --> IN
+
+  subgraph write["4. Write-back · make the next session smarter"]
+    direction TB
+    REMEMBER["remember tool<br/>redact -> merge -> rank"]:::write
+    MEMJSON["Persist auto-memory<br/>memory.json + MEMORY.md mirror"]:::write
+    INBOX["Append candidate fact<br/>Shared/Memory-Inbox/memory-inbox.md"]:::write
+    WORKLOG["Append daily worklog<br/>Sessions/YYYY-MM-DD-worklog.md"]:::write
+    CHAT["Append full transcript<br/>Sessions/*-chat.md when enabled"]:::write
+    SESSION["Save session JSON<br/>~/.sanook/sessions/*.json"]:::write
+    USAGE["Record usage<br/>~/.sanook/usage/events.jsonl"]:::write
+    INDEX["Re-index changed sources<br/>sanook index -> search/index.json"]:::write
+    END([End<br/>answer returned + memory ready for resume/retrieval]):::finish
+  end
+
+  START -->|entrypoint starts| CFG
+  CFG --> MODE
+  MODE -->|yes| HOT
+  MODE -->|no vault path| LOCALONLY
+  CFG --> AM
+  CFG --> RESUME
+  CFG --> SEARCH
+  HIER --> STATIC
+  AM --> STATIC
+  HOT --> STATIC
+  PROJECT --> STATIC
+  PACK --> RECALLED
+  RESUME --> RECALLED
+  SEARCH --> RECALLED
+  STATIC --> SYS
+  RECALLED --> SYS
+  USER --> LLM
+  SYS -->|injected every turn| LLM
+  LLM --> NEED
+  NEED -->|yes| TOOLS
+  TOOLS --> RESULT
+  RESULT --> LLM
+  NEED -->|no| ANSWER
+  LLM -->|durable fact found| REMEMBER
+  REMEMBER --> MEMJSON
+  REMEMBER --> INBOX
+  ANSWER --> WORKLOG
+  ANSWER --> CHAT
+  ANSWER --> SESSION
+  ANSWER --> USAGE
+  MEMJSON --> INDEX
+  INBOX --> INDEX
+  WORKLOG --> INDEX
+  CHAT --> INDEX
+  SESSION --> INDEX
+  ANSWER --> END
+
+  classDef start fill:#064e3b,stroke:#34d399,color:#ffffff,stroke-width:3px
+  classDef finish fill:#0f766e,stroke:#5eead4,color:#ffffff,stroke-width:3px
+  classDef gate fill:#7c2d12,stroke:#fdba74,color:#ffffff,stroke-width:2px
+  classDef local fill:#172554,stroke:#60a5fa,color:#ffffff
+  classDef vault fill:#312e81,stroke:#a78bfa,color:#ffffff
+  classDef inject fill:#164e63,stroke:#22d3ee,color:#ffffff
+  classDef process fill:#1f2937,stroke:#94a3b8,color:#ffffff
+  classDef write fill:#78350f,stroke:#fbbf24,color:#ffffff
+  classDef warn fill:#7f1d1d,stroke:#fca5a5,color:#ffffff,stroke-width:2px
 ```
+
+**How to read the flow:** green nodes mark start/end, orange diamonds are decisions, blue nodes are local runtime state, purple nodes live inside the Obsidian-style vault, cyan nodes are injected into the system prompt, dark nodes are the active agent loop, amber nodes write memory back after/during the turn, and the red node is the safe fallback when no vault is configured.
 
 ### What goes where
 
