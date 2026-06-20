@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.5
+
+### Hermes-style setup, dashboard, and terminal parity
+
+- **Localized setup wizard (EN/TH)** — language picker on first run; steps for provider, model, **agent** (permission mode), **tools**, **gateway**, second brain, and complete (~10 steps).
+- **`sanook dashboard`** — local web UI on port 9119 with pages: Home, **Chat**, Models, Sessions, **Files**, **Logs**, **Cron**, **Channels**, Config, MCP, Brain; REST APIs for status, config, files, logs, cron, and channels.
+- **Two-phase `/model` picker** — choose provider, then model (Hermes-style); `Esc` returns to provider list.
+- **New slash commands** — `/setup` (setup section hints), `/dashboard` (open web dashboard).
+- **Codex device-code login** — Hermes-style OAuth device flow in setup wizard (`src/providers/codex-login.ts`).
+- **i18n foundation** — `src/i18n/` with English and Thai strings; locale persisted in global config.
+
 ## 0.5.4
 
 ### Multi-project vault — project workspace auto-detect

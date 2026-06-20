@@ -146,13 +146,41 @@ describe('detectCodex', () => {
       await mkdir(home, { recursive: true });
       await writeFile(join(home, 'auth.json'), JSON.stringify({ auth_mode: 'chatgpt' }));
       vi.stubEnv('CODEX_HOME', home);
-      const child = mockSpawnedCodex();
+      spawnMock.mockImplementation(() => {
+        const child = new EventEmitter() as MockChild & { kill: ReturnType<typeof vi.fn> };
+        child.kill = vi.fn();
+        child.stderr = new EventEmitter();
+        child.stdout = new EventEmitter();
+        setImmediate(() => child.emit('close', 0));
+        return child;
+      });
 
-      const statusPromise = detectCodex();
-      child.emit('close', 0);
-
-      await expect(statusPromise).resolves.toEqual({ installed: true, loggedIn: true, reason: undefined });
+      await expect(detectCodex()).resolves.toEqual({ installed: true, loggedIn: true, reason: undefined });
       expect(codexHome()).toBe(home);
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it('reports auth without codex CLI when auth.json exists', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'sanook-codex-home-'));
+    try {
+      await mkdir(home, { recursive: true });
+      await writeFile(join(home, 'auth.json'), JSON.stringify({ auth_mode: 'chatgpt', tokens: { access_token: 'x' } }));
+      vi.stubEnv('CODEX_HOME', home);
+      spawnMock.mockImplementationOnce(() => {
+        const child = new EventEmitter() as MockChild & { kill: ReturnType<typeof vi.fn> };
+        child.kill = vi.fn();
+        child.stderr = new EventEmitter();
+        child.stdout = new EventEmitter();
+        setTimeout(() => child.emit('error', new Error('ENOENT')), 0);
+        return child;
+      });
+
+      await expect(detectCodex()).resolves.toMatchObject({
+        installed: false,
+        loggedIn: true,
+      });
     } finally {
       await rm(home, { recursive: true, force: true });
     }
@@ -162,12 +190,16 @@ describe('detectCodex', () => {
     const home = await mkdtemp(join(tmpdir(), 'sanook-codex-home-'));
     try {
       vi.stubEnv('CODEX_HOME', home);
-      const child = mockSpawnedCodex();
+      spawnMock.mockImplementation(() => {
+        const child = new EventEmitter() as MockChild & { kill: ReturnType<typeof vi.fn> };
+        child.kill = vi.fn();
+        child.stderr = new EventEmitter();
+        child.stdout = new EventEmitter();
+        setImmediate(() => child.emit('close', 0));
+        return child;
+      });
 
-      const statusPromise = detectCodex();
-      child.emit('close', 0);
-
-      await expect(statusPromise).resolves.toMatchObject({ installed: true, loggedIn: false });
+      await expect(detectCodex()).resolves.toMatchObject({ installed: true, loggedIn: false });
     } finally {
       await rm(home, { recursive: true, force: true });
     }

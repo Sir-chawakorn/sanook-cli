@@ -1,0 +1,202 @@
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { join, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { BRAND } from '../brand.js';
+import { loadConfig, readGlobalConfigRaw } from '../config.js';
+import { listSessions } from '../session.js';
+import { loadMcpConfig } from '../mcp.js';
+
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+};
+
+export interface DashboardServerOptions {
+  port?: number;
+  host?: string;
+  staticDir?: string;
+  onLog?: (message: string) => void;
+}
+
+function dashboardStaticDir(): string {
+  const here = fileURLToPath(new URL('.', import.meta.url));
+  return join(here, 'static');
+}
+
+async function readBody(req: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+function json(res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(`${JSON.stringify(body)}\n`);
+}
+
+async function handleApi(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<boolean> {
+  if (req.method === 'GET' && pathname === '/api/status') {
+    const config = await loadConfig({});
+    const raw = await readGlobalConfigRaw();
+    json(res, 200, {
+      product: 'Sanook Dashboard',
+      cli: BRAND.cliName,
+      version: process.env.npm_package_version ?? 'dev',
+      model: config.model,
+      locale: config.locale,
+      brainPath: config.brainPath ?? null,
+      permissionMode: config.permissionMode,
+      gatewayHint: `${BRAND.cliName} serve`,
+    });
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/config') {
+    json(res, 200, await readGlobalConfigRaw());
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/sessions') {
+    const sessions = await listSessions({});
+    json(res, 200, { sessions });
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/mcp') {
+    const servers = await loadMcpConfig();
+    json(res, 200, { servers });
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/brain') {
+    const config = await loadConfig({});
+    json(res, 200, { brainPath: config.brainPath ?? null });
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/cron') {
+    const { dashboardCronTasks } = await import('./api-helpers.js');
+    json(res, 200, await dashboardCronTasks());
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/channels') {
+    const { dashboardChannels } = await import('./api-helpers.js');
+    json(res, 200, await dashboardChannels());
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/logs') {
+    const { dashboardLogsTail } = await import('./api-helpers.js');
+    json(res, 200, await dashboardLogsTail());
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname.startsWith('/api/files')) {
+    const url = new URL(req.url ?? '/', 'http://local');
+    const sub = url.searchParams.get('path') ?? '';
+    if (pathname === '/api/files/read') {
+      const { dashboardReadFile } = await import('./api-helpers.js');
+      json(res, 200, await dashboardReadFile(sub));
+      return true;
+    }
+    const { dashboardListFiles } = await import('./api-helpers.js');
+    json(res, 200, await dashboardListFiles(sub));
+    return true;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/chat/status') {
+    json(res, 200, {
+      hint: `Use ${BRAND.cliName} in terminal, or start ${BRAND.cliName} serve for HTTP chat`,
+      gateway: `${BRAND.cliName} serve`,
+    });
+    return true;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/config') {
+    const raw = await readBody(req);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw || '{}');
+    } catch {
+      json(res, 400, { error: 'invalid JSON' });
+      return true;
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      json(res, 400, { error: 'body must be an object' });
+      return true;
+    }
+    const { saveGlobalConfig } = await import('../config.js');
+    await saveGlobalConfig(parsed as Record<string, unknown>);
+    json(res, 200, { ok: true });
+    return true;
+  }
+
+  return false;
+}
+
+async function serveStatic(res: ServerResponse, staticDir: string, pathname: string): Promise<void> {
+  const safe = pathname === '/' ? '/index.html' : pathname;
+  const filePath = join(staticDir, safe.replace(/^\/+/, ''));
+  try {
+    const info = await stat(filePath);
+    if (!info.isFile()) {
+      res.writeHead(404);
+      res.end('Not found');
+      return;
+    }
+    const ext = extname(filePath);
+    const body = await readFile(filePath);
+    res.writeHead(200, { 'Content-Type': MIME[ext] ?? 'application/octet-stream' });
+    res.end(body);
+  } catch {
+    try {
+      const fallback = await readFile(join(staticDir, 'index.html'));
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(fallback);
+    } catch {
+      res.writeHead(503);
+      res.end('Sanook Dashboard assets missing — run npm run build:dashboard');
+    }
+  }
+}
+
+export async function startDashboardServer(opts: DashboardServerOptions = {}): Promise<() => void> {
+  const port = opts.port ?? 9119;
+  const host = opts.host ?? '127.0.0.1';
+  const staticDir = opts.staticDir ?? dashboardStaticDir();
+  const log = opts.onLog ?? (() => {});
+
+  const server = createServer(async (req, res) => {
+    try {
+      const url = new URL(req.url ?? '/', `http://${host}`);
+      if (url.pathname.startsWith('/api/')) {
+        const handled = await handleApi(req, res, url.pathname);
+        if (handled) return;
+        json(res, 404, { error: 'not found' });
+        return;
+      }
+      await serveStatic(res, staticDir, url.pathname);
+    } catch (e) {
+      json(res, 500, { error: (e as Error).message });
+    }
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, host, () => resolve());
+  });
+
+  log(`Sanook Dashboard — http://${host}:${port}`);
+  return () => server.close();
+}
+
+export function dashboardStaticRoot(): string {
+  return dashboardStaticDir();
+}

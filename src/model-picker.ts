@@ -56,3 +56,24 @@ export function initialModelPickerIndex(options: ModelPickerOption[]): number {
   const current = options.findIndex((option) => option.current);
   return current === -1 ? 0 : current;
 }
+
+export interface ModelProviderEntry {
+  id: string;
+  label: string;
+  status: ModelPickerOption['status'];
+  modelCount: number;
+}
+
+export function modelProviderEntries(): ModelProviderEntry[] {
+  return Object.entries(PROVIDERS).map(([id, cfg]) => ({
+    id,
+    label: cfg.label,
+    status: statusFor(id),
+    modelCount: new Set(Object.values(cfg.models)).size,
+  }));
+}
+
+export function filterModelPickerOptions(options: ModelPickerOption[], providerId?: string): ModelPickerOption[] {
+  if (!providerId) return options;
+  return options.filter((option) => option.provider === providerId);
+}

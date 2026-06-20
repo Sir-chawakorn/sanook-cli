@@ -174,6 +174,7 @@ usage:
   ${BRAND.cliName} chat -q "<query>"   direct one-shot query
   ${BRAND.cliName}                     interactive REPL
   ${BRAND.cliName} setup [section]      setup wizard (model | gateway | tools | agent | brain)
+  ${BRAND.cliName} dashboard [--port]   Sanook Dashboard (local web admin UI)
   ${BRAND.cliName} model                choose provider + model
   ${BRAND.cliName} --json "<task>"     headless, JSONL output (for CI/scripts)
   ${BRAND.cliName} sessions             list/resume-audit saved conversation sessions
@@ -326,6 +327,35 @@ async function startModelSetup(): Promise<void> {
       permissionMode: config.permissionMode,
     },
   });
+}
+
+async function runDashboard(args: string[] = []): Promise<void> {
+  let port = 9119;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--port' && args[i + 1]) {
+      port = Number(args[++i]);
+      if (!Number.isFinite(port) || port <= 0) {
+        console.error(`${BRAND.cliName}: --port ต้องเป็นจำนวนบวก`);
+        process.exit(1);
+      }
+    } else if (args[i] === '-h' || args[i] === '--help') {
+      console.log(`ใช้: ${BRAND.cliName} dashboard [--port 9119]`);
+      console.log('เปิด Sanook Dashboard (local web UI — Hermes-style admin panel)');
+      return;
+    }
+  }
+  const { startDashboardServer } = await import('./dashboard/server.js');
+  const stop = await startDashboardServer({
+    port,
+    onLog: (m) => console.log(m),
+  });
+  const shutdown = (): void => {
+    stop();
+    process.stdout.write('\n[dashboard] stopped\n');
+    process.exit(0);
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 }
 
 async function runTools(_args: string[] = []): Promise<void> {
@@ -4264,6 +4294,9 @@ async function main(): Promise<void> {
   if (argv[0] === 'dump') return runDump(argv.slice(1));
   if (argv[0] === 'prompt-size' && (argv.length === 1 || argv[1].startsWith('--'))) return runPromptSize(argv.slice(1));
   if (argv[0] === 'runtimes' && (argv.length === 1 || argv[1].startsWith('--'))) return runRuntimes(argv.slice(1));
+  if (argv[0] === 'dashboard' && (argv.length === 1 || !argv[1].startsWith('-') || argv[1] === '--port')) {
+    return runDashboard(argv.slice(1));
+  }
   if (argv[0] === 'web' && ['status', 'doctor', 'fetch', 'search', 'setup', undefined].includes(argv[1])) return runWeb(argv.slice(1));
   if (argv[0] === 'tools' && (argv.length === 1 || argv[1].startsWith('--'))) return runTools(argv.slice(1));
   if (argv[0] === 'send') return runSend(argv.slice(1));
@@ -4296,7 +4329,7 @@ async function main(): Promise<void> {
   // A management command word whose subcommand didn't match any route above → don't silently
   // fall through and run it as an LLM task (costly + confusing). These words intentionally
   // require a valid subcommand; an NL prompt starting with one can still be quoted as a single arg.
-  const MANAGEMENT_WORDS = new Set(['config', 'mcp', 'brain', 'web', 'trust', 'cron', 'skill', 'init']);
+  const MANAGEMENT_WORDS = new Set(['config', 'mcp', 'brain', 'web', 'trust', 'cron', 'skill', 'init', 'dashboard']);
   if (argv[0] && MANAGEMENT_WORDS.has(argv[0]) && argv[1] && !argv[1].startsWith('-')) {
     console.error(`${BRAND.cliName}: ไม่รู้จัก subcommand "${argv[0]} ${argv[1]}" — ดูวิธีใช้: ${BRAND.cliName} --help`);
     process.exit(1);

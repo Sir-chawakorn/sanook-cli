@@ -45,7 +45,8 @@ describe('Root phase routing (single Ink render)', () => {
       <Root needsSetup={true} appProps={{ initialModel: 'anthropic:claude-opus-4-8' }} />,
     );
     await tick();
-    expect(lastFrame() ?? '').toContain('เลือก AI provider'); // wizard step แรก
+    const frame = lastFrame() ?? '';
+    expect(frame).toMatch(/Choose language|เลือกภาษา/);
     unmount();
   });
 });

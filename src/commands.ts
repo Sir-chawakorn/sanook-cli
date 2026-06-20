@@ -55,7 +55,9 @@ export const HELP_TEXT = `คำสั่ง:
   /help            แสดงคำสั่งทั้งหมด
   /new, /reset      เริ่มบทสนทนาใหม่
   /status          ดูสถานะ session ปัจจุบัน
-  /model [spec]    ดู/เปลี่ยน model (เช่น /model opus, /model openai:gpt-5)
+  /model [spec]    ดู/เปลี่ยน model — /model เปิด picker 2 ขั้น (provider → model)
+  /setup           ดูขั้นตอน setup wizard (model · agent · tools · gateway · brain)
+  /dashboard       เปิด Sanook Dashboard (local web UI)
   /personality [name]
                    ดู/ตั้ง personality overlay
   /details [thinking|tools] [hidden|collapsed|expanded]
@@ -241,6 +243,24 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
     case 'model':
       if (!args[0]) return { handled: true, action: 'modelPicker', message: modelMenu(ctx.model) };
       return modelChange(args[0]);
+    case 'setup':
+      return {
+        handled: true,
+        message: [
+          `${BRAND.productName} setup (Hermes-style sections):`,
+          `  1. ${BRAND.cliName} setup model     — provider + model wizard`,
+          `  2. ${BRAND.cliName} setup agent     — permissionMode, budget, personality`,
+          `  3. ${BRAND.cliName} setup tools     — built-in tools + MCP`,
+          `  4. ${BRAND.cliName} setup gateway   — Telegram/Discord/Slack/…`,
+          `  5. ${BRAND.cliName} setup brain     — second-brain vault`,
+          `  หรือรัน ${BRAND.cliName} ครั้งแรก → wizard 10 ขั้น (ภาษา → … → gateway → brain)`,
+        ].join('\n'),
+      };
+    case 'dashboard':
+      return {
+        handled: true,
+        message: `Sanook Dashboard — รัน: ${BRAND.cliName} dashboard\n  แล้วเปิด http://127.0.0.1:9119 (Chat · Files · Logs · Cron · Channels)`,
+      };
     case 'personality': {
       const raw = args.join(' ').trim();
       if (!raw) return { handled: true, message: personalityListText() };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { render } from 'ink-testing-library';
-import { modelPickerOptions } from '../model-picker.js';
+import { modelPickerOptions, modelProviderEntries } from '../model-picker.js';
 import { TOOL_CATALOG } from '../tool-catalog.js';
 import {
   FloatingOverlay,
@@ -101,22 +101,38 @@ describe('FloatingOverlay', () => {
     expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(44);
   });
 
-  it('renders a model picker overlay with active and current markers', () => {
+  it('renders a model picker overlay with provider phase', () => {
+    const providers = modelProviderEntries();
     const options = modelPickerOptions('sonnet');
-    const overlay = { kind: 'model' as const, options, selected: options.findIndex((option) => option.current) };
+    const overlay = {
+      kind: 'model' as const,
+      phase: 'provider' as const,
+      providers,
+      options,
+      selected: 0,
+    };
     const { lastFrame, unmount } = render(<FloatingOverlay columns={96} overlay={overlay} />);
 
     const frame = lastFrame() ?? '';
     expect(frame).toContain('Sanook model picker');
-    expect(frame).toContain('anthropic:sonnet');
-    expect(frame).toContain('↑↓/jk select');
+    expect(frame).toContain('choose provider');
     unmount();
   });
 
   it('keeps model picker lines within the overlay width', () => {
-    const lines = modelOverlayLines({ kind: 'model', options: modelPickerOptions('openai:gpt-5.5'), selected: 8 }, 52);
+    const lines = modelOverlayLines(
+      {
+        kind: 'model',
+        phase: 'model',
+        providerFilter: 'anthropic',
+        providers: modelProviderEntries(),
+        options: modelPickerOptions('openai:gpt-5.5'),
+        selected: 8,
+      },
+      52,
+    );
 
-    expect(lines[0]).toBe('Sanook model picker');
+    expect(lines[0]).toContain('Sanook model picker');
     expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(52);
   });
 

@@ -2,7 +2,7 @@ import { Box, Text } from 'ink';
 import type { ReactNode } from 'react';
 import { HOTKEYS } from '../hotkeys.js';
 import type { McpHubState } from '../mcp-hub.js';
-import type { ModelPickerOption } from '../model-picker.js';
+import type { ModelPickerOption, ModelProviderEntry } from '../model-picker.js';
 import type { Session } from '../session.js';
 import type { CompletionItem } from '../slash-completion.js';
 import type { Skill } from '../skills.js';
@@ -17,6 +17,9 @@ export interface HotkeysOverlayState {
 
 export interface ModelOverlayState {
   kind: 'model';
+  phase: 'provider' | 'model';
+  providerFilter?: string;
+  providers: ModelProviderEntry[];
   options: ModelPickerOption[];
   selected: number;
 }
@@ -229,11 +232,30 @@ function shortDate(iso: string): string {
 export function modelOverlayLines(overlay: ModelOverlayState, columns: number): string[] {
   const width = overlayWidth(columns);
   const innerWidth = Math.max(1, width - 4);
+  if (overlay.phase === 'provider') {
+    const window = listWindow(overlay.providers.length, overlay.selected, MODEL_WINDOW);
+    const visible = overlay.providers.slice(window.start, window.end);
+    const nameWidth = Math.max(12, Math.min(24, Math.floor(innerWidth * 0.45)));
+    const lines = ['Sanook model picker — choose provider'];
+    if (window.start > 0) lines.push(`... ${window.start} above`);
+    for (const [offset, provider] of visible.entries()) {
+      const index = window.start + offset;
+      const cursor = index === overlay.selected ? '>' : ' ';
+      lines.push(
+        `${cursor} ${clip(provider.label, nameWidth).padEnd(nameWidth)} ${provider.modelCount} models · ${provider.status}`,
+      );
+    }
+    if (window.end < overlay.providers.length) lines.push(`... ${overlay.providers.length - window.end} more`);
+    lines.push('Enter drill down · Esc/q close');
+    return lines;
+  }
+
   const window = modelWindow(overlay.options, overlay.selected);
   const visible = overlay.options.slice(window.start, window.end);
   const optionWidth = Math.max(10, Math.min(28, Math.floor(innerWidth * 0.38)));
   const metaWidth = Math.max(10, innerWidth - optionWidth - 8);
-  const lines = ['Sanook model picker'];
+  const providerLabel = overlay.providerFilter ?? 'all';
+  const lines = [`Sanook model picker — ${providerLabel}`];
 
   if (window.start > 0) lines.push(`... ${window.start} above`);
   for (const [offset, option] of visible.entries()) {
@@ -243,7 +265,7 @@ export function modelOverlayLines(overlay: ModelOverlayState, columns: number): 
     lines.push(`${cursor}${current} ${clip(option.label, optionWidth).padEnd(optionWidth)} ${clip(option.meta, metaWidth)}`);
   }
   if (window.end < overlay.options.length) lines.push(`... ${overlay.options.length - window.end} more`);
-  lines.push('↑↓/jk select · Enter switch · Esc/q close');
+  lines.push('Enter switch · Esc back to providers · q close');
   return lines;
 }
 

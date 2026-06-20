@@ -118,7 +118,7 @@ describe('App (Ink REPL)', () => {
   it('shows slash completion suggestions and Enter fills the selected command first', async () => {
     const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" />);
 
-    stdin.write('/se');
+    stdin.write('/ses');
     await tick();
 
     expect(lastFrame()).toContain('/sessions');
@@ -158,12 +158,15 @@ describe('App (Ink REPL)', () => {
   it('/model without args opens a picker overlay and Enter selects the highlighted model', async () => {
     const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" />);
 
-    stdin.write('/model');
+    stdin.write('/model ');
     await tick();
     stdin.write('\r');
     await tick();
 
-    expect(lastFrame()).toContain('Sanook model picker');
+    expect(lastFrame()).toContain('choose provider');
+
+    stdin.write('\r');
+    await tick();
     expect(lastFrame()).toContain('anthropic:sonnet');
 
     stdin.write('\r');
@@ -179,7 +182,9 @@ describe('App (Ink REPL)', () => {
   it('/model picker supports j/k style navigation before selecting', async () => {
     const { stdin, lastFrame, unmount } = render(<App initialModel="sonnet" />);
 
-    stdin.write('/model');
+    stdin.write('/model ');
+    await tick();
+    stdin.write('\r');
     await tick();
     stdin.write('\r');
     await tick();

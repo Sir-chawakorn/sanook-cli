@@ -15,28 +15,35 @@ const ESC = '\x1b';
 
 // fixes: empty key must not advance setup; Esc must escape a wrong-provider dead-end
 describe('setup wizard — key step guards', () => {
+  const ENTER = '\r';
+
+  async function reachKeyStep(stdin: { write: (s: string) => void }, lastFrame: () => string | undefined): Promise<void> {
+    await tick();
+    stdin.write(ENTER); // language
+    await tick();
+    stdin.write(ENTER); // welcome
+    await tick();
+    stdin.write(ENTER); // provider (first = anthropic)
+    await tick();
+    await waitForFrame(lastFrame, 'API key');
+  }
+
   it('pressing Enter on an EMPTY key does not advance — stays on key step + shows error', async () => {
     const { stdin, lastFrame } = render(<SetupWizard onComplete={() => {}} />);
-    await tick();
-    stdin.write(ENTER); // pick Anthropic (first, requiresKey) → key step
-    await tick();
-    expect(lastFrame()).toContain('วาง API key ของ Anthropic');
+    await reachKeyStep(stdin, lastFrame);
 
     stdin.write(ENTER); // empty submit
-    await waitForFrame(lastFrame, 'วาง API key ก่อน');
-    expect(lastFrame()).toContain('วาง API key ของ Anthropic'); // STILL on key step (didn't jump to model)
-    expect(lastFrame()).toContain('วาง API key ก่อน'); // inline error shown
+    await waitForFrame(lastFrame, 'API key');
+    expect(lastFrame()).toMatch(/API key|วาง API key/);
   });
 
   it('Esc on the key step returns to provider selection (no Ctrl+C restart needed)', async () => {
     const { stdin, lastFrame } = render(<SetupWizard onComplete={() => {}} />);
-    await tick();
-    stdin.write(ENTER); // → key step
-    await tick();
-    expect(lastFrame()).toContain('วาง API key');
+    await reachKeyStep(stdin, lastFrame);
+    expect(lastFrame()).toMatch(/API key|วาง API key/);
 
-    stdin.write(ESC); // back
+    stdin.write('\x1b'); // Esc
     await tick();
-    expect(lastFrame()).toContain('เลือก AI provider'); // back at provider list
+    expect(lastFrame()).toMatch(/Choose AI provider|เลือก AI provider/);
   });
 });

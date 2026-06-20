@@ -55,6 +55,8 @@ export const ConfigSchema = z.object({
   embeddingModel: z.string().optional().catch(undefined),
   // Hermes-style /personality overlay (stored as a small named prompt)
   personality: z.string().optional().catch(undefined),
+  /** UI + setup wizard language */
+  locale: z.enum(['en', 'th']).catch('th').default('th'),
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -239,8 +241,10 @@ export async function isFirstRun(): Promise<boolean> {
   }
 }
 
-/** บันทึก global config (model/provider ที่เลือกตอน setup) */
-export async function saveGlobalConfig(cfg: { model: string; provider?: string }): Promise<void> {
+/** บันทึก global config (model/provider/locale ที่เลือกตอน setup) */
+export async function saveGlobalConfig(
+  cfg: { model?: string; provider?: string; locale?: string } & Record<string, unknown>,
+): Promise<void> {
   await mkdir(CONFIG_DIR, { recursive: true });
   const existing = await readJson(CONFIG_PATH);
   await writeFile(CONFIG_PATH, `${JSON.stringify({ ...existing, ...cfg }, null, 2)}\n`, { mode: 0o600 });

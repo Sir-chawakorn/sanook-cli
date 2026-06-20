@@ -14,9 +14,15 @@ describe('slash completion', () => {
   });
 
   it('suggests built-in slash commands by prefix', () => {
-    expect(slashCompletionItems('/s').map((item) => item.text)).toEqual(['/skills', '/sessions', '/status', '/stop']);
+    expect(slashCompletionItems('/s').map((item) => item.text)).toEqual([
+      '/setup',
+      '/skills',
+      '/sessions',
+      '/status',
+      '/stop',
+    ]);
     expect(slashCompletionItems('/m').map((item) => item.text)).toEqual(['/model', '/mcp']);
-    expect(slashCompletionItems('/d').map((item) => item.text)).toEqual(['/details', '/diff']);
+    expect(slashCompletionItems('/d').map((item) => item.text)).toEqual(['/details', '/dashboard', '/diff']);
     expect(slashCompletionItems('/cop').map((item) => item.text)).toEqual(['/copy']);
     expect(slashCompletionItems('/tr').map((item) => item.text)).toEqual(['/trail']);
   });

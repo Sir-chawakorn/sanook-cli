@@ -19,8 +19,21 @@ export function codexHome(): string {
   return process.env.CODEX_HOME?.trim() || join(homedir(), '.codex');
 }
 
+async function readCodexLoggedIn(): Promise<boolean> {
+  try {
+    const auth = JSON.parse(await readFile(join(codexHome(), 'auth.json'), 'utf8')) as {
+      auth_mode?: string;
+      tokens?: { access_token?: string };
+    };
+    return auth?.auth_mode === 'chatgpt' || Boolean(auth?.tokens?.access_token);
+  } catch {
+    return false;
+  }
+}
+
 /** เช็กว่า codex CLI ติดตั้ง + login ChatGPT แล้ว */
 export async function detectCodex(): Promise<CodexStatus> {
+  const loggedIn = await readCodexLoggedIn();
   const hasBinary = await new Promise<boolean>((resolve) => {
     const p = spawn('codex', ['--version'], { shell: process.platform === 'win32' });
     // timeout: binary ค้าง (shim รอ stdin / Gatekeeper stall ตอนรันครั้งแรกบน macOS) → ไม่ให้ wizard ตัน
@@ -38,18 +51,18 @@ export async function detectCodex(): Promise<CodexStatus> {
     });
   });
   if (!hasBinary) {
-    return { installed: false, loggedIn: false, reason: 'ไม่พบ codex CLI — ติดตั้ง: npm i -g @openai/codex' };
-  }
-  try {
-    const auth = JSON.parse(await readFile(join(codexHome(), 'auth.json'), 'utf8')) as {
-      auth_mode?: string;
-      tokens?: { access_token?: string };
+    return {
+      installed: false,
+      loggedIn,
+      reason: loggedIn
+        ? 'login แล้ว แต่ยังไม่มี codex CLI — ติดตั้ง: npm i -g @openai/codex'
+        : 'ไม่พบ codex CLI — ติดตั้ง: npm i -g @openai/codex',
     };
-    const loggedIn = auth?.auth_mode === 'chatgpt' || Boolean(auth?.tokens?.access_token);
-    return { installed: true, loggedIn, reason: loggedIn ? undefined : 'ยังไม่ได้ login — รัน: codex login' };
-  } catch {
-    return { installed: true, loggedIn: false, reason: 'ยังไม่ได้ login — รัน: codex login' };
   }
+  if (loggedIn) {
+    return { installed: true, loggedIn: true, reason: undefined };
+  }
+  return { installed: true, loggedIn: false, reason: 'ยังไม่ได้ login — รัน: codex login' };
 }
 
 export interface CodexEvent {

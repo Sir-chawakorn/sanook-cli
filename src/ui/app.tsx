@@ -23,7 +23,12 @@ import { snapshotWorkTree, restoreWorkTree } from '../checkpoint.js';
 import { renderInsights } from '../insights.js';
 import { loadMcpHubEntries } from '../mcp-hub.js';
 import { probeMcpServer } from '../mcp.js';
-import { initialModelPickerIndex, modelPickerOptions } from '../model-picker.js';
+import {
+  filterModelPickerOptions,
+  initialModelPickerIndex,
+  modelPickerOptions,
+  modelProviderEntries,
+} from '../model-picker.js';
 import { clampCompletionIndex, completionForInput, completionReplaceValue } from '../slash-completion.js';
 import { loadSkills } from '../skills.js';
 import { copyTextToClipboard } from '../clipboard.js';
@@ -341,8 +346,15 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
     });
 
   const openModelPicker = (): void => {
+    const providers = modelProviderEntries();
     const options = modelPickerOptions(model);
-    setOverlay({ kind: 'model', options, selected: initialModelPickerIndex(options) });
+    setOverlay({
+      kind: 'model',
+      phase: 'provider',
+      providers,
+      options,
+      selected: 0,
+    });
   };
 
   const openMcpHub = async (): Promise<void> => {
@@ -414,13 +426,28 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const moveModelPicker = (delta: number): void => {
     setOverlay((current) => {
       if (current?.kind !== 'model') return current;
-      const last = Math.max(0, current.options.length - 1);
+      const list = current.phase === 'provider' ? current.providers : current.options;
+      const last = Math.max(0, list.length - 1);
       return { ...current, selected: Math.max(0, Math.min(last, current.selected + delta)) };
     });
   };
 
   const selectModelFromOverlay = (current: OverlayState): void => {
     if (current.kind !== 'model') return;
+    if (current.phase === 'provider') {
+      const provider = current.providers[current.selected];
+      if (!provider) return;
+      const options = filterModelPickerOptions(modelPickerOptions(model), provider.id);
+      setOverlay({
+        kind: 'model',
+        phase: 'model',
+        providerFilter: provider.id,
+        providers: current.providers,
+        options,
+        selected: initialModelPickerIndex(options),
+      });
+      return;
+    }
     const selectedSpec = current.options[current.selected]?.spec ?? '';
     setOverlay(null);
     if (!selectedSpec) return;
@@ -629,8 +656,12 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   useInput((input, key) => {
     if (overlay) {
       if (overlay.kind === 'model') {
-        if (key.escape || input === 'q' || input === 'Q') setOverlay(null);
-        else if (key.return) selectModelFromOverlay(overlay);
+        if (input === 'q' || input === 'Q') setOverlay(null);
+        else if (key.escape) {
+          if (overlay.phase === 'model') {
+            setOverlay({ ...overlay, phase: 'provider', providerFilter: undefined, selected: 0 });
+          } else setOverlay(null);
+        } else if (key.return) selectModelFromOverlay(overlay);
         else if (key.downArrow || input === 'j' || input === 'J') moveModelPicker(1);
         else if (key.upArrow || input === 'k' || input === 'K') moveModelPicker(-1);
         return;

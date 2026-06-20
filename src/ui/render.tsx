@@ -43,7 +43,12 @@ export function Root({ needsSetup, appProps }: RootProps) {
     const onComplete = (r: SetupResult): void => {
       void (async () => {
         if (r.key) await saveKey(r.envVar, r.key);
-        await saveGlobalConfig({ model: r.model, provider: r.provider });
+        await saveGlobalConfig({
+          model: r.model,
+          provider: r.provider,
+          locale: r.locale,
+          permissionMode: r.permissionMode,
+        });
         setModel(r.model);
         setPhase(r.createBrain ? 'brain' : 'app');
       })();

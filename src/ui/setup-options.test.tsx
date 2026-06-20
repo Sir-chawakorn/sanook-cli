@@ -1,10 +1,14 @@
-import { afterEach, describe, it, expect, vi } from 'vitest';
-import { providerOption } from './setup.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { providerOption, setupProviderMenuLines, SETUP_PROVIDER_ORDER } from './setup-providers.js';
 
-// P2: provider menu labels — hint per provider so the choice is obvious (env-independent cases)
-describe('providerOption hints', () => {
+describe('setup provider menu', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it('lists Codex right after OpenAI', () => {
+    expect(SETUP_PROVIDER_ORDER.indexOf('openai')).toBe(1);
+    expect(SETUP_PROVIDER_ORDER.indexOf('codex')).toBe(2);
   });
 
   it('codex → "login ChatGPT" hint, no API key', () => {
@@ -12,7 +16,12 @@ describe('providerOption hints', () => {
     expect(o.value).toBe('codex');
     expect(o.label).toContain('OpenAI Codex');
     expect(o.label).toContain('login ChatGPT');
-    expect(o.label).toContain('ไม่ใช้ API key'); // บอกชัดว่าไม่ต้องใส่ key
+    expect(o.label).toContain('ไม่ใช้ API key');
+  });
+
+  it('static menu lines include Codex marker', () => {
+    const lines = setupProviderMenuLines();
+    expect(lines.some((line) => line.includes('★') && line.includes('OpenAI Codex'))).toBe(true);
   });
 
   it('local provider (ollama) → "local" hint', () => {

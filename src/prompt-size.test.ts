@@ -17,6 +17,7 @@ function testConfig(overrides: Partial<Config> = {}): Config {
     cacheTtl: '5m',
     compaction: 'truncate',
     contextCompression: 'selective',
+    locale: 'th',
     ...overrides,
   };
 }
