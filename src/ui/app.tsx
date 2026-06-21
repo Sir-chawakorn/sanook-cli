@@ -50,6 +50,7 @@ import { SessionPanel, type StartupSectionPreview } from './session-panel.js';
 import { getTranscriptWindow, transcriptScrollStep, transcriptWindowSize } from './transcript.js';
 import { footerStatus } from './status.js';
 import { inputViewport, graphemesOf, cursorGraphemeIndex, SCROLL_LEAD, SCROLL_TAIL } from './input-view.js';
+import { PersonaOverlay } from './persona-wizard.js';
 import { thinkingPanelLines, snapshotThinking, type DetailsDisplayMode } from './thinking-panel.js';
 import { toolTrailLines, toolTrailHeader, toolTrailWidth, updateToolTrailOnEvent, type ToolTrailDisplayMode, type ToolTrailItem } from './tool-trail.js';
 
@@ -123,6 +124,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const [thinkingMode, setThinkingMode] = useState<DetailsDisplayMode>('collapsed');
   const [contextCompression, setContextCompression] = useState<'headroom' | 'off' | 'selective' | undefined>();
   const [transcriptScroll, setTranscriptScroll] = useState(0);
+  const [personaOpen, setPersonaOpen] = useState(false);
   const idRef = useRef(0);
   const lastCost = useRef<string>('');
   const nextToolTrailId = useRef(0);
@@ -971,6 +973,10 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
           .catch((e) => addTurn('system', `personality: ${(e as Error).message}`));
         return;
       }
+      if (cmd.action === 'personaSetup') {
+        setPersonaOpen(true);
+        return;
+      }
       if (cmd.action === 'insights') {
         void renderInsights({ days: cmd.insightsDays, cwd: cmd.insightsAll ? null : undefined })
           .then((msg) => addTurn('system', msg))
@@ -1268,6 +1274,8 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
           <Text dimColor>{approvalReq.summary}</Text>
           <Text dimColor>y = รัน · n = ปฏิเสธ</Text>
         </Box>
+      ) : personaOpen ? (
+        <PersonaOverlay onDone={(msg) => { setPersonaOpen(false); addTurn('system', msg); }} />
       ) : (
         <Box marginTop={1} borderStyle="round" borderColor={busy ? 'gray' : 'blue'} paddingX={1}>
           <Text color={busy ? 'gray' : 'cyan'}>{busy ? '· ' : '› '}</Text>

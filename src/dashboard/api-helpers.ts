@@ -209,59 +209,52 @@ export interface DashboardTaskFamily {
 
 // ---- Install commands (multi-platform) -------------------------------------
 
-export interface InstallMethod {
-  id: string;
-  label: string;
-  recommended?: boolean;
-  /** platform → shell command */
-  commands: { os: string; cmd: string }[];
-  ready: boolean; // ใช้ได้จริงตอนนี้ไหม (npm = พร้อม, อื่นๆ รอ publish infra)
-  note?: string;
+export { type InstallMethod } from '../install-info.js';
+import { dashboardInstallPayload } from '../install-info.js';
+
+export function dashboardInstall() {
+  return dashboardInstallPayload();
 }
 
-const NPM_PKG = 'sanook-cli';
-const INSTALL_DOMAIN = 'sanook.ai'; // เปลี่ยนเป็นโดเมนจริงเมื่อมี
+// ---- Persona profile -------------------------------------------------------
 
-export function dashboardInstall(): { pkg: string; methods: InstallMethod[] } {
+export interface DashboardPersonaRow {
+  id: string;
+  label: string;
+  value: string;
+  display: string;
+}
+
+export async function dashboardPersona(): Promise<{
+  brainPath: string | null;
+  profilePath: string | null;
+  rows: DashboardPersonaRow[];
+  hasProfile: boolean;
+  cliCommand: string;
+}> {
+  const { loadPersonaAnswers } = await import('../memory.js');
+  const { PERSONA_QUESTIONS } = await import('../persona.js');
+  const { BRAND } = await import('../brand.js');
+  const config = await loadConfig({});
+  const brainPath = config.brainPath ?? null;
+  const answers = await loadPersonaAnswers();
+  const rows = PERSONA_QUESTIONS.map((q) => {
+    const v = (answers[q.id] ?? '').trim();
+    return {
+      id: q.id,
+      label: q.label,
+      value: v,
+      display: v ? (q.type === 'select' ? (q.options?.find((o) => o.value === v)?.label ?? v) : v) : '—',
+    };
+  });
+  const hasProfile = rows.some((r) => r.value);
+  const profilePath = brainPath ? `${brainPath}/Shared/User-Persona/persona.md` : null;
   return {
-    pkg: NPM_PKG,
-    methods: [
-      {
-        id: 'npm',
-        label: 'npm / npx',
-        recommended: true,
-        ready: true,
-        commands: [
-          { os: 'macOS / Linux / Windows', cmd: `npm install -g ${NPM_PKG}` },
-          { os: 'Run without installing', cmd: `npx ${NPM_PKG}` },
-        ],
-        note: 'ต้องมี Node.js ≥ 22',
-      },
-      {
-        id: 'curl',
-        label: 'Install script',
-        ready: false,
-        commands: [
-          { os: 'macOS / Linux / WSL', cmd: `curl -fsSL https://${INSTALL_DOMAIN}/install.sh | bash` },
-          { os: 'Windows PowerShell', cmd: `irm https://${INSTALL_DOMAIN}/install.ps1 | iex` },
-        ],
-        note: 'ต้องโฮสต์ install.sh / install.ps1 บนโดเมนก่อน (ดู docs/INSTALL_INFRA.md)',
-      },
-      {
-        id: 'homebrew',
-        label: 'Homebrew',
-        ready: false,
-        commands: [{ os: 'macOS / Linux', cmd: `brew install ${NPM_PKG}` }],
-        note: 'ต้องสร้าง Homebrew tap ก่อน (ดู docs/INSTALL_INFRA.md)',
-      },
-      {
-        id: 'winget',
-        label: 'WinGet',
-        ready: false,
-        commands: [{ os: 'Windows', cmd: 'winget install Sanook.SanookCLI' }],
-        note: 'ต้องส่ง manifest เข้า winget-pkgs ก่อน (ดู docs/INSTALL_INFRA.md)',
-      },
-    ],
+    brainPath,
+    profilePath,
+    rows,
+    hasProfile,
+    cliCommand: `${BRAND.cliName} persona`,
   };
 }
 

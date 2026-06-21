@@ -243,3 +243,85 @@ ${rows}
 up:: [[Shared/User-Persona/_Index]]
 `;
 }
+
+/** map display label (stored in persona.md table) back to select value */
+export function valueFromDisplayLabel(q: PersonaQuestion, shown: string): string {
+  const s = shown.trim();
+  if (!s || s === '—') return '';
+  if (q.type === 'select' && q.options) {
+    const byLabel = q.options.find((o) => o.label === s);
+    if (byLabel) return byLabel.value;
+    const byValue = q.options.find((o) => o.value === s);
+    if (byValue) return byValue.value;
+  }
+  return s;
+}
+
+/** Parse persona.md table rows back into answers (label → value). */
+export function parsePersonaProfileMarkdown(md: string): PersonaAnswers {
+  const out: PersonaAnswers = {};
+  const labelToId = new Map(PERSONA_QUESTIONS.map((q) => [q.label, q.id]));
+  for (const line of md.split('\n')) {
+    const m = line.match(/^\|\s*(.+?)\s*\|\s*(.+?)\s*\|$/);
+    if (!m) continue;
+    const label = m[1].trim();
+    const shown = m[2].trim().replace(/\\\|/g, '|');
+    if (label === 'หัวข้อ' || label === '---') continue;
+    const id = labelToId.get(label);
+    if (!id) continue;
+    const q = PERSONA_QUESTIONS.find((x) => x.id === id)!;
+    const v = valueFromDisplayLabel(q, shown);
+    if (v) out[id] = v;
+  }
+  return out;
+}
+
+/** Extract persona fields from protected owner facts in auto-memory. */
+export function personaAnswersFromFacts(factTexts: string[]): PersonaAnswers {
+  const out: PersonaAnswers = {};
+  for (const raw of factTexts) {
+    const text = raw.trim();
+    let m = text.match(/^เจ้าของชื่อ (.+?) — เรียกเจ้าของด้วยชื่อนี้$/);
+    if (m) {
+      out.ownerName = m[1];
+      continue;
+    }
+    m = text.match(/^AI เรียกตัวเองว่า "(.+?)" เมื่อคุยกับเจ้าของ$/);
+    if (m) {
+      out.aiName = m[1];
+      continue;
+    }
+    const prefixes: [string, string][] = [
+      ['บทบาท/อาชีพของเจ้าของ: ', 'role'],
+      ['ระดับประสบการณ์เขียนโปรแกรมของเจ้าของ: ', 'experience'],
+      ['ภาษาที่เจ้าของต้องการให้ตอบ: ', 'language'],
+      ['โทนการสื่อสารที่เจ้าของชอบ: ', 'tone'],
+      ['ระดับความละเอียดที่เจ้าของอยากได้เวลาอธิบาย: ', 'depth'],
+      ['ระดับ autonomy ที่เจ้าของเลือก: ', 'autonomy'],
+      ['เทคโนโลยีที่เจ้าของใช้บ่อย: ', 'stack'],
+      ['ด้านที่เจ้าของทำงาน/สนใจ: ', 'domains'],
+      ['เป้าหมาย/สิ่งที่เจ้าของกำลังโฟกัส: ', 'goals'],
+      ['สิ่งที่เจ้าของชอบ/ไม่ชอบให้ AI ทำ: ', 'preferences'],
+      ['การใช้ emoji ที่เจ้าของต้องการ: ', 'emoji'],
+      ['Timezone/เวลาทำงานของเจ้าของ: ', 'timezone'],
+    ];
+    for (const [prefix, id] of prefixes) {
+      if (text.startsWith(prefix)) {
+        out[id] = text.slice(prefix.length);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/** Merge persona answers — later sources override earlier for each field. */
+export function mergePersonaAnswers(...sources: PersonaAnswers[]): PersonaAnswers {
+  const out: PersonaAnswers = {};
+  for (const src of sources) {
+    for (const [k, v] of Object.entries(src)) {
+      if (v?.trim()) out[k] = v.trim();
+    }
+  }
+  return out;
+}

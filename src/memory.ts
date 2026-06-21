@@ -4,8 +4,8 @@ import { buildContextPackBlock, listContextPacks, readContextPackExcerpt, select
 import { buildProjectContextBlock, resolveVaultProject } from './project-registry.js';
 import { appHomePath, BRAND, brainTranscriptEnvForced, persistenceEnabled, worklogEnabled } from './brand.js';
 import { redactKey } from './providers/keys.js';
-import { loadStore, saveStore, mergeFact, maybeConsolidate, consolidate, renderPromptBlock, type NoteType, type Incoming } from './memory-store.js';
-import { renderPersonaProfile, type PersonaAnswers } from './persona.js';
+import { loadStore, saveStore, mergeFact, maybeConsolidate, consolidate, renderPromptBlock, activeFacts, type NoteType, type Incoming } from './memory-store.js';
+import { renderPersonaProfile, personaFacts, mergePersonaAnswers, parsePersonaProfileMarkdown, personaAnswersFromFacts, type PersonaAnswers } from './persona.js';
 
 const MEMORY_FILE = BRAND.memoryFileName;
 // auto-memory (สิ่งที่ agent จำเองข้าม session) ย้ายไปอยู่ใน ./memory-store.ts —
@@ -549,4 +549,46 @@ export async function writePersonaProfile(brainPath: string, answers: PersonaAns
   const md = redactKey(renderPersonaProfile(answers, today));
   await writeFile(join(personaDir, 'persona.md'), md);
   return true;
+}
+
+/** โหลดคำตอบ persona ที่มีอยู่ — vault persona.md ชนะ memory facts (สำหรับ pre-fill wizard) */
+export async function loadPersonaAnswers(): Promise<PersonaAnswers> {
+  const brain = await getBrainPath().catch(() => undefined);
+  let fromVault: PersonaAnswers = {};
+  if (brain) {
+    const p = join(brain, 'Shared', 'User-Persona', 'persona.md');
+    try {
+      fromVault = parsePersonaProfileMarkdown(await readFile(p, 'utf8'));
+    } catch {
+      /* no profile yet */
+    }
+  }
+  let fromMemory: PersonaAnswers = {};
+  if (persistenceEnabled()) {
+    try {
+      const store = await loadStore();
+      const texts = activeFacts(store)
+        .filter((f) => f.trust === 'owner' || f.tier === 'protected')
+        .map((f) => f.text);
+      fromMemory = personaAnswersFromFacts(texts);
+    } catch {
+      /* best-effort */
+    }
+  }
+  return mergePersonaAnswers(fromMemory, fromVault);
+}
+
+export interface PersistPersonaResult {
+  memoryWritten: number;
+  vaultWritten: boolean;
+  brainPath?: string;
+}
+
+/** บันทึก persona ครบชุด — auto-memory + vault profile (ใช้ทั้ง CLI และ REPL /persona) */
+export async function persistPersonaAnswers(answers: PersonaAnswers): Promise<PersistPersonaResult> {
+  const facts = personaFacts(answers);
+  const memoryWritten = await seedPersonaFacts(facts).catch(() => 0);
+  const brain = await getBrainPath().catch(() => undefined);
+  const vaultWritten = brain ? await writePersonaProfile(brain, answers).catch(() => false) : false;
+  return { memoryWritten, vaultWritten, brainPath: brain };
 }

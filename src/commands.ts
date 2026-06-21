@@ -24,6 +24,7 @@ export interface CommandResult {
     | 'retry'
     | 'stop'
     | 'personality'
+    | 'personaSetup'
     | 'insights'
     | 'hotkeys'
     | 'mcpHub'
@@ -58,6 +59,7 @@ export const HELP_TEXT = `คำสั่ง:
   /model [spec]    ดู/เปลี่ยน model — /model เปิด picker 2 ขั้น (provider → model)
   /setup           ดูขั้นตอน setup wizard (model · agent · tools · gateway · brain)
   /dashboard       เปิด Sanook Dashboard (local web UI)
+  /persona         ตั้งค่า persona (ใครคุณเป็น + อยากให้ AI ทำงานยังไง)
   /personality [name]
                    ดู/ตั้ง personality overlay
   /details [thinking|tools] [hidden|collapsed|expanded]
@@ -261,6 +263,8 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
         handled: true,
         message: `Sanook Dashboard — รัน: ${BRAND.cliName} dashboard\n  แล้วเปิด http://127.0.0.1:9119 (Chat · Files · Logs · Cron · Channels)`,
       };
+    case 'persona':
+      return { handled: true, action: 'personaSetup', message: 'เปิด persona wizard…' };
     case 'personality': {
       const raw = args.join(' ').trim();
       if (!raw) return { handled: true, message: personalityListText() };

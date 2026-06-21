@@ -151,6 +151,12 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, pathname: st
     return true;
   }
 
+  if (req.method === 'GET' && pathname === '/api/persona') {
+    const { dashboardPersona } = await import('./api-helpers.js');
+    json(res, 200, await dashboardPersona());
+    return true;
+  }
+
   if (req.method === 'POST' && pathname === '/api/terminal/run') {
     const { handleTerminalRun } = await import('./terminal.js');
     await handleTerminalRun(req, res);
@@ -227,6 +233,21 @@ async function serveStatic(res: ServerResponse, staticDir: string, pathname: str
   }
 }
 
+async function serveInstallScript(res: ServerResponse, pathname: string): Promise<boolean> {
+  if (pathname !== '/install.sh' && pathname !== '/install.ps1') return false;
+  const root = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
+  const name = pathname === '/install.sh' ? 'install.sh' : 'install.ps1';
+  try {
+    const body = await readFile(join(root, 'scripts', name), 'utf8');
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
+    res.end(body);
+  } catch {
+    res.writeHead(404);
+    res.end('install script not found');
+  }
+  return true;
+}
+
 export async function startDashboardServer(opts: DashboardServerOptions = {}): Promise<() => void> {
   const port = opts.port ?? 9119;
   const host = opts.host ?? '127.0.0.1';
@@ -242,6 +263,7 @@ export async function startDashboardServer(opts: DashboardServerOptions = {}): P
         json(res, 404, { error: 'not found' });
         return;
       }
+      if (req.method === 'GET' && (await serveInstallScript(res, url.pathname))) return;
       await serveStatic(res, staticDir, url.pathname);
     } catch (e) {
       json(res, 500, { error: (e as Error).message });

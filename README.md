@@ -191,7 +191,7 @@ flowchart LR
 | **Session note** | `{brainPath}/Sessions/YYYY-MM-DD-<id>-session.md` | On REPL exit (`/quit` or Ctrl+C at empty prompt) | AI/heuristic summary + key facts |
 | **Memory inbox** | `{brainPath}/Shared/Memory-Inbox/memory-inbox.md` | When the agent calls `remember` | Candidate facts for vault curation |
 | **Project workspace** | `{brainPath}/Projects/<slug>/` | Setup wizard / `sanook brain init` links your repo | Project-scoped notes & hot context |
-| **Persona profile** | `{brainPath}/Shared/User-Persona/persona.md` | `sanook persona` (see [Persona](#persona)) | Who you are + how you want the agent to work |
+| **Persona profile** | `{brainPath}/Shared/User-Persona/persona.md` | `sanook persona` or `/persona` in REPL | Who you are + how you want the agent to work |
 | **Auto-memory** | `~/.sanook/memory/memory.json` | When the agent calls `remember`, or `sanook persona` (protected) | Structured facts (merge, rank, inject) |
 | **Session JSON** | `~/.sanook/sessions/*.json` | Every turn | `--continue` / `--resume` transcript |
 | **Search index** | `~/.sanook/search/` | `sanook index` (incremental) | BM25 / hybrid retrieval |
@@ -235,34 +235,34 @@ npm install -g sanook-cli   # or: npx sanook-cli
 <tr><td><b>Install script</b> · macOS / Linux / WSL</td><td>
 
 ```bash
-curl -fsSL https://sanook.ai/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/install.sh | bash
 ```
 
-</td><td>⏳ needs infra</td></tr>
+</td><td>✅ Ready</td></tr>
 <tr><td><b>Install script</b> · Windows PowerShell</td><td>
 
 ```powershell
-irm https://sanook.ai/install.ps1 | iex
+irm https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/install.ps1 | iex
 ```
 
-</td><td>⏳ needs infra</td></tr>
+</td><td>✅ Ready</td></tr>
 <tr><td><b>Homebrew</b> · macOS / Linux</td><td>
 
 ```bash
 brew tap Sir-chawakorn/tap && brew install sanook-cli
 ```
 
-</td><td>⏳ needs tap</td></tr>
+</td><td>✅ after tap</td></tr>
 <tr><td><b>WinGet</b> · Windows</td><td>
 
 ```powershell
 winget install Sanook.SanookCLI
 ```
 
-</td><td>⏳ needs manifest</td></tr>
+</td><td>⏳ needs release zip</td></tr>
 </table>
 
-Only **npm/npx** works today. The other channels are scaffolded (`scripts/install.{sh,ps1}`, `packaging/homebrew`, `packaging/winget`) and turn on after a one-time setup — see **[docs/INSTALL_INFRA.md](docs/INSTALL_INFRA.md)**. The Dashboard **Install** page shows the same commands with live copy buttons.
+**npm/npx** and **curl|bash / irm|iex** (via GitHub raw) work today. Homebrew needs a one-time [tap setup](docs/INSTALL_INFRA.md#2-homebrew-brew-install-sanook-cli) (`packaging/homebrew/sanook-cli.rb` is ready). WinGet needs a Windows release artifact — see [docs/INSTALL_INFRA.md](docs/INSTALL_INFRA.md). The Dashboard also serves install scripts at `http://127.0.0.1:9119/install.sh` when running locally.
 
 > ⚠️ **`'sanook' is not recognized` / command not found?** You installed it locally — `npm i sanook-cli` (without `-g`) drops it into the current folder, **not on your PATH**, so the `sanook` command isn't found. Fix: reinstall with `npm install -g sanook-cli`, or just run it via **`npx sanook`** (uses the local copy you already installed).
 > Run **`npx sanook doctor`** to auto-diagnose Node version / PATH / install state and print the exact fix for your OS (incl. a safe Windows PATH one-liner).
@@ -333,6 +333,7 @@ Teach the agent who you are once, and it carries that context into every session
 
 ```bash
 sanook persona                  # short questionnaire (A/B/C/D + free-text)
+# or /persona inside the REPL — pre-fills from existing profile
 ```
 
 A mix of multiple-choice and free-text questions. Answers are saved in two places, wired into the agent automatically:
@@ -340,7 +341,7 @@ A mix of multiple-choice and free-text questions. Answers are saved in two place
 - **Auto-memory** (`~/.sanook/memory/memory.json`) as **protected, owner-trust facts** — injected at the start of every run, so the agent immediately knows how to address you and how you want it to work.
 - **Second brain** (`{brainPath}/Shared/User-Persona/persona.md`) as a readable profile note you can edit by hand — written only when a vault exists.
 
-Re-run any time to update; the questionnaire pre-fills nothing sensitive, blanks are skipped, and the vault profile is rewritten in place. The brain wizard (`sanook brain init`) already seeds a lighter identity (name + AI name + autonomy); `sanook persona` is the deeper, standalone pass.
+Re-run any time to update; existing answers are **pre-filled** from `persona.md` and protected memory. Blanks are skipped, and the vault profile is rewritten in place. The brain wizard (`sanook brain init`) already seeds a lighter identity (name + AI name + autonomy); `sanook persona` is the deeper, standalone pass.
 
 ## Dashboard
 
@@ -356,6 +357,7 @@ sanook dashboard --port 8080
 | **Terminal** | A real web terminal — an **Agent console** (the Sanook REPL, streamed over SSE with live tool activity + color-coded diffs) and an optional **Raw shell** (a system PTY via `xterm.js`, enabled when the `node-pty` + `ws` optional deps are installed). |
 | **Skills** | Built-in and installed skills, including the ones Sanook auto-authored from repeated tasks. |
 | **Memory** | Your structured auto-memory facts (incl. persona) with tier/trust. |
+| **Persona** | Your saved persona profile (`sanook persona` / `/persona`) — view answers and profile path. |
 | **Usage** | Token/cost ledger, daily/weekly/monthly. |
 | **Self-improve** | The task ledger — what's repeating and which skills were created. |
 | **Install** | The multi-platform install commands (see [Quickstart](#quickstart)), with copy buttons. |

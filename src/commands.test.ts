@@ -108,6 +108,10 @@ describe('parseCommand', () => {
     expect(r.modelChange).toBeUndefined();
     expect(r.message).toContain('model spec ไม่ครบ');
   });
+  it('/persona → opens persona wizard overlay', () => {
+    expect(parseCommand('/persona', ctx)).toMatchObject({ handled: true, action: 'personaSetup' });
+  });
+
   it('/personality → list/set/clear personality overlay', () => {
     expect(parseCommand('/personality', ctx).message).toContain('concise');
     expect(parseCommand('/personality concise', ctx)).toMatchObject({

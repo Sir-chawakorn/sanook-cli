@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PERSONA_QUESTIONS, PERSONA_OTHER, personaFacts, renderPersonaProfile, type PersonaAnswers } from './persona.js';
+import { PERSONA_QUESTIONS, PERSONA_OTHER, personaFacts, renderPersonaProfile, parsePersonaProfileMarkdown, personaAnswersFromFacts, type PersonaAnswers } from './persona.js';
 
 describe('persona questionnaire', () => {
   it('has unique question ids and well-formed select options', () => {
@@ -61,14 +61,32 @@ describe('renderPersonaProfile', () => {
     expect(md).toContain('created: 2026-06-21');
     expect(md).toContain('# Persona');
     expect(md).toContain('| ชื่อ / เรียกว่า | ชวกร |');
-    // unanswered questions render an em dash, not blank
     expect(md).toContain('| —');
-    // a select value renders its human label, not the raw value
     expect(md).toContain('ไทย + ศัพท์เทคนิคอังกฤษ');
   });
 
   it('escapes pipe characters so the table is not broken', () => {
     const md = renderPersonaProfile({ stack: 'a|b|c' }, '2026-06-21');
     expect(md).toContain('a\\|b\\|c');
+  });
+
+  it('round-trips through parsePersonaProfileMarkdown', () => {
+    const answers = { ownerName: 'ชวกร', language: 'ไทย + tech-en', autonomy: 'ask-on-risk' };
+    const md = renderPersonaProfile(answers, '2026-06-21');
+    const parsed = parsePersonaProfileMarkdown(md);
+    expect(parsed.ownerName).toBe('ชวกร');
+    expect(parsed.language).toBe('ไทย + tech-en');
+    expect(parsed.autonomy).toBe('ask-on-risk');
+  });
+});
+
+describe('personaAnswersFromFacts', () => {
+  it('extracts owner and language from protected facts', () => {
+    const parsed = personaAnswersFromFacts([
+      'เจ้าของชื่อ ชวกร — เรียกเจ้าของด้วยชื่อนี้',
+      'ภาษาที่เจ้าของต้องการให้ตอบ: ไทย + tech-en',
+    ]);
+    expect(parsed.ownerName).toBe('ชวกร');
+    expect(parsed.language).toBe('ไทย + tech-en');
   });
 });

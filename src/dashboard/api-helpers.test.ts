@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { dashboardInstall } from './api-helpers.js';
 import { shellStatus } from './terminal.js';
+import { installScriptUrl } from '../install-info.js';
 
 describe('dashboardInstall', () => {
   it('returns the package name and npm as the ready/recommended method', () => {
@@ -12,14 +13,26 @@ describe('dashboardInstall', () => {
     expect(npm?.commands.some((c) => c.cmd.includes('npm install -g sanook-cli'))).toBe(true);
   });
 
-  it('lists curl / homebrew / winget as not-yet-ready with infra notes', () => {
+  it('lists curl and homebrew as ready with GitHub raw / tap commands', () => {
     const { methods } = dashboardInstall();
-    for (const id of ['curl', 'homebrew', 'winget']) {
-      const m = methods.find((x) => x.id === id);
-      expect(m, id).toBeTruthy();
-      expect(m?.ready).toBe(false);
-      expect(m?.note).toBeTruthy();
-    }
+    const curl = methods.find((m) => m.id === 'curl');
+    expect(curl?.ready).toBe(true);
+    expect(curl?.commands.some((c) => c.cmd.includes('raw.githubusercontent.com'))).toBe(true);
+    const brew = methods.find((m) => m.id === 'homebrew');
+    expect(brew?.ready).toBe(true);
+    expect(brew?.commands.some((c) => c.cmd.includes('brew tap'))).toBe(true);
+  });
+
+  it('lists winget as not-yet-ready', () => {
+    const winget = dashboardInstall().methods.find((m) => m.id === 'winget');
+    expect(winget?.ready).toBe(false);
+  });
+});
+
+describe('installScriptUrl', () => {
+  it('points install scripts at GitHub raw by default', () => {
+    expect(installScriptUrl('install.sh')).toContain('raw.githubusercontent.com/Sir-chawakorn/sanook-cli');
+    expect(installScriptUrl('install.ps1', true)).toContain('sanook.ai/install.ps1');
   });
 });
 
@@ -27,7 +40,6 @@ describe('shellStatus', () => {
   it('reports availability based on optional deps (node-pty/ws)', async () => {
     const status = await shellStatus();
     expect(typeof status.available).toBe('boolean');
-    // node-pty is an optional dep not installed in CI → expect a helpful reason when unavailable
     if (!status.available) expect(status.reason).toMatch(/node-pty|ws/);
   });
 });

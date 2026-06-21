@@ -196,29 +196,28 @@ export function startPersonaSetup(): Promise<void> {
   requireInteractiveTTY();
   return new Promise((resolve) => {
     let unmount: () => void = () => {};
-    const onComplete = (answers: PersonaAnswers): void => {
-      void (async () => {
-        const { personaFacts } = await import('../persona.js');
-        const { seedPersonaFacts, writePersonaProfile, getBrainPath } = await import('../memory.js');
-        const facts = personaFacts(answers);
-        const written = await seedPersonaFacts(facts).catch(() => 0);
-        const brain = await getBrainPath().catch(() => undefined);
-        const vaultWritten = brain ? await writePersonaProfile(brain, answers).catch(() => false) : false;
-        unmount();
-        const memLine =
-          written > 0
-            ? `   จำเข้า memory แล้ว ${written} ข้อ (protected — agent อ่านทุก session)`
-            : `   ไม่มีข้อมูลใหม่ที่ต้องจำ (ข้ามหมด/ตรงกับของเดิม)`;
-        const vaultLine = vaultWritten
-          ? `\n   เขียนโปรไฟล์ลง vault → ${brain}/Shared/User-Persona/persona.md`
-          : brain
-            ? `\n   ⚠ ข้ามการเขียนโปรไฟล์ลง vault (ไม่พบโฟลเดอร์ Shared/User-Persona — รัน \`${BRAND.cliName} brain init\` เพื่อ scaffold ใหม่)`
-            : `\n   (ยังไม่มี second-brain — รัน \`${BRAND.cliName} brain init\` เพื่อเก็บโปรไฟล์ลง vault ด้วย)`;
-        process.stdout.write(`\n✅ บันทึก Persona เรียบร้อย\n${memLine}${vaultLine}\n`);
-        resolve();
-      })();
-    };
-    const instance = render(<PersonaWizard onComplete={onComplete} />);
-    unmount = instance.unmount;
+    void (async () => {
+      const { loadPersonaAnswers, persistPersonaAnswers } = await import('../memory.js');
+      const initialAnswers = await loadPersonaAnswers().catch(() => ({}));
+      const onComplete = (answers: PersonaAnswers): void => {
+        void (async () => {
+          const { memoryWritten, vaultWritten, brainPath } = await persistPersonaAnswers(answers);
+          unmount();
+          const memLine =
+            memoryWritten > 0
+              ? `   จำเข้า memory แล้ว ${memoryWritten} ข้อ (protected — agent อ่านทุก session)`
+              : `   ไม่มีข้อมูลใหม่ที่ต้องจำ (ข้ามหมด/ตรงกับของเดิม)`;
+          const vaultLine = vaultWritten
+            ? `\n   เขียนโปรไฟล์ลง vault → ${brainPath}/Shared/User-Persona/persona.md`
+            : brainPath
+              ? `\n   ⚠ ข้ามการเขียนโปรไฟล์ลง vault (ไม่พบโฟลเดอร์ Shared/User-Persona — รัน \`${BRAND.cliName} brain init\` เพื่อ scaffold ใหม่)`
+              : `\n   (ยังไม่มี second-brain — รัน \`${BRAND.cliName} brain init\` เพื่อเก็บโปรไฟล์ลง vault ด้วย)`;
+          process.stdout.write(`\n✅ บันทึก Persona เรียบร้อย\n${memLine}${vaultLine}\n`);
+          resolve();
+        })();
+      };
+      const instance = render(<PersonaWizard onComplete={onComplete} initialAnswers={initialAnswers} />);
+      unmount = instance.unmount;
+    })();
   });
 }

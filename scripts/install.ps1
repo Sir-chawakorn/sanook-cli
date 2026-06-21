@@ -1,5 +1,8 @@
 # Sanook CLI installer — Windows PowerShell
-# Usage: irm https://sanook.ai/install.ps1 | iex
+# Usage (GitHub raw — works today):
+#   irm https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/install.ps1 | iex
+# Optional short URL when hosted:
+#   irm https://sanook.ai/install.ps1 | iex
 # Honored env vars: $env:SANOOK_PKG, $env:SANOOK_VERSION
 $ErrorActionPreference = 'Stop'
 

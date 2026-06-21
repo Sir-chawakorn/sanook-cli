@@ -10,6 +10,7 @@ const I18N = {
       sessions: 'Sessions',
       skills: 'Skills',
       memory: 'Memory',
+      persona: 'Persona',
       usage: 'Usage',
       selfimprove: 'Self-improve',
       files: 'Files',
@@ -34,6 +35,7 @@ const I18N = {
     },
     skills: { title: 'Skills', empty: 'No skills yet — Sanook will auto-create them from repeated tasks.', auto: 'auto', when: 'When to use' },
     memory: { title: 'Memory', empty: 'No remembered facts yet. Ask Sanook to remember something.', brain: 'Also synced to second brain', importance: 'importance' },
+    persona: { title: 'Persona', empty: 'No persona yet — run sanook persona in your terminal.', edit: 'Update in terminal', profile: 'Profile path', rows: 'Your answers' },
     usage: { title: 'Usage & cost', empty: 'No usage recorded yet.', turns: 'turns', tokens: 'tokens', cost: 'cost', daily: 'Daily breakdown' },
     selfimprove: { title: 'Self-improvement', empty: 'No recurring tasks detected yet.', enabled: 'enabled', disabled: 'disabled', threshold: 'threshold', repeats: 'repeats', skill: 'skill' },
     install: { title: 'Install Sanook CLI', ready: 'Ready', soon: 'Needs infra' },
@@ -70,6 +72,7 @@ const I18N = {
       sessions: 'Sessions',
       skills: 'Skills',
       memory: 'Memory',
+      persona: 'Persona',
       usage: 'การใช้งาน',
       selfimprove: 'เรียนรู้เอง',
       files: 'Files',
@@ -94,6 +97,7 @@ const I18N = {
     },
     skills: { title: 'Skills', empty: 'ยังไม่มี skill — Sanook จะสร้างให้อัตโนมัติจากงานที่ทำซ้ำ', auto: 'อัตโนมัติ', when: 'ใช้เมื่อ' },
     memory: { title: 'ความจำ', empty: 'ยังไม่มีสิ่งที่จำไว้ — ลองสั่งให้ Sanook จำอะไรดู', brain: 'sync เข้า second brain ด้วย', importance: 'ความสำคัญ' },
+    persona: { title: 'Persona — โปรไฟล์เจ้าของ', empty: 'ยังไม่มี persona — รัน sanook persona ใน terminal', edit: 'อัปเดตใน terminal', profile: 'ไฟล์โปรไฟล์', rows: 'คำตอบของคุณ' },
     usage: { title: 'การใช้งาน & ค่าใช้จ่าย', empty: 'ยังไม่มีข้อมูลการใช้งาน', turns: 'turn', tokens: 'tokens', cost: 'ค่าใช้จ่าย', daily: 'แยกตามวัน' },
     selfimprove: { title: 'การเรียนรู้เอง (Self-improvement)', empty: 'ยังไม่เจองานที่ทำซ้ำ', enabled: 'เปิด', disabled: 'ปิด', threshold: 'เกณฑ์', repeats: 'ครั้ง', skill: 'skill' },
     install: { title: 'ติดตั้ง Sanook CLI', ready: 'พร้อมใช้', soon: 'ต้องตั้ง infra' },
@@ -126,6 +130,7 @@ const routes = [
   { id: 'sessions', path: '#/sessions' },
   { id: 'skills', path: '#/skills' },
   { id: 'memory', path: '#/memory' },
+  { id: 'persona', path: '#/persona' },
   { id: 'usage', path: '#/usage' },
   { id: 'selfimprove', path: '#/selfimprove' },
   { id: 'files', path: '#/files' },
@@ -330,6 +335,26 @@ async function renderMemory(page) {
     ${brainPath ? `<p class="hint">${t('memory.brain')}: ${escapeHtml(brainPath)}</p>` : ''}
     <table class="table"><thead><tr><th>fact</th><th>type</th><th>trust</th><th>${t('memory.importance')}</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
+}
+
+async function renderPersona(page) {
+  const data = await api('/api/persona');
+  if (!data.hasProfile) {
+    page.innerHTML = `<div class="card"><h2>🪪 ${t('persona.title')}</h2>
+      <p class="hint">${t('persona.empty')}</p>
+      <p style="margin-top:12px;"><code>${escapeHtml(data.cliCommand)}</code></p>
+      <p class="hint" style="margin-top:8px;">หรือพิมพ์ <code>/persona</code> ใน REPL</p></div>`;
+    return;
+  }
+  const rows = data.rows
+    .filter((r) => r.value)
+    .map((r) => `<tr><td>${escapeHtml(r.label)}</td><td>${escapeHtml(r.display)}</td></tr>`)
+    .join('');
+  page.innerHTML = `<div class="card"><h2>🪪 ${t('persona.title')}</h2>
+    ${data.profilePath ? `<p class="hint">${t('persona.profile')}: ${escapeHtml(data.profilePath)}</p>` : ''}
+    <p class="hint">${t('persona.edit')}: <code>${escapeHtml(data.cliCommand)}</code> · <code>/persona</code></p>
+    <h3 style="margin:16px 0 8px;">${t('persona.rows')}</h3>
+    <table class="table"><thead><tr><th>หัวข้อ</th><th>ค่า</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 async function renderUsage(page) {
@@ -606,6 +631,7 @@ async function renderRoute() {
       sessions: renderSessions,
       skills: renderSkills,
       memory: renderMemory,
+      persona: renderPersona,
       usage: renderUsage,
       selfimprove: renderSelfimprove,
       files: renderFiles,

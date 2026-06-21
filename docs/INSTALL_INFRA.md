@@ -51,11 +51,19 @@ They check Node ≥ 22 then run `npm install -g sanook-cli`. To serve them at a 
    irm https://sanook.ai/install.ps1 | iex
    ```
 
-### Option B — GitHub raw (no domain needed)
+### Option B — GitHub raw (**works today, no domain needed**)
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/install.sh | bash
+irm https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/install.ps1 | iex
 ```
-If you use Option B, update `INSTALL_DOMAIN` in `src/dashboard/api-helpers.ts` so the Dashboard shows the matching URL.
+The Dashboard Install page and `src/install-info.ts` use these URLs by default.
+
+### Option C — Dashboard local mirror
+When `sanook dashboard` is running, scripts are also at:
+- `http://127.0.0.1:9119/install.sh`
+- `http://127.0.0.1:9119/install.ps1`
+
+If you use Option A, set `INSTALL_DOMAIN` in `src/install-info.ts` so the Dashboard shows the matching short URL.
 
 ---
 
@@ -66,7 +74,7 @@ Formula template: `packaging/homebrew/sanook-cli.rb`.
 1. Create a tap repo named **`homebrew-tap`** under your account:
    `github.com/Sir-chawakorn/homebrew-tap`
 2. Copy the formula into `Formula/sanook-cli.rb` in that repo.
-3. Fill in the tarball `url` + `sha256` for the published version:
+3. Fill in the tarball `url` + `sha256` for the published version (or run `node scripts/sync-packaging.mjs`):
    ```bash
    V=0.5.7
    curl -sL "https://registry.npmjs.org/sanook-cli/-/sanook-cli-$V.tgz" -o pkg.tgz

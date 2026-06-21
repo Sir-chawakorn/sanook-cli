@@ -56,6 +56,7 @@ const BUILTIN_SLASH_COMPLETIONS: CompletionItem[] = [
   { text: '/cost', display: '/cost', meta: 'last usage/cost' },
   { text: '/usage', display: '/usage', meta: 'last usage/cost' },
   { text: '/insights', display: '/insights', meta: 'local usage insights' },
+  { text: '/persona', display: '/persona', meta: 'set owner persona' },
   { text: '/personality', display: '/personality', meta: 'set response style' },
   { text: '/compact', display: '/compact', meta: 'compress context' },
   { text: '/compress', display: '/compress', meta: 'compress context' },

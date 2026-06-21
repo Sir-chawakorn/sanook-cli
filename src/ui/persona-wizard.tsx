@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import { TextInput, Select } from '@inkjs/ui';
 import { PERSONA_QUESTIONS, PERSONA_OTHER, type PersonaAnswers } from '../persona.js';
@@ -9,11 +9,18 @@ import { PERSONA_QUESTIONS, PERSONA_OTHER, type PersonaAnswers } from '../person
  * free-text follow-up for that same question. Esc goes back one step. Calls onComplete with
  * the full answers map when finished.
  */
-export function PersonaWizard({ onComplete }: { onComplete: (a: PersonaAnswers) => void }) {
+export function PersonaWizard({
+  onComplete,
+  initialAnswers = {},
+}: {
+  onComplete: (a: PersonaAnswers) => void;
+  initialAnswers?: PersonaAnswers;
+}) {
   const total = PERSONA_QUESTIONS.length;
   const [index, setIndex] = useState(0);
-  const [answers, setAnswers] = useState<PersonaAnswers>({});
+  const [answers, setAnswers] = useState<PersonaAnswers>(initialAnswers);
   const [otherMode, setOtherMode] = useState(false);
+  const prefilled = Object.keys(initialAnswers).filter((k) => initialAnswers[k]?.trim()).length;
 
   const q = PERSONA_QUESTIONS[index];
 
@@ -64,6 +71,7 @@ export function PersonaWizard({ onComplete }: { onComplete: (a: PersonaAnswers) 
       </Text>
       <Text color="gray">
         ข้อ {index + 1}/{total} · Esc = ย้อนกลับ · Ctrl+C = ออก
+        {prefilled ? ` · โหลดค่าเดิม ${prefilled} ข้อ` : ''}
       </Text>
 
       <Box flexDirection="column">
@@ -93,5 +101,43 @@ export function PersonaWizard({ onComplete }: { onComplete: (a: PersonaAnswers) 
         )}
       </Box>
     </Box>
+  );
+}
+
+/** REPL overlay — `/persona` loads existing answers then runs the same wizard inline */
+export function PersonaOverlay({ onDone }: { onDone: (message: string) => void }) {
+  const [initialAnswers, setInitialAnswers] = useState<PersonaAnswers | null>(null);
+
+  useEffect(() => {
+    void import('../memory.js')
+      .then((m) => m.loadPersonaAnswers())
+      .then(setInitialAnswers)
+      .catch(() => setInitialAnswers({}));
+  }, []);
+
+  if (!initialAnswers) {
+    return (
+      <Box marginY={1}>
+        <Text color="gray">กำลังโหลด persona…</Text>
+      </Box>
+    );
+  }
+
+  return (
+    <PersonaWizard
+      initialAnswers={initialAnswers}
+      onComplete={(answers) => {
+        void (async () => {
+          const { persistPersonaAnswers } = await import('../memory.js');
+          const { memoryWritten, vaultWritten, brainPath } = await persistPersonaAnswers(answers);
+          const memLine =
+            memoryWritten > 0
+              ? `จำเข้า memory ${memoryWritten} ข้อ`
+              : 'ไม่มีข้อมูลใหม่ (ตรงกับของเดิม)';
+          const vaultLine = vaultWritten ? ` · vault: ${brainPath}/Shared/User-Persona/persona.md` : '';
+          onDone(`✅ บันทึก Persona — ${memLine}${vaultLine}`);
+        })();
+      }}
+    />
   );
 }

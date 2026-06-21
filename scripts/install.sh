@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Sanook CLI installer — macOS / Linux / WSL
-# Usage: curl -fsSL https://sanook.ai/install.sh | bash
+# Usage (GitHub raw — works today):
+#   curl -fsSL https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/install.sh | bash
+# Optional short URL when hosted:
+#   curl -fsSL https://sanook.ai/install.sh | bash
 # Honored env vars:
 #   SANOOK_PKG      npm package name (default: sanook-cli)
 #   SANOOK_VERSION  version/tag to install (default: latest)

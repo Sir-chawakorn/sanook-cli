@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.5.8
+
+### Self-maintaining memory + reliability & security hardening
+
+**New: automatic memory maintenance** (default on; `sanook config set autoMaintain off` / `SANOOK_DISABLE_AUTO_MAINTAIN=1` to disable)
+
+- **Auto-consolidate** — on REPL startup (at most once a week) the second brain consolidates itself: dedup memory, archive stale notes by importance decay (reversible — never deletes), refresh the index. Background, non-blocking.
+- **Auto-distill** — on session exit (and each headless turn) durable facts from the conversation are distilled into the compounding memory store so the self-retrieving brain surfaces them next time (previously opt-in via `SANOOK_AUTO_DISTILL`).
+- Status shown in `sanook config`.
+
+**Vault data-integrity fixes** (second brain)
+
+- Worklog/transcript/index writers no longer truncate history when pasted content contains an `up::` line — the footer regex now matches only the trailing footer.
+- `$`-sequences in prompts/answers/titles/paths no longer corrupt vault notes (String.replace replacement-pattern injection) — fixed across every note/index writer.
+- Worklog writes are serialized (lost-update under back-to-back turns); chat-transcript headings use the real per-turn time (were frozen to session start, and mis-filed past midnight).
+
+**Persona** (`sanook persona`)
+
+- `sanook persona <bad-arg>` errors with an unknown-subcommand message instead of falling through to a paid LLM call.
+- Re-running with identical answers no longer claims facts were newly saved; Esc-back no longer overwrites a prior answer (including a custom "อื่นๆ" value); warns when the vault profile note can't be written.
+
+**REPL / terminal**
+
+- Detailed live activity: the busy status line shows the friendly action ("📖 อ่านไฟล์ …", "`$ npm test`") instead of the raw tool name; expanded tool-trail height is bounded so big diffs can't push the prompt off-screen; scrollback renders past turns compact.
+
+**Dashboard**
+
+- Security: fixed directory traversal in the file API (path confinement now uses a real path boundary, not a string prefix).
+- Web terminal: the agent run is cancelled when the browser disconnects; the raw-shell websocket is guarded against uncaught-error crashes.
+
+**Installer**
+
+- `install.ps1` checks the install exit code — no more false "Sanook CLI installed" banner when `npm install -g` fails.
+
 ## 0.5.7
 
 ### Local token usage ledger (ccusage-style)
