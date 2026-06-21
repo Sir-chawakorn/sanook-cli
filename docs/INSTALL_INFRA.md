@@ -63,54 +63,35 @@ When `sanook dashboard` is running, scripts are also at:
 - `http://127.0.0.1:9119/install.sh`
 - `http://127.0.0.1:9119/install.ps1`
 
-If you use Option A, set `INSTALL_DOMAIN` in `src/install-info.ts` so the Dashboard shows the matching short URL.
-
 ---
 
 ## 2. Homebrew (`brew install sanook-cli`)
 
-Formula template: `packaging/homebrew/sanook-cli.rb`.
+**Status: live** — https://github.com/Sir-chawakorn/homebrew-tap
 
-1. Create a tap repo named **`homebrew-tap`** under your account:
-   `github.com/Sir-chawakorn/homebrew-tap`
-2. Copy the formula into `Formula/sanook-cli.rb` in that repo.
-3. Fill in the tarball `url` + `sha256` for the published version (or run `node scripts/sync-packaging.mjs`):
-   ```bash
-   V=0.5.7
-   curl -sL "https://registry.npmjs.org/sanook-cli/-/sanook-cli-$V.tgz" -o pkg.tgz
-   shasum -a 256 pkg.tgz   # paste into the formula
-   ```
-4. Users install with:
-   ```bash
-   brew tap Sir-chawakorn/tap
-   brew install sanook-cli
-   ```
-5. Automate the bump per release with the `brew bump-formula-pr` workflow or a GitHub Action.
+```bash
+brew tap Sir-chawakorn/tap
+brew install sanook-cli
+```
+
+To bump on release: `bash scripts/publish-homebrew-tap.sh <version>` (or automatic via `.github/workflows/release.yml`).
+
+Formula template in this repo: `packaging/homebrew/sanook-cli.rb`.
 
 ---
 
 ## 3. WinGet (`winget install Sanook.SanookCLI`)
 
-Manifests template: `packaging/winget/` (version + installer + locale).
+**Status: PR open** — https://github.com/microsoft/winget-pkgs/pull/391114  
+**Release asset:** https://github.com/Sir-chawakorn/sanook-cli/releases/tag/v0.5.7 (`sanook-cli-win-x64.zip`)
 
-WinGet installs a **Windows artifact** (zip/exe/msi), not an npm package, so:
+After the PR merges:
+```powershell
+winget install Sanook.SanookCLI
+```
 
-1. Produce a self-contained Windows build and attach it to a GitHub Release, e.g.
-   a portable `sanook-cli-win-x64.zip` containing `sanook.exe`.
-   - Build the exe with a Node packager such as `@yao-pkg/pkg`:
-     ```bash
-     npx @yao-pkg/pkg dist/bin.js --targets node22-win-x64 --output sanook.exe
-     # zip it: Compress-Archive sanook.exe sanook-cli-win-x64.zip
-     ```
-2. Fill `InstallerUrl` + `InstallerSha256` in `Sanook.SanookCLI.installer.yaml`:
-   ```powershell
-   (Get-FileHash sanook-cli-win-x64.zip -Algorithm SHA256).Hash
-   ```
-3. Validate and submit to `microsoft/winget-pkgs`:
-   ```powershell
-   winget validate packaging/winget
-   # then open a PR to https://github.com/microsoft/winget-pkgs (or use wingetcreate)
-   ```
+Build locally: `npm run build && node scripts/build-win-portable.mjs`  
+Submit next version: `bash scripts/publish-winget-pr.sh <version>`
 
 ---
 
@@ -120,7 +101,30 @@ When you bump `package.json` version, also update:
 
 - `packaging/homebrew/sanook-cli.rb` → `url` + `sha256`
 - `packaging/winget/*.yaml` → `PackageVersion` + installer URL/hash
-- `src/dashboard/api-helpers.ts` → `INSTALL_DOMAIN` (only if it changed)
+- `scripts/publish-homebrew-tap.sh` + `scripts/publish-winget-pr.sh`
 
-A single release GitHub Action can: `npm publish`, build the Windows zip, attach release assets,
-compute hashes, and open the Homebrew/WinGet bump PRs automatically.
+Release workflow `.github/workflows/release.yml` on tag `v*`: npm publish → Windows zip → Homebrew tap bump.
+
+---
+
+## 5. `sanook.ai` short URLs (GitHub Pages)
+
+Static site lives in `packaging/sanook-ai/` (install scripts + landing page).
+
+1. **Enable Pages** (once): Repo → Settings → Pages → Source: **GitHub Actions**  
+   Or: `gh api repos/Sir-chawakorn/sanook-cli/pages -X POST -f build_type=workflow`
+2. Push to `main` — workflow `.github/workflows/pages.yml` deploys on change.
+3. **Custom domain** — `packaging/sanook-ai/CNAME` already contains `sanook.ai`.  
+   In Pages settings, set custom domain to `sanook.ai` and enable HTTPS.
+4. **DNS** at your registrar (choose one):
+   - **CNAME** `@` or `www` → `Sir-chawakorn.github.io` (if supported for apex, use ALIAS/ANAME)
+   - **A records** for apex `@` → GitHub Pages IPs: `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153`
+   - **CNAME** `www` → `Sir-chawakorn.github.io`
+
+After DNS propagates:
+```bash
+curl -fsSL https://sanook.ai/install.sh | bash
+irm https://sanook.ai/install.ps1 | iex
+```
+
+Until DNS is live, GitHub raw URLs work as fallbacks.

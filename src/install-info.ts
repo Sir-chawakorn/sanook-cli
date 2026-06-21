@@ -73,14 +73,14 @@ export function installMethods(): InstallMethod[] {
         { os: 'macOS / Linux', cmd: `brew tap ${INSTALL_REPO.split('/')[0]}/tap` },
         { os: 'macOS / Linux', cmd: `brew install ${INSTALL_PKG}` },
       ],
-      note: `Formula ใน packaging/homebrew/ — copy ไป homebrew-tap repo แล้ว brew tap (ดู docs/INSTALL_INFRA.md)`,
+      note: `Formula ใน homebrew-tap repo แล้ว — brew tap ${INSTALL_REPO.split('/')[0]}/tap && brew install ${INSTALL_PKG}`,
     },
     {
       id: 'winget',
       label: 'WinGet',
       ready: false,
       commands: [{ os: 'Windows', cmd: 'winget install Sanook.SanookCLI' }],
-      note: 'ต้อง build Windows zip + ส่ง manifest เข้า winget-pkgs ก่อน (scripts/build-win-portable.ps1)',
+      note: 'PR ส่งแล้วที่ microsoft/winget-pkgs — รอ merge แล้วใช้ได้ (GitHub Release v0.5.7 พร้อมแล้ว)',
     },
   ];
 }

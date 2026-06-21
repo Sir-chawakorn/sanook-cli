@@ -252,17 +252,17 @@ irm https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/inst
 brew tap Sir-chawakorn/tap && brew install sanook-cli
 ```
 
-</td><td>✅ after tap</td></tr>
+</td><td>✅ Ready</td></tr>
 <tr><td><b>WinGet</b> · Windows</td><td>
 
 ```powershell
 winget install Sanook.SanookCLI
 ```
 
-</td><td>⏳ needs release zip</td></tr>
+</td><td>⏳ PR pending</td></tr>
 </table>
 
-**npm/npx** and **curl|bash / irm|iex** (via GitHub raw) work today. Homebrew needs a one-time [tap setup](docs/INSTALL_INFRA.md#2-homebrew-brew-install-sanook-cli) (`packaging/homebrew/sanook-cli.rb` is ready). WinGet needs a Windows release artifact — see [docs/INSTALL_INFRA.md](docs/INSTALL_INFRA.md). The Dashboard also serves install scripts at `http://127.0.0.1:9119/install.sh` when running locally.
+**npm/npx**, **curl|bash / irm|iex** (GitHub raw or optional [sanook.ai](https://sanook.ai)), and **Homebrew** work today — see [docs/INSTALL_INFRA.md](docs/INSTALL_INFRA.md). WinGet is waiting on [microsoft/winget-pkgs#391114](https://github.com/microsoft/winget-pkgs/pull/391114). The Dashboard also serves install scripts at `http://127.0.0.1:9119/install.sh` when running locally.
 
 > ⚠️ **`'sanook' is not recognized` / command not found?** You installed it locally — `npm i sanook-cli` (without `-g`) drops it into the current folder, **not on your PATH**, so the `sanook` command isn't found. Fix: reinstall with `npm install -g sanook-cli`, or just run it via **`npx sanook`** (uses the local copy you already installed).
 > Run **`npx sanook doctor`** to auto-diagnose Node version / PATH / install state and print the exact fix for your OS (incl. a safe Windows PATH one-liner).

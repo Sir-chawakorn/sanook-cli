@@ -12,6 +12,6 @@ NestedInstallerFiles:
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/Sir-chawakorn/sanook-cli/releases/download/v0.5.7/sanook-cli-win-x64.zip
-    InstallerSha256: REPLACE_WITH_SHA256_OF_THE_ZIP
+    InstallerSha256: f072e53f675944dec6cc4945459578f6103ee18b3439d6a502fe6a6982a3fe30
 ManifestType: installer
 ManifestVersion: 1.6.0
