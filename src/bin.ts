@@ -25,7 +25,7 @@ import { homedir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { chmod, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createInterface } from 'node:readline/promises';
-import { appHomePath, BRAND, BRAND_ENV, envFlag } from './brand.js';
+import { appHomePath, BRAND, BRAND_ENV, defaultBrainPath, envFlag } from './brand.js';
 import type { UpdateCache } from './update.js';
 import {
   hasContinueAnyRequest,
@@ -3645,7 +3645,7 @@ async function runBrain(args: string[]): Promise<void> {
   const { scaffoldBrain, BRAIN_DEFAULTS, expandHome, wireBrainMcp } = await import('./brain.js');
   // resolve to absolute before persisting — getBrainPath() is later read from an arbitrary cwd,
   // so a relative path (e.g. "./vault") would resolve differently per run
-  const target = resolve(expandHome(pathArg ?? join(homedir(), 'Documents', BRAIN_DEFAULTS.vaultName)));
+  const target = resolve(expandHome(pathArg ?? defaultBrainPath()));
   const today = new Date().toISOString().slice(0, 10);
   try {
     const res = await scaffoldBrain(target, { ...BRAIN_DEFAULTS, today });

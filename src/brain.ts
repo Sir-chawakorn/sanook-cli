@@ -2,7 +2,7 @@ import { chmod, readFile, writeFile, mkdir, readdir, stat } from 'node:fs/promis
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { appHomePath } from './brand.js';
+import { appHomePath, BRAND } from './brand.js';
 
 /** ขยาย ~ ขึ้นต้น path เป็น home dir */
 export function expandHome(p: string): string {
@@ -32,7 +32,7 @@ export const BRAIN_DEFAULTS: Omit<BrainConfig, 'today'> = {
   aiPronoun: 'เรา',
   language: 'ไทย + tech-en',
   tone: 'กระชับ ตรงประเด็น สุภาพ',
-  vaultName: 'Second Brain',
+  vaultName: BRAND.defaultVaultName,
   autonomy: 'ask-on-risk',
 };
 

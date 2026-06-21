@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -6,6 +7,8 @@ export const BRAND = {
   agentName: 'Sanook',
   cliName: 'sanook',
   configDirName: '.sanook',
+  // ชื่อโฟลเดอร์ default ของ second-brain vault — single source of truth สำหรับ defaultBrainPath()
+  defaultVaultName: 'Second Brain',
   memoryFileName: 'SANOOK.md',
   modelEnvVar: 'SANOOK_MODEL',
   gatewayServiceName: 'sanook-gateway',
@@ -43,6 +46,24 @@ export function appProjectPath(cwd: string, ...parts: string[]): string {
 
 export function appTempPath(name: string): string {
   return join(tmpdir(), name);
+}
+
+/**
+ * ตำแหน่ง default ของ second-brain vault — cross-platform ผ่าน homedir():
+ *   macOS/Linux: ~/Documents/Second Brain · Windows: %USERPROFILE%\Documents\Second Brain
+ * ใช้เป็นทั้ง default ตอน setup และ fallback ตอน config ยังไม่ตั้ง brainPath (ดู getBrainPath / loadConfig)
+ */
+export function defaultBrainPath(): string {
+  return join(homedir(), 'Documents', BRAND.defaultVaultName);
+}
+
+/** true only when `p` exists and is a directory; missing/inaccessible paths are treated as false. */
+export async function pathIsDir(p: string): Promise<boolean> {
+  try {
+    return (await stat(p)).isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 export function envFlag(name: string): boolean {

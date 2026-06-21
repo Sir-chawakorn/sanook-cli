@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
-import { appHomePath, appProjectPath, BRAND } from './brand.js';
+import { appHomePath, appProjectPath, BRAND, defaultBrainPath, pathIsDir } from './brand.js';
 import { projectRoot, projectTrustStatus } from './trust.js';
 import { registerPricing, type Pricing } from './cost.js';
 import { migrateDeprecatedCodexModel } from './providers/codex.js';
@@ -209,6 +209,12 @@ export async function loadConfig(
 
   const merged = { ...global, ...project, ...envConfig, ...cleanOverrides };
   const config = parseConfigGraceful(merged);
+  // ไม่ได้ตั้ง brainPath ที่ชั้นไหนเลย → auto-link Second Brain default ถ้าโฟลเดอร์มีอยู่จริง
+  // (virtual เท่านั้น — ไม่ persist ลง disk; saveBrainPath/saveGlobalConfig อ่าน raw file ไม่ใช่ค่านี้)
+  if (!config.brainPath?.trim()) {
+    const fallback = defaultBrainPath();
+    if (await pathIsDir(fallback)) config.brainPath = fallback;
+  }
   const migratedModel = migrateDeprecatedCodexModel(config.model);
   if (migratedModel !== config.model) {
     config.model = migratedModel;

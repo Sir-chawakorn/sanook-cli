@@ -2,7 +2,7 @@ import { readFile, writeFile, stat } from 'node:fs/promises';
 import { join, dirname, resolve } from 'node:path';
 import { buildContextPackBlock, listContextPacks, readContextPackExcerpt, selectContextPack } from './context-pack.js';
 import { buildProjectContextBlock, resolveVaultProject } from './project-registry.js';
-import { appHomePath, BRAND, brainTranscriptEnvForced, persistenceEnabled, worklogEnabled } from './brand.js';
+import { appHomePath, BRAND, brainTranscriptEnvForced, defaultBrainPath, pathIsDir, persistenceEnabled, worklogEnabled } from './brand.js';
 import { redactKey } from './providers/keys.js';
 import { neutralizeBlockTags } from './prompt-safety.js';
 import { loadStore, saveStore, mergeFact, maybeConsolidate, consolidate, renderPromptBlock, activeFacts, type NoteType, type Incoming } from './memory-store.js';
@@ -309,16 +309,26 @@ async function readInboxPart(brainPath: string, relPath: string, maxChars: numbe
   }
 }
 
-/** path ของ second-brain vault จาก config (undefined = ไม่ได้ตั้ง) */
+/**
+ * path ของ second-brain vault:
+ *  1) config.brainPath ถ้าตั้งไว้ (ชนะเสมอ)
+ *  2) ไม่ได้ตั้ง → auto-link Second Brain default ({@link defaultBrainPath}) ถ้าโฟลเดอร์มีอยู่จริง
+ *     → `sanook` ลิงก์ vault ที่ scaffold ไว้ได้เองทุกเครื่อง (Mac/Windows) โดยไม่ต้อง config มือ
+ *  3) ไม่มีทั้งคู่ → undefined (ยังไม่ได้ตั้ง brain)
+ */
 export async function getBrainPath(): Promise<string | undefined> {
+  let configured: string | undefined;
   try {
     const cfg = JSON.parse(await readFile(appHomePath('config.json'), 'utf8')) as {
       brainPath?: string;
     };
-    return cfg.brainPath;
+    configured = cfg.brainPath?.trim() || undefined;
   } catch {
-    return undefined;
+    /* ยังไม่มี config — ตกไป fallback */
   }
+  if (configured) return configured;
+  const fallback = defaultBrainPath();
+  return (await pathIsDir(fallback)) ? fallback : undefined;
 }
 
 /**

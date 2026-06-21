@@ -13,6 +13,7 @@ describe('initProject', () => {
     await mkdir(join(home, '.sanook'), { recursive: true });
     await writeFile(join(project, 'package.json'), '{}');
     vi.stubEnv('HOME', home);
+    vi.stubEnv('USERPROFILE', home);
   });
 
   afterEach(async () => {
@@ -59,6 +60,27 @@ describe('initProject', () => {
     const result = await initProject({ cwd: project });
 
     expect(result.hints.some((h) => h.includes('brain init'))).toBe(false);
+    expect(result.hints.some((h) => h.includes('mcp preset dev'))).toBe(true);
+  });
+
+  it('omits brain init hint when the default Second Brain vault exists', async () => {
+    await mkdir(join(home, 'Documents', 'Second Brain'), { recursive: true });
+
+    const { initProject } = await import('./project-init.js');
+    const result = await initProject({ cwd: project });
+
+    expect(result.hints.some((h) => h.includes('brain init'))).toBe(false);
+    expect(result.hints.some((h) => h.includes('mcp preset dev'))).toBe(true);
+  });
+
+  it('keeps the brain init hint when the default Second Brain path is not a directory', async () => {
+    await mkdir(join(home, 'Documents'), { recursive: true });
+    await writeFile(join(home, 'Documents', 'Second Brain'), 'not a vault');
+
+    const { initProject } = await import('./project-init.js');
+    const result = await initProject({ cwd: project });
+
+    expect(result.hints.some((h) => h.includes('brain init'))).toBe(true);
     expect(result.hints.some((h) => h.includes('mcp preset dev'))).toBe(true);
   });
 });

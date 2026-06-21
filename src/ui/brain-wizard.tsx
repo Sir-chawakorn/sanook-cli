@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { Box, Text } from 'ink';
 import { TextInput, Select } from '@inkjs/ui';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { BRAIN_DEFAULTS, type Autonomy } from '../brain.js';
+import { defaultBrainPath } from '../brand.js';
 
 export interface BrainAnswers {
   path: string;
@@ -17,7 +16,7 @@ export interface BrainAnswers {
 
 type Step = 'path' | 'owner' | 'ai' | 'autonomy';
 
-const DEFAULT_PATH = join(homedir(), 'Documents', BRAIN_DEFAULTS.vaultName);
+const DEFAULT_PATH = defaultBrainPath();
 
 /** standalone wizard: ถาม path + ตัวตน + autonomy แล้ว scaffold (sanook brain init) — Enter รับ default */
 export function BrainWizard({ onComplete }: { onComplete: (a: BrainAnswers) => void }) {

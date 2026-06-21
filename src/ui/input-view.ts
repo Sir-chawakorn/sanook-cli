@@ -4,19 +4,25 @@ import { clampCursorToGrapheme, graphemeBoundaries } from './useEditor.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Stable, Thai-safe rendering of the REPL input line.
-// Regression guards: repl-layout-guard.test.ts + input-view.test.ts (width + gap cursor).
+// Regression guards: repl-layout-guard.test.ts + input-view.test.ts (width + block cursor matrix).
 //
-// Two bugs this fixes (เทียบกับ CLI เจ้าอื่นที่ "นิ่ง"):
-//  1) block cursor on Thai text — splitting the line across multiple Ink <Text> nodes breaks
-//     grapheme shaping; inverse video on a middle segment paints over Thai base marks + vowels.
-//     Fix: one ANSI string for the whole line + bgCyan gap cell between clusters (never inverse on letters).
-//  2) the line bounced between 1 and 2 rows while typing — a wrapping <Text> grows the box
-//     vertically the moment content crosses the right edge, shoving the footer down on every
-//     keystroke. Fix: a fixed-width horizontal viewport (readline-style) so the input box is
-//     always exactly one row; long lines scroll left with ‹ / › markers instead of wrapping.
+// CURSOR MODEL — block cursor (highlight the cell the cursor is on), NOT a gap cell inserted between
+// clusters. This is the definitive fix for "the cursor hides a Thai character":
+//  • A gap cursor INSERTS a styled space between clusters. Placed immediately before a Thai pre-base
+//    vowel (เ แ โ ใ ไ, which render to the LEFT of their consonant) the vowel paints onto the inserted
+//    cell and looks swallowed ("ได้ไหม" → "ได้█หม"). Any inserted cell is overrun-able.
+//  • A block cursor only HIGHLIGHTS an existing grapheme cluster (or a trailing space at end-of-line).
+//    It never inserts and never removes a cell, so it is structurally impossible for it to hide,
+//    drop, or shift a character — every glyph is always painted, the one under the cursor just gets a
+//    background. This is what the terminal's own block cursor does, and what ink-text-input / readline
+//    do. We render the whole line as ONE ANSI string with bgCyan + black fg (NOT inverse, which can
+//    hide a mark whose colour matches, and NOT split <Text> nodes, which break grapheme shaping) —
+//    the two failure modes the earlier gap-cursor design was working around.
 //
-// Display width is measured with string-width (the same lib Ink wraps with), so Thai combining
-// marks count as 0 and the window math matches what the terminal actually paints.
+// The other fix kept from before: a fixed-width horizontal viewport (readline-style) so the input box
+// is always exactly one row; long lines scroll left with ‹ / › markers instead of wrapping. Display
+// width is measured with string-width (the same lib Ink wraps with) so Thai combining marks count as 0
+// and the window math matches what the terminal paints.
 // ────────────────────────────────────────────────────────────────────────────
 
 export const SCROLL_LEAD = '‹';
@@ -27,9 +33,10 @@ export interface InputViewport {
   lead: boolean;
   /** text left of the cursor that is within the visible window */
   before: string;
-  /** gap cursor cell (inverse space) — never overlays a letter */
+  /** the grapheme cluster UNDER the cursor (block-highlighted by the renderer), or a single space at
+   * end-of-line. Never an inserted gap — it is always an existing cell, so it can't hide a character. */
   at: string;
-  /** text right of the cursor that is within the visible window */
+  /** text right of the cursor that is within the visible window (excludes the `at` cluster) */
   after: string;
   /** show the › right-truncation marker (content scrolled off to the right) */
   tail: boolean;
@@ -74,24 +81,24 @@ export function inputViewport(value: string, cursor: number, width: number): Inp
   const graphemes = graphemesOf(value);
   const insertAt = cursorInsertGraphemeIndex(value, cursor);
 
-  type Unit = { text: string; width: number; isCursor: boolean };
-  const units: Unit[] = [];
-  for (let i = 0; i < insertAt; i += 1) {
-    units.push({ text: graphemes[i]!, width: cellWidth(graphemes[i]!), isCursor: false });
-  }
-  units.push({ text: ' ', width: 1, isCursor: true });
-  for (let i = insertAt; i < graphemes.length; i += 1) {
-    units.push({ text: graphemes[i]!, width: cellWidth(graphemes[i]!), isCursor: false });
-  }
+  // Block cursor: it sits ON the grapheme cluster to its right (`graphemes[insertAt]`), or on a trailing
+  // space cell at end-of-line. No synthetic cell is inserted, so the cursor can never overrun a Thai
+  // pre-base vowel or hide any character — it only flags an existing cell to highlight.
+  const atEol = insertAt >= graphemes.length;
+  const cursorText = atEol ? ' ' : graphemes[insertAt]!;
 
-  const cursorUnit = insertAt;
+  type Unit = { text: string; width: number; isCursor: boolean };
+  const units: Unit[] = graphemes.map((g, i) => ({ text: g, width: cellWidth(g), isCursor: i === insertAt }));
+  if (atEol) units.push({ text: ' ', width: 1, isCursor: true }); // trailing cursor cell at EOL
+
+  const cursorUnit = insertAt; // == units.length - 1 when atEol (trailing space pushed at this index)
   const totalWidth = units.reduce((sum, u) => sum + u.width, 0);
   if (totalWidth <= w) {
     return {
       lead: false,
       before: graphemes.slice(0, insertAt).join(''),
-      at: ' ',
-      after: graphemes.slice(insertAt).join(''),
+      at: cursorText,
+      after: atEol ? '' : graphemes.slice(insertAt + 1).join(''),
       tail: false,
     };
   }
@@ -125,55 +132,44 @@ export function inputViewport(value: string, cursor: number, width: number): Inp
   return {
     lead: start > 0,
     before: slice(start, cursorUnit),
-    at: ' ',
+    at: cursorText,
     after: slice(cursorUnit + 1, end),
     tail: end < units.length,
   };
 }
 
-/** Styled gap cursor cell — background highlight, not inverse video (safer for Thai terminals). */
+/** Styled block cursor: background highlight (NOT inverse video — which can hide a Thai mark whose
+ * colour matches the swapped background). Highlights the actual cluster under the cursor; empty → a
+ * single space (end-of-line cell), so there is always a visible cursor. */
+export function highlightCursor(text: string): string {
+  return chalk.bgCyan.black(text || ' ');
+}
+
+/** @deprecated end-of-line cursor cell — kept for callers/tests; use highlightCursor for the on-char block. */
 export function inputCursorCell(): string {
   return chalk.bgCyan.black(' ');
 }
 
-// Thai PRE-BASE (leading) vowels render to the LEFT of their consonant: เ แ โ ใ ไ (U+0E40–U+0E44).
-// A gap-cursor space placed immediately before one of these is visually overrun — the vowel paints onto
-// the cursor cell, so the letter looks like it vanished under the block (reported bug: "ได้ไหม" shown as
-// "ได้█หม", the ไ swallowed). When the cursor sits ON such a vowel, draw the cursor as a BLOCK on the
-// vowel itself (highlight it) instead of a gap before it — the vowel stays visible and the cursor is
-// unmistakably on it. This is the standard block-cursor treatment (ink-text-input / readline highlight
-// the cell under the cursor); we apply it only to the leading-vowel case and keep the gap cursor
-// elsewhere, where it deliberately avoids inverse-video over above/below combining marks.
-const THAI_LEADING_VOWEL_RE = /^[เ-ไ]/;
-
-/** before-text + cursor + after-text, with the leading-vowel-safe cursor rendering applied. */
-function renderCursorOverlay(before: string, after: string): string {
-  const graphemes = graphemesOf(after);
-  const head = graphemes[0];
-  if (head && THAI_LEADING_VOWEL_RE.test(head)) {
-    return `${before}${chalk.bgCyan.black(head)}${graphemes.slice(1).join('')}`;
-  }
-  return `${before}${inputCursorCell()}${after}`;
-}
-
 /**
- * Render the whole input line as one string so Thai clusters are shaped once (no split Text nodes).
- * The cursor is a single highlighted gap cell between clusters — or a block on a Thai leading vowel when
- * the cursor sits on one (so เ แ โ ใ ไ are never hidden under the gap cell).
+ * Render the whole input line as one ANSI string so Thai clusters are shaped once (no split Text nodes).
+ * The cursor is a BLOCK on the cluster under it (`vp.at`) — never an inserted gap — so เ แ โ ใ ไ and
+ * combining marks are always painted, just with a background where the cursor is.
  */
 export function formatInputLineDisplay(vp: InputViewport, opts?: { queueHint?: string }): string {
   const lead = vp.lead ? chalk.dim(SCROLL_LEAD) : '';
   const tail = vp.tail ? chalk.dim(SCROLL_TAIL) : '';
   const queue = opts?.queueHint ? chalk.dim(opts.queueHint) : '';
-  return `${lead}${renderCursorOverlay(vp.before, vp.after)}${tail}${queue}`;
+  return `${lead}${vp.before}${highlightCursor(vp.at)}${vp.after}${tail}${queue}`;
 }
 
-/** Multiline input: same single-string cursor treatment at the grapheme insert point. */
+/** Multiline input: same single-string block cursor at the grapheme insert point. */
 export function formatMultilineInputDisplay(value: string, cursor: number, opts?: { queueHint?: string }): string {
   const insertAt = cursorInsertGraphemeIndex(value, cursor);
   const graphemes = graphemesOf(value);
+  const atEol = insertAt >= graphemes.length;
   const before = graphemes.slice(0, insertAt).join('');
-  const after = graphemes.slice(insertAt).join('');
+  const at = atEol ? ' ' : graphemes[insertAt]!;
+  const after = atEol ? '' : graphemes.slice(insertAt + 1).join('');
   const queue = opts?.queueHint ? chalk.dim(opts.queueHint) : '';
-  return `${renderCursorOverlay(before, after)}${queue}`;
+  return `${before}${highlightCursor(at)}${after}${queue}`;
 }

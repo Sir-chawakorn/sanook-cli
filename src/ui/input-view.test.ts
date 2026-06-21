@@ -6,15 +6,17 @@ import {
   cursorInsertGraphemeIndex,
   formatInputLineDisplay,
   formatMultilineInputDisplay,
-  inputCursorCell,
+  highlightCursor,
   inputViewport,
   SCROLL_LEAD,
   SCROLL_TAIL,
 } from './input-view.js';
 
 function viewportDisplayWidth(vp: ReturnType<typeof inputViewport>): number {
-  return (vp.lead ? 1 : 0) + stringWidth(vp.before) + 1 + stringWidth(vp.after) + (vp.tail ? 1 : 0);
+  return (vp.lead ? 1 : 0) + stringWidth(vp.before) + stringWidth(vp.at) + stringWidth(vp.after) + (vp.tail ? 1 : 0);
 }
+
+const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, '');
 
 describe('graphemesOf — Thai grapheme clusters', () => {
   it('keeps base char + combining marks together', () => {
@@ -43,17 +45,17 @@ describe('cursorInsertGraphemeIndex — gap cursor position', () => {
   });
 });
 
-describe('inputViewport — Thai-safe single-line render (gap cursor)', () => {
-  it('cursor between clusters is an inverse space, not overlaid on a letter', () => {
+describe('inputViewport — Thai-safe single-line render (block cursor)', () => {
+  it('cursor between clusters sits ON the next cluster (block), not an inserted gap', () => {
     const vp = inputViewport('ที่นี่', 3, 80);
     expect(vp.before).toBe('ที่');
-    expect(vp.at).toBe(' ');
-    expect(vp.after).toBe('นี่');
+    expect(vp.at).toBe('นี่'); // block on the cluster to the right
+    expect(vp.after).toBe('');
     expect(vp.lead).toBe(false);
     expect(vp.tail).toBe(false);
   });
 
-  it('Thai greeting at end-of-line — cursor after text, not on last letter', () => {
+  it('Thai greeting at end-of-line — cursor on a trailing space cell', () => {
     const value = 'สวัสดี';
     const vp = inputViewport(value, value.length, 80);
     expect(vp.before).toBe(value);
@@ -68,13 +70,13 @@ describe('inputViewport — Thai-safe single-line render (gap cursor)', () => {
     expect(vp.after).toBe('');
   });
 
-  it('short line fits without truncation markers', () => {
+  it('cursor in mid-line blocks on the character under it', () => {
     const vp = inputViewport('hi', 1, 80);
     expect(vp.lead).toBe(false);
     expect(vp.tail).toBe(false);
-    expect(vp.at).toBe(' ');
     expect(vp.before).toBe('h');
-    expect(vp.after).toBe('i');
+    expect(vp.at).toBe('i'); // on the 'i', not a gap between
+    expect(vp.after).toBe('');
   });
 
   it('long line scrolls: cursor at end keeps tail visible with a ‹ lead marker', () => {
@@ -82,26 +84,26 @@ describe('inputViewport — Thai-safe single-line render (gap cursor)', () => {
     const vp = inputViewport(value, value.length, 10);
     expect(vp.lead).toBe(true);
     expect(vp.tail).toBe(false);
-    expect(vp.at).toBe(' ');
+    expect(vp.at).toBe(' '); // EOL trailing cursor
     expect(value.endsWith(vp.before)).toBe(true);
   });
 
-  it('long line scrolls: cursor at start keeps head visible with a › tail marker', () => {
+  it('long line scrolls: cursor at start blocks on the first char with a › tail marker', () => {
     const value = 'abcdefghijklmnopqrstuvwxyz';
     const vp = inputViewport(value, 0, 10);
     expect(vp.lead).toBe(false);
     expect(vp.tail).toBe(true);
-    expect(vp.at).toBe(' ');
     expect(vp.before).toBe('');
-    expect(value.startsWith(vp.after)).toBe(true);
+    expect(vp.at).toBe('a'); // cursor on first char
+    expect(value.startsWith(`a${vp.after}`)).toBe(true);
   });
 
-  it('cursor in the middle of a long line shows both markers', () => {
+  it('cursor in the middle of a long line blocks on that char with both markers', () => {
     const value = 'abcdefghijklmnopqrstuvwxyz';
     const vp = inputViewport(value, 13, 10);
     expect(vp.lead).toBe(true);
     expect(vp.tail).toBe(true);
-    expect(vp.at).toBe(' ');
+    expect(vp.at).toBe('n'); // value[13]
   });
 
   it('markers exist as exported constants', () => {
@@ -119,13 +121,13 @@ describe('inputViewport — Thai-safe single-line render (gap cursor)', () => {
   });
 
   it('renders cursor in one ANSI string (no split Ink nodes over Thai text)', () => {
-    const vp = inputViewport('สวัสดี', 3, 80);
+    const vp = inputViewport('สวัสดี', 3, 80); // cursor on the 3rd cluster 'ส'
+    expect(vp.before).toBe('สวั');
+    expect(vp.at).toBe('ส');
+    expect(vp.after).toBe('ดี');
     const line = formatInputLineDisplay(vp);
-    expect(line).toContain('สวั');
-    expect(line).toContain('สดี');
-    expect(line).toContain(inputCursorCell());
-    expect(line.indexOf(inputCursorCell())).toBeGreaterThan(line.indexOf('สวั'));
-    expect(line.indexOf('สดี')).toBeGreaterThan(line.indexOf(inputCursorCell()));
+    expect(stripAnsi(line)).toBe('สวัสดี'); // every glyph painted, order intact
+    expect(line).toContain(highlightCursor('ส')); // the cursor block is on 'ส'
   });
 
   it('visible slice never exceeds allotted width (prevents 1↔2 row input bounce)', () => {
@@ -142,31 +144,42 @@ describe('inputViewport — Thai-safe single-line render (gap cursor)', () => {
   });
 });
 
-const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, '');
+describe('block cursor never hides / drops / reorders a character (the definitive guarantee)', () => {
+  // The whole point of the block cursor: at EVERY cursor position over ANY Thai input, the rendered
+  // line (minus colour codes) reproduces the original text exactly — only a trailing space is added at
+  // end-of-line. A gap cursor could not satisfy this (it inserts a cell that overruns leading vowels).
+  const samples = [
+    'สวัสดี',
+    'จำชื่อฉันได้ไหม', // the reported sentence (leading vowel ไ in ไหม)
+    'ปิ๊กชอบเขียนโค้ด', // tone marks + leading vowel เ
+    'ไปไหนมาสามวัน', // leading vowel ไ at index 0
+    'เเแแโโใใไไ', // every Thai pre-base vowel, doubled
+    'แม่น้ำเจ้าพระยา',
+    'ก่ำจิ้มจุ่ม',
+    'hello world 123',
+  ];
+  for (const value of samples) {
+    it(`"${value}" — cursor at every grapheme position keeps the text intact`, () => {
+      const graphemes = graphemesOf(value);
+      for (let g = 0; g <= graphemes.length; g += 1) {
+        const codeUnit = graphemes.slice(0, g).join('').length; // start of grapheme g
+        const vp = inputViewport(value, codeUnit, 80); // wide → no horizontal scroll
+        const rendered = stripAnsi(formatInputLineDisplay(vp));
+        const atEol = g >= graphemes.length;
+        expect(rendered).toBe(atEol ? `${value} ` : value);
+      }
+    });
+  }
 
-describe('cursor on a Thai leading vowel (เ แ โ ใ ไ) — block, not a gap that hides it', () => {
-  it('cursor before ไหม keeps ไ visible with no inserted gap (reported "ได้█หม" bug)', () => {
-    const vp = { lead: false, before: 'ได้', at: ' ', after: 'ไหม', tail: false };
-    const out = stripAnsi(formatInputLineDisplay(vp));
-    expect(out).toContain('ได้ไหม'); // ไ present, sits right after ได้ (cursor blocks ON the vowel)
-    expect(out).not.toContain('ได้ ไหม'); // old gap cursor inserted a space here → vowel overrun
+  it('cursor on a leading vowel ไ blocks ON it (reported "ได้█หม" bug is structurally impossible now)', () => {
+    const value = 'กไก'; // ก · ไ(leading vowel) · ก — put the cursor on the ไ
+    const vp = inputViewport(value, 'ก'.length, 80);
+    expect(vp.at).toBe('ไ');
+    expect(stripAnsi(formatInputLineDisplay(vp))).toBe('กไก'); // ไ still painted, nothing lost
   });
 
-  it('non-leading-vowel cursor still uses the gap cursor (unchanged for combining marks)', () => {
-    const vp = { lead: false, before: 'ที่', at: ' ', after: 'นี่', tail: false };
-    const out = stripAnsi(formatInputLineDisplay(vp));
-    expect(out).toContain('ที่ นี่'); // น is not a leading vowel → gap space remains
-  });
-
-  it('end-of-line cursor is a trailing gap space (no leading vowel to block)', () => {
-    const vp = { lead: false, before: 'สวัสดี', at: ' ', after: '', tail: false };
-    const out = stripAnsi(formatInputLineDisplay(vp));
-    expect(out).toBe('สวัสดี '); // trailing space cursor, unchanged
-  });
-
-  it('multiline: cursor on a leading vowel highlights it (no leading gap space)', () => {
-    const out = stripAnsi(formatMultilineInputDisplay('ไหม', 0));
-    expect(out.startsWith('ไ')).toBe(true);
-    expect(out.startsWith(' ')).toBe(false);
+  it('multiline: cursor on a leading vowel keeps the whole line intact', () => {
+    expect(stripAnsi(formatMultilineInputDisplay('กไก', 'ก'.length))).toBe('กไก');
+    expect(stripAnsi(formatMultilineInputDisplay('ไหน', 0))).toBe('ไหน');
   });
 });
