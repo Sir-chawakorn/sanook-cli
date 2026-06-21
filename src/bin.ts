@@ -127,11 +127,11 @@ async function runHeadless(
       /* best-effort */
     }
     // auto-distill durable decisions/gotchas/preferences from this turn into the compounding memory store
-    // so the self-retrieving brain surfaces them next time. Default ON via autoMaintain (gating + cap live
-    // in auto-maintain.ts); legacy SANOOK_AUTO_DISTILL still forces it on. Best-effort.
+    // so the self-retrieving brain surfaces them next time. Default ON via autoMaintain; legacy
+    // SANOOK_AUTO_DISTILL still forces it on. Gating + cap live in auto-maintain.ts. Best-effort.
     {
-      const { autoDistillToMemory, autoMaintainEnabled } = await import('./auto-maintain.js');
-      if (envFlag('SANOOK_AUTO_DISTILL') || (await autoMaintainEnabled())) await autoDistillToMemory(messages);
+      const { autoDistillToMemory } = await import('./auto-maintain.js');
+      await autoDistillToMemory(messages);
     }
   } catch (err) {
     const msg = redactKey((err as Error).message);

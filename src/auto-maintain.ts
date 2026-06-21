@@ -20,6 +20,16 @@ interface AutoMaintainState {
   lastConsolidate: number;
 }
 
+function isDistillableMessage(value: unknown): value is { role: string; content: unknown } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'role' in value &&
+    typeof (value as { role?: unknown }).role === 'string' &&
+    'content' in value
+  );
+}
+
 /**
  * auto-maintenance เปิดโดย default. ปิดเมื่อ:
  *  - persistence ปิด (ไม่มีที่เก็บ memory อยู่แล้ว)
@@ -95,15 +105,23 @@ export async function maybeStartupMaintain(now: number = Date.now()): Promise<st
  */
 export async function autoDistillToMemory(messages: unknown[]): Promise<number> {
   if (!Array.isArray(messages) || !messages.length) return 0;
-  if (!(await autoMaintainEnabled())) return 0;
+  if (!persistenceEnabled()) return 0;
+  if (envFlag('SANOOK_DISABLE_AUTO_MAINTAIN')) return 0;
+  if (!envFlag('SANOOK_AUTO_DISTILL') && !(await autoMaintainEnabled())) return 0;
   try {
     const { distilledFactsFromMessages } = await import('./session-distill.js');
     const { appendMemory } = await import('./memory.js');
-    const facts = distilledFactsFromMessages(messages as never).slice(0, MAX_DISTILL_FACTS);
+    const distillableMessages = messages.filter(isDistillableMessage);
+    if (!distillableMessages.length) return 0;
+    const facts = distilledFactsFromMessages(distillableMessages).slice(0, MAX_DISTILL_FACTS);
     let written = 0;
     for (const fact of facts) {
-      await appendMemory(fact).catch(() => {});
-      written += 1;
+      try {
+        await appendMemory(fact);
+        written += 1;
+      } catch {
+        // Keep auto-maintain best-effort, but only count facts that actually persisted.
+      }
     }
     return written;
   } catch {

@@ -6,7 +6,7 @@ import { getBrainPath } from './memory.js';
 import { PROVIDERS, parseSpec } from './providers/registry.js';
 import { makeSummarizer } from './summarize.js';
 import { distilledFactsFromMessages } from './session-distill.js';
-import { autoMaintainEnabled } from './auto-maintain.js';
+import { autoDistillToMemory } from './auto-maintain.js';
 import { saveSession, type Session } from './session.js';
 
 export interface ReplTurn {
@@ -91,6 +91,9 @@ export async function finalizeReplSession(options: FinalizeReplSessionOptions): 
   };
   await saveSession(session);
 
+  // Compound durable facts even when no second-brain vault is configured.
+  await autoDistillToMemory(options.messages);
+
   const brainPath = await getBrainPath();
   if (!brainPath) return { sessionSaved: true };
 
@@ -115,13 +118,6 @@ export async function finalizeReplSession(options: FinalizeReplSessionOptions): 
   const raw = await readFile(report.path, 'utf8');
   const next = injectSessionSummary(raw, summary, facts.slice(0, 8));
   await writeFile(report.path, next, 'utf8');
-
-  // also compound the distilled facts into durable auto-memory (not just the session note) so the
-  // self-retrieving brain surfaces them next session. Gated by autoMaintain (default on). Best-effort.
-  if (await autoMaintainEnabled()) {
-    const { appendMemory } = await import('./memory.js');
-    for (const fact of facts.slice(0, 8)) await appendMemory(fact).catch(() => {});
-  }
 
   return {
     sessionSaved: true,
