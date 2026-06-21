@@ -1,5 +1,6 @@
 import { inspect } from 'node:util';
 import { describeToolCall, type ToolActivity } from './tool-activity.js';
+import { clipToWidth, padEndToWidth } from './text-width.js';
 
 export type ToolTrailStatus = 'done' | 'error' | 'running';
 export type ToolTrailDisplayMode = 'compact' | 'expanded' | 'hidden';
@@ -27,9 +28,9 @@ export interface ToolTrailUpdate {
 
 export const TOOL_TRAIL_LIMIT = 6;
 
+// display-width aware (Thai filenames / emoji activity titles) so the trail columns stay aligned
 function clip(text: string, width: number): string {
-  if (width <= 0) return '';
-  return text.length > width ? `${text.slice(0, Math.max(0, width - 3))}...` : text;
+  return clipToWidth(text, width, '...');
 }
 
 function normalizeWhitespace(text: string): string {
@@ -134,7 +135,7 @@ export function toolTrailLines(items: ToolTrailItem[], columns: number, mode: To
   for (const item of items) {
     const marker = markerForStatus(item.status);
     const detail = item.detail ? ` ${clip(item.detail, detailWidth)}` : '';
-    lines.push(`${marker} ${clip(item.name, nameWidth).padEnd(nameWidth)} ${item.status.padEnd(7)}${detail}`);
+    lines.push(`${marker} ${padEndToWidth(clip(item.name, nameWidth), nameWidth)} ${item.status.padEnd(7)}${detail}`);
   }
   return lines.map((line) => clip(line, width));
 }

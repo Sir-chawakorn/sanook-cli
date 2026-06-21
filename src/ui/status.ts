@@ -1,3 +1,5 @@
+import { clipToWidth, displayWidth, padEndToWidth } from './text-width.js';
+
 export interface FooterStatusInput {
   branch?: string | null;
   backgroundTaskCount?: number;
@@ -14,10 +16,8 @@ export interface FooterStatusInput {
   queuedCount?: number;
 }
 
-const clip = (text: string, width: number): string => {
-  if (width <= 0) return '';
-  return text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text;
-};
+// display-width aware (Thai marks 0, emoji/CJK 2) so the two-column footer stays aligned
+const clip = (text: string, width: number): string => clipToWidth(text, width);
 
 export interface StatusRuleWidths {
   leftWidth: number;
@@ -59,7 +59,7 @@ export function statusRuleWidths(columns: number, rightLabel: string, minLeftCon
   const leftFloor = Math.min(width, Math.max(baseLeft, Math.floor(minLeftContent)));
   const maxRight = Math.max(0, width - separatorWidth - leftFloor);
   if (!rightLabel || maxRight <= 0) return { leftWidth: width, rightWidth: 0, separatorWidth: 0 };
-  const rightWidth = Math.min(rightLabel.length, maxRight);
+  const rightWidth = Math.min(displayWidth(rightLabel), maxRight);
   return {
     leftWidth: Math.max(1, width - separatorWidth - rightWidth),
     rightWidth,
@@ -102,12 +102,13 @@ export function footerStatus({
   if (!segments.cwd || !cwd) return clip(left, width);
 
   const right = formatCwd(cwd, branch);
-  const minRight = width >= 96 ? Math.min(right.length, 22) : Math.min(right.length, 12);
-  const minLeft = Math.min(width, Math.max(20, Math.min(left.length, width - 3 - minRight)));
+  const rightW = displayWidth(right);
+  const minRight = width >= 96 ? Math.min(rightW, 22) : Math.min(rightW, 12);
+  const minLeft = Math.min(width, Math.max(20, Math.min(displayWidth(left), width - 3 - minRight)));
   const rule = statusRuleWidths(width, right, minLeft);
   if (!rule.rightWidth) return clip(left, width);
 
-  const leftPart = clip(left, rule.leftWidth).padEnd(rule.leftWidth);
+  const leftPart = padEndToWidth(clip(left, rule.leftWidth), rule.leftWidth);
   const rightPart = clip(right, rule.rightWidth);
   return `${leftPart}${' '.repeat(rule.separatorWidth)}${rightPart}`;
 }

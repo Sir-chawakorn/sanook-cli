@@ -4,6 +4,7 @@ import Gradient from 'ink-gradient';
 import { homedir } from 'node:os';
 import { readFileSync } from 'node:fs';
 import { BRAND } from '../brand.js';
+import { clipToWidth, padEndToWidth } from './text-width.js';
 
 // gradient ของ Sanook: เขียว → ส้ม → ฟ้า (สนุก = สดใส)
 const SANOOK_GRADIENT = ['#22C55E', '#F97316', '#38BDF8'];
@@ -44,10 +45,8 @@ export interface BannerSignal {
   value: string;
 }
 
-const clip = (text: string, width: number): string => {
-  if (width <= 0) return '';
-  return text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text;
-};
+// display-width aware so the Thai brand line + box border don't drift (Thai marks 0, emoji 2 cells)
+const clip = (text: string, width: number): string => clipToWidth(text, width);
 
 function signalText(signals: readonly BannerSignal[]): string {
   return signals
@@ -107,7 +106,7 @@ function bannerLines(
     `◆ ${BRAND_LINE}`,
     flow,
     routeLine,
-    ...SERVICE_ROUTES.map(([num, label, hint]) => `› ${num} ${label.padEnd(7)} ${hint}`),
+    ...SERVICE_ROUTES.map(([num, label, hint]) => `› ${num} ${padEndToWidth(label, 7)} ${hint}`),
   ];
 }
 

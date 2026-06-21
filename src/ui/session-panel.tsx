@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { useState } from 'react';
 import { BRAND } from '../brand.js';
 import { TOOL_CATALOG } from '../tool-catalog.js';
+import { clipToWidth } from './text-width.js';
 
 const MIN_PANEL_COLUMNS = 48;
 const COMPACT_PANEL_COLUMNS = 72;
@@ -26,10 +27,8 @@ export interface SessionPanelProps {
   tools?: StartupSectionPreview;
 }
 
-const clip = (text: string, width: number): string => {
-  if (width <= 0) return '';
-  return text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text;
-};
+// display-width aware (Thai/emoji) so panel rows align with the border
+const clip = (text: string, width: number): string => clipToWidth(text, width);
 
 function displayDir(cwd?: string): string {
   return (cwd ?? process.cwd()).replace(homedir(), '~');

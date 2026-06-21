@@ -1,5 +1,6 @@
 import { Box, Text } from 'ink';
 import { memo, useRef } from 'react';
+import { clipToWidth } from './text-width.js';
 
 export interface MarkdownTextProps {
   columns: number;
@@ -10,9 +11,9 @@ type InlineSegment = { kind: 'bold' | 'code' | 'text'; text: string };
 
 const FENCE_RE = /^\s*(`{3,}|~{3,})(.*)$/;
 
+// display-width aware so Thai/emoji/code lines in transcript truncate at the right column
 function clip(text: string, width: number): string {
-  if (width <= 0) return '';
-  return text.length > width ? `${text.slice(0, Math.max(0, width - 3))}...` : text;
+  return clipToWidth(text, width, '...');
 }
 
 function bodyWidth(columns: number): number {
