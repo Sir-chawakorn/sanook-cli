@@ -34,6 +34,18 @@ describe('parseCommand', () => {
     expect(parseCommand('/quit', ctx).action).toBe('quit');
     expect(parseCommand('/exit', ctx).action).toBe('quit');
   });
+  it('/goal <text> → action goalSet + goalText', () => {
+    const r = parseCommand('/goal สร้าง sanook-cli ให้จำ persona', ctx);
+    expect(r.action).toBe('goalSet');
+    expect(r.goalText).toBe('สร้าง sanook-cli ให้จำ persona');
+    expect(r.message).toContain('สร้าง sanook-cli ให้จำ persona');
+  });
+  it('/goal (no arg) → usage message, no action', () => {
+    const r = parseCommand('/goal', ctx);
+    expect(r.handled).toBe(true);
+    expect(r.action).toBeUndefined();
+    expect(r.message).toContain('/persona');
+  });
   it('/clear → action clear', () => {
     expect(parseCommand('/clear', ctx).action).toBe('clear');
   });

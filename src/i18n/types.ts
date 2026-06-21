@@ -48,6 +48,10 @@ export interface SetupMessages {
   brainQuestion: string;
   brainYes: string;
   brainNo: string;
+  stepPersona: string;
+  personaQuestion: string;
+  personaYes: string;
+  personaNo: string;
   completeTitle: string;
   completeBody: string;
   completeDashboard: string;

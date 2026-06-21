@@ -497,14 +497,13 @@ export async function appendMemory(fact: string, noteType?: NoteType): Promise<v
  * เขียน persona/identity ที่เก็บตอน setup (ขั้นที่ 9) ลง durable auto-memory เป็น owner ground-truth
  * (tier protected, trust owner) → หลัง setup เสร็จ agent "จำ" ว่าเจ้าของชื่ออะไร / เรียก AI ว่าอะไร /
  * ภาษา + autonomy ทันที โดยไม่ต้องรอ remember. ใช้คู่กับ scaffoldBrain ที่ substitute ลงไฟล์ vault อยู่แล้ว.
- * idempotent: เขียนซ้ำ = NOOP (mergeFact). ข้ามค่า default/ว่าง เพื่อไม่ปน noise.
+ * idempotent: เขียนซ้ำ = NOOP (mergeFact). ข้ามค่าว่าง (raw typed '') เพื่อไม่ปน noise.
  */
 export async function seedPersonaMemory(input: {
   ownerName?: string;
   aiName?: string;
   language?: string;
   autonomy?: string;
-  defaults?: { ownerName?: string; aiName?: string };
 }): Promise<number> {
   if (!persistenceEnabled()) return 0;
   const facts: Incoming[] = [];
@@ -512,8 +511,13 @@ export async function seedPersonaMemory(input: {
   const ai = input.aiName?.trim();
   const lang = input.language?.trim();
   const autonomy = input.autonomy?.trim();
-  if (owner && owner !== input.defaults?.ownerName) facts.push({ text: `เจ้าของชื่อ ${owner} — เรียกเจ้าของด้วยชื่อนี้`, noteType: 'entity', trust: 'owner', tier: 'protected' });
-  if (ai && ai !== input.defaults?.aiName) facts.push({ text: `AI เรียกตัวเองว่า "${ai}" เมื่อคุยกับเจ้าของ`, noteType: 'preference', trust: 'owner', tier: 'protected' });
+  // Gate on "did the user actually type a value" (non-empty) — NOT on equality with a default
+  // sentinel. The old `owner !== defaults.ownerName` check silently DROPPED a real name that happened
+  // to equal the placeholder ('Owner'), and forced callers to coerce blank→default first (so a skipped
+  // name became 'Owner' and was then dropped). Callers now pass the RAW typed value ('' when skipped);
+  // an empty string simply isn't seeded, any non-empty value always is.
+  if (owner) facts.push({ text: `เจ้าของชื่อ ${owner} — เรียกเจ้าของด้วยชื่อนี้`, noteType: 'entity', trust: 'owner', tier: 'protected' });
+  if (ai) facts.push({ text: `AI เรียกตัวเองว่า "${ai}" เมื่อคุยกับเจ้าของ`, noteType: 'preference', trust: 'owner', tier: 'protected' });
   if (lang) facts.push({ text: `ภาษาที่เจ้าของต้องการให้ตอบ: ${lang}`, noteType: 'preference', trust: 'owner', tier: 'protected' });
   if (autonomy) facts.push({ text: `ระดับ autonomy ที่เจ้าของเลือก: ${autonomy}`, noteType: 'preference', trust: 'owner', tier: 'protected' });
   if (!facts.length) return 0;
@@ -620,4 +624,17 @@ export async function persistPersonaAnswers(answers: PersonaAnswers): Promise<Pe
   const brain = await getBrainPath().catch(() => undefined);
   const vaultWritten = brain ? await writePersonaProfile(brain, answers).catch(() => false) : false;
   return { memoryWritten, vaultWritten, brainPath: brain };
+}
+
+/**
+ * Persist a PARTIAL persona update (e.g. `/goal <text>` sets only `goals`) without clobbering the rest.
+ * `persistPersonaAnswers` rewrites the vault persona.md table from exactly the answers it's given, so
+ * passing only `{ goals }` would blank every other field. Here we load the existing answers first
+ * (memory + vault), merge the patch on top, then persist the full merged set — so a single-field update
+ * keeps name/language/tone/etc. intact in both auto-memory and the vault profile.
+ */
+export async function persistPersonaPatch(patch: PersonaAnswers): Promise<PersistPersonaResult> {
+  const existing = await loadPersonaAnswers().catch(() => ({}));
+  const merged = mergePersonaAnswers(existing, patch);
+  return persistPersonaAnswers(merged);
 }

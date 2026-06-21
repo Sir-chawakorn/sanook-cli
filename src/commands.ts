@@ -27,6 +27,7 @@ export interface CommandResult {
     | 'stop'
     | 'personality'
     | 'personaSetup'
+    | 'goalSet'
     | 'insights'
     | 'hotkeys'
     | 'mcpHub'
@@ -43,6 +44,8 @@ export interface CommandResult {
   modelChange?: string;
   /** /personality <name> — persist named personality overlay */
   personalityChange?: string;
+  /** /goal <text> — durable "current focus" written to the persona goals field */
+  goalText?: string;
   /** /insights [--days N] */
   insightsDays?: number;
   /** /insights --all */
@@ -62,6 +65,7 @@ export const HELP_TEXT = `คำสั่ง:
   /setup           ดูขั้นตอน setup wizard (model · agent · tools · gateway · brain)
   /dashboard       เปิด Sanook Dashboard (local web UI)
   /persona         ตั้งค่า persona (ใครคุณเป็น + อยากให้ AI ทำงานยังไง)
+  /goal [text]     ตั้งเป้าหมาย/โฟกัสปัจจุบัน (จำข้ามทุก session) — /goal เปล่า = วิธีใช้
   /personality [name]
                    ดู/ตั้ง personality overlay
   /details [thinking|tools] [hidden|collapsed|expanded]
@@ -275,6 +279,18 @@ export function parseCommand(input: string, ctx: CommandContext): CommandResult 
       };
     case 'persona':
       return { handled: true, action: 'personaSetup', message: 'เปิด persona wizard…' };
+    case 'goal': {
+      // /goal <text> sets the durable "current focus" (persona `goals` field) — remembered across
+      // every session via <owner_persona>. /goal alone shows usage (run /persona to edit the full set).
+      const goal = args.join(' ').trim();
+      if (!goal) {
+        return {
+          handled: true,
+          message: `ใช้: /goal <เป้าหมาย/โฟกัสตอนนี้>\n  เก็บลง persona (AI จำข้ามทุก session) · ดู/แก้ทั้งหมด: /persona`,
+        };
+      }
+      return { handled: true, action: 'goalSet', goalText: goal, message: `🎯 ตั้งเป้าหมาย → ${goal}` };
+    }
     case 'personality': {
       const raw = args.join(' ').trim();
       if (!raw) return { handled: true, message: personalityListText() };
@@ -377,6 +393,7 @@ export const BUILTIN_COMMANDS = new Set([
   'exit',
   'model',
   'personality',
+  'goal',
   'details',
   'platforms',
   'trail',

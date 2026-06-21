@@ -5,6 +5,7 @@ import { CostMeter, SharedBudget, type Usage } from './cost.js';
 import { tools } from './tools/index.js';
 import { agentCwd } from './agentContext.js';
 import { loadMemory, loadAutoMemory, loadBrainContext, loadDelegateContext, loadOwnerPersonaBlock } from './memory.js';
+import { memoryStoreEpoch } from './memory-store.js';
 import { buildTurnRetrieval, PROJECT_SOURCES } from './turn-retrieval.js';
 import { loadSkills, renderAvailableSkills } from './skills.js';
 import { maybeWrapHooks } from './hooks.js';
@@ -198,6 +199,13 @@ async function maybeWrapWithHeadroom<T>(model: T): Promise<T> {
   }) as T;
 }
 
+// Per-session snapshot of the two memory blocks whose rendering drifts turn-to-turn (owner persona +
+// auto-memory decay with Date.now()). Frozen for the life of a session+epoch so the system-prompt
+// prefix stays byte-identical across read-only turns (prompt cache stays warm); a store write bumps
+// memoryStoreEpoch() → key changes → reload, so a name/goal set mid-session is reflected next turn.
+// Keyed by sessionId (gateway/serve runs many sessions in one process); capped to bound memory.
+const personaSnapshots = new Map<string, { epoch: number; ownerPersona: string; autoMemory: string }>();
+
 /**
  * แกน harness — agent loop: LLM -> tool -> result -> loop จนเสร็จ
  * multi-provider (BYOK) ผ่าน registry + cost meter + budget cap
@@ -312,10 +320,17 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   // โหลด context: auto-memory + skills + git state + repo map + project SANOOK.md → system prompt
   // sub-agent (opts.tools) ข้าม repo map (มี subset tool + prompt เฉพาะอยู่แล้ว — ประหยัด context)
+  // persona + auto-memory are frozen per (session, memory-epoch) so the cached prompt prefix doesn't
+  // shift every turn from decay re-ranking. Sub-agents (opts.tools) and sessionless runs skip the cache
+  // and always load fresh. A store write (remember/persona/goal) bumps the epoch → next turn reloads.
+  const snapSessionId = opts.tools ? undefined : opts.usageMeta?.sessionId;
+  const snapEpoch = memoryStoreEpoch();
+  const personaHit = snapSessionId ? personaSnapshots.get(snapSessionId) : undefined;
+  const personaCached = personaHit && personaHit.epoch === snapEpoch ? personaHit : undefined;
   const [memory, autoMemory, ownerPersona, skills, git, brain, repoMap, tuning, config] = await Promise.all([
     loadMemory(),
-    loadAutoMemory(),
-    loadOwnerPersonaBlock(),
+    personaCached ? Promise.resolve(personaCached.autoMemory) : loadAutoMemory(),
+    personaCached ? Promise.resolve(personaCached.ownerPersona) : loadOwnerPersonaBlock(),
     loadSkills(),
     gitContext(opts.cwd), // worktree ของ sub-agent ถ้ามี → git context สะท้อน tree ที่ถูกต้อง
     loadBrainContext(opts.cwd ?? agentCwd()),
@@ -323,6 +338,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
     agentTuning(), // cache TTL + thinking budget (อ่านจาก config/env)
     loadConfig({}, opts.cwd ?? process.cwd()),
   ]);
+  if (snapSessionId && !personaCached) {
+    if (personaSnapshots.size > 100) personaSnapshots.clear(); // bound long-running serve processes
+    personaSnapshots.set(snapSessionId, { epoch: snapEpoch, ownerPersona, autoMemory });
+  }
   // self-retrieving brain: proactively surface vault/memory/session notes relevant to THIS prompt.
   // Runs AFTER the gather so it can DEDUP against what's already statically injected (auto_memory +
   // brain hot-files) — H8 showed memory hits were otherwise 100% duplicated. Sub-agents skip it like

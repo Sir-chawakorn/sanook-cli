@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { appHomePath, BRAND, persistenceEnabled } from './brand.js';
 import { redactKey } from './providers/keys.js';
+import { neutralizeBlockTags } from './prompt-safety.js';
 
 // ---- enums / taxonomy ------------------------------------------------------
 export const TRUST = ['owner', 'agent', 'derived', 'untrusted'] as const;
@@ -494,7 +495,7 @@ export function renderPromptBlock(store: MemoryStore, now: number = Date.now()):
   const picked: string[] = [];
   let size = 0;
   for (const f of ranked(store, now)) {
-    const line = `- ${f.text}`;
+    const line = `- ${neutralizeBlockTags(f.text)}`;
     if (picked.length && size + line.length + 1 > PROMPT_CAP) break;
     picked.push(line);
     size += line.length + 1;
@@ -609,15 +610,21 @@ async function preserveUnvalidatableStore(now: number): Promise<void> {
   }
 }
 
+// In-process "memory epoch" — bumped after every successful store write. Lets per-session callers
+// (the loop's prompt snapshot) cache a rendered memory block and invalidate it the instant a
+// remember/persona/goal write lands, instead of re-rendering every turn. Re-rendering each turn
+// otherwise busts the model prompt-prefix cache because effImportance() decays with Date.now(), so a
+// byte-identical store still produces a slightly different block on the next turn.
+let memoryEpoch = 0;
+export function memoryStoreEpoch(): number {
+  return memoryEpoch;
+}
+
 export async function saveStore(store: MemoryStore, now: number = Date.now()): Promise<void> {
   if (!persistenceEnabled()) return;
   await mkdir(MEMORY_DIR, { recursive: true });
-  const firstJson = !(await exists(MEMORY_JSON));
-  if (!firstJson) {
+  if (await exists(MEMORY_JSON)) {
     await preserveUnvalidatableStore(now); // data-loss guard before overwriting an unvalidatable store
-  } else if (await exists(AUTO_MEMORY_FILE)) {
-    await copyFile(AUTO_MEMORY_FILE, MEMORY_BAK).catch(() => {});
-    await chmod(MEMORY_BAK, 0o600).catch(() => {});
   }
   const tmp = join(MEMORY_DIR, `memory.${randomUUID()}.tmp`);
   try {
@@ -628,5 +635,13 @@ export async function saveStore(store: MemoryStore, now: number = Date.now()): P
     await rm(tmp, { force: true }).catch(() => {});
     throw e;
   }
+  // drift guard: MEMORY.md is a DERIVED view re-rendered from the store on every write, so a hand-edit
+  // (or the legacy pre-json file) would be silently clobbered. Snapshot the current view to MEMORY.md.bak
+  // before overwriting, so the previous version is always one `cp` away — on every write, not just the first.
+  if (await exists(AUTO_MEMORY_FILE)) {
+    await copyFile(AUTO_MEMORY_FILE, MEMORY_BAK).catch(() => {});
+    await chmod(MEMORY_BAK, 0o600).catch(() => {});
+  }
   await writeSecure(AUTO_MEMORY_FILE, renderView(store, now));
+  memoryEpoch++; // invalidate any per-session prompt snapshot built from the prior store
 }

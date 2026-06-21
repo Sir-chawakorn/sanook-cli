@@ -981,6 +981,15 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
         setPersonaOpen(true);
         return;
       }
+      if (cmd.action === 'goalSet') {
+        const goalText = cmd.goalText ?? '';
+        void (async () => {
+          const { persistPersonaPatch } = await import('../memory.js');
+          await persistPersonaPatch({ goals: goalText });
+          addTurn('system', cmd.message ?? 'บันทึกเป้าหมายแล้ว');
+        })().catch((e) => addTurn('system', `goal: ${(e as Error).message}`));
+        return;
+      }
       if (cmd.action === 'insights') {
         void renderInsights({ days: cmd.insightsDays, cwd: cmd.insightsAll ? null : undefined })
           .then((msg) => addTurn('system', msg))

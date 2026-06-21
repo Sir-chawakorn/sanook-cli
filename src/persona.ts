@@ -3,6 +3,8 @@
 // renders PERSONA_QUESTIONS and the persist layer (src/memory.ts) uses personaFacts /
 // renderPersonaProfile to write to auto-memory + the second-brain vault.
 
+import { neutralizeBlockTags } from './prompt-safety.js';
+
 export type PersonaQuestionType = 'text' | 'select';
 
 export interface PersonaOption {
@@ -207,7 +209,9 @@ export function personaFacts(answers: PersonaAnswers): string[] {
 export function renderOwnerPersonaPromptBlock(answers: PersonaAnswers): string {
   const facts = personaFacts(answers);
   if (!facts.length) return '';
-  return `<owner_persona note="โปรไฟล์เจ้าของจาก sanook persona — ground truth สำหรับชื่อ/บทบาท/ความชอบ; เมื่อ user ถามว่าจำได้ไหม/ชื่ออะไร ให้ตอบจาก block นี้และ auto_memory">\n${facts.map((f) => `- ${f}`).join('\n')}\n</owner_persona>`;
+  // fence each fact: persona answers are user-typed and could contain a forged block boundary
+  const fenced = facts.map((f) => `- ${neutralizeBlockTags(f)}`).join('\n');
+  return `<owner_persona note="โปรไฟล์เจ้าของจาก sanook persona — ground truth สำหรับชื่อ/บทบาท/ความชอบ; เมื่อ user ถามว่าจำได้ไหม/ชื่ออะไร ให้ตอบจาก block นี้และ auto_memory">\n${fenced}\n</owner_persona>`;
 }
 
 /** human-friendly label for a stored select value (falls back to the raw value / free text). */

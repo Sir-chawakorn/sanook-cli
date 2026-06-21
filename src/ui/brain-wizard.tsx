@@ -7,6 +7,9 @@ import { BRAIN_DEFAULTS, type Autonomy } from '../brain.js';
 
 export interface BrainAnswers {
   path: string;
+  /** RAW typed value — '' when the user pressed Enter to skip. Callers apply BRAIN_DEFAULTS for the
+   * vault scaffold but pass this raw value to seedPersonaMemory, so a skipped name is never remembered
+   * as the literal placeholder 'Owner'. */
   ownerName: string;
   aiName: string;
   autonomy: Autonomy;
@@ -20,8 +23,10 @@ const DEFAULT_PATH = join(homedir(), 'Documents', BRAIN_DEFAULTS.vaultName);
 export function BrainWizard({ onComplete }: { onComplete: (a: BrainAnswers) => void }) {
   const [step, setStep] = useState<Step>('path');
   const [path, setPath] = useState(DEFAULT_PATH);
-  const [ownerName, setOwnerName] = useState(BRAIN_DEFAULTS.ownerName);
-  const [aiName, setAiName] = useState(BRAIN_DEFAULTS.aiName);
+  // raw typed values — '' means "skipped" (so it isn't seeded as a name); the placeholder still shows
+  // the default so the user knows what Enter-to-skip yields in the scaffolded vault.
+  const [ownerName, setOwnerName] = useState('');
+  const [aiName, setAiName] = useState('');
 
   return (
     <Box flexDirection="column" gap={1} marginY={1}>
@@ -48,7 +53,7 @@ export function BrainWizard({ onComplete }: { onComplete: (a: BrainAnswers) => v
           <TextInput
             placeholder={BRAIN_DEFAULTS.ownerName}
             onSubmit={(v) => {
-              setOwnerName(v.trim() || BRAIN_DEFAULTS.ownerName);
+              setOwnerName(v.trim());
               setStep('ai');
             }}
           />
@@ -61,7 +66,7 @@ export function BrainWizard({ onComplete }: { onComplete: (a: BrainAnswers) => v
           <TextInput
             placeholder={BRAIN_DEFAULTS.aiName}
             onSubmit={(v) => {
-              setAiName(v.trim() || BRAIN_DEFAULTS.aiName);
+              setAiName(v.trim());
               setStep('autonomy');
             }}
           />

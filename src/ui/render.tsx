@@ -3,7 +3,7 @@ import { render } from 'ink';
 import { App, type AppProps } from './app.js';
 import { SetupWizard, type SetupResult } from './setup.js';
 import { BrainWizard, type BrainAnswers } from './brain-wizard.js';
-import { PersonaWizard } from './persona-wizard.js';
+import { PersonaWizard, PersonaOverlay } from './persona-wizard.js';
 import type { PersonaAnswers } from '../persona.js';
 import { saveKey, saveGlobalConfig, saveBrainPath } from '../config.js';
 import { BRAND } from '../brand.js';
@@ -22,7 +22,7 @@ function requireInteractiveTTY(): void {
   }
 }
 
-type Phase = 'setup' | 'brain' | 'app';
+type Phase = 'setup' | 'brain' | 'persona' | 'app';
 
 export interface RootProps {
   /** true = first run ยังไม่ตั้ง provider → โชว์ wizard ก่อนเข้า REPL */
@@ -49,6 +49,8 @@ export function Root({ needsSetup, appProps, clearScreen }: RootProps) {
   const [model, setModel] = useState(appProps.initialModel);
   const [brainNote, setBrainNote] = useState<string | undefined>(undefined);
   const [locale, setLocale] = useState<AppLocale>('th');
+  // carried across the brain phase so the persona questionnaire still runs after brain creation
+  const [setupPersona, setSetupPersona] = useState(false);
 
   // เข้า REPL: เคลียร์จอที่เต็มไปด้วย wizard ก่อน → banner "Sanook AI" เด้งบนจอว่าง
   const enterApp = (): void => {
@@ -68,7 +70,12 @@ export function Root({ needsSetup, appProps, clearScreen }: RootProps) {
         });
         setModel(r.model);
         setLocale(r.locale);
+        setSetupPersona(r.setupPersona ?? false);
+        // setup → (brain?) → (persona?) → REPL. The persona phase runs after brain creation when both
+        // were requested, so a user who creates a vault AND fills the questionnaire isn't asked twice
+        // (the questionnaire prefills from the brain-seeded name).
         if (r.createBrain) setPhase('brain');
+        else if (r.setupPersona) setPhase('persona');
         else enterApp();
       })();
     };
@@ -87,8 +94,9 @@ export function Root({ needsSetup, appProps, clearScreen }: RootProps) {
         try {
           const res = await scaffoldBrain(target, {
             ...BRAIN_DEFAULTS,
-            ownerName: a.ownerName,
-            aiName: a.aiName,
+            // vault scaffold needs a non-empty name → apply the default when the user skipped (a.* === '')
+            ownerName: a.ownerName || BRAIN_DEFAULTS.ownerName,
+            aiName: a.aiName || BRAIN_DEFAULTS.aiName,
             autonomy: a.autonomy,
             language,
             today,
@@ -97,12 +105,12 @@ export function Root({ needsSetup, appProps, clearScreen }: RootProps) {
           const wired = await wireBrainMcp(target).catch(() => 'skip');
           const linked = await linkBrainToProject({ brainPath: target, cwd: process.cwd(), today }).catch(() => null);
           // เซฟ persona/identity ที่เก็บใน wizard ลง durable memory (owner ground-truth) → agent จำได้ทันที
+          // ส่ง RAW value (a.ownerName อาจเป็น '') — seedPersonaMemory จะข้ามค่าว่างเอง ไม่ seed 'Owner' placeholder
           const seeded = await seedPersonaMemory({
             ownerName: a.ownerName,
             aiName: a.aiName,
             language,
             autonomy: a.autonomy,
-            defaults: { ownerName: BRAIN_DEFAULTS.ownerName, aiName: BRAIN_DEFAULTS.aiName },
           }).catch(() => 0);
           const linkNote = linked?.projectRelDir
             ? ` · project ${linked.projectRelDir} · ${linked.memoryCreated ? 'created' : 'linked'} ${BRAND.memoryFileName}`
@@ -115,10 +123,24 @@ export function Root({ needsSetup, appProps, clearScreen }: RootProps) {
         } catch (e) {
           setBrainNote(`⚠ สร้าง second-brain ไม่สำเร็จ: ${(e as Error).message} — ลองใหม่ด้วย ${'`'}sanook brain init${'`'}`);
         }
-        enterApp();
+        if (setupPersona) setPhase('persona');
+        else enterApp();
       })();
     };
     return <BrainWizard onComplete={onComplete} />;
+  }
+
+  if (phase === 'persona') {
+    // full persona questionnaire (PersonaOverlay loads existing answers — incl. a brain-seeded name —
+    // persists to auto-memory + vault, then reports). Its note is appended to any brain note above.
+    return (
+      <PersonaOverlay
+        onDone={(msg) => {
+          setBrainNote((n) => (n ? `${n}\n${msg}` : msg));
+          enterApp();
+        }}
+      />
+    );
   }
 
   // App mount สดตอน phase = 'app' → useState(initialModel) หยิบ model ที่เลือกจาก wizard ถูกต้อง
@@ -161,8 +183,8 @@ export function startBrainSetup(): Promise<void> {
         const target = expandHome(a.path);
         const res = await scaffoldBrain(target, {
           ...BRAIN_DEFAULTS,
-          ownerName: a.ownerName,
-          aiName: a.aiName,
+          ownerName: a.ownerName || BRAIN_DEFAULTS.ownerName,
+          aiName: a.aiName || BRAIN_DEFAULTS.aiName,
           autonomy: a.autonomy,
           today,
         });
@@ -173,7 +195,6 @@ export function startBrainSetup(): Promise<void> {
           ownerName: a.ownerName,
           aiName: a.aiName,
           autonomy: a.autonomy,
-          defaults: { ownerName: BRAIN_DEFAULTS.ownerName, aiName: BRAIN_DEFAULTS.aiName },
         }).catch(() => 0);
         unmount();
         const linkLine = linked?.projectRelDir ? `\n   linked repo → ${linked.projectRelDir} · ${BRAND.memoryFileName} in cwd` : '';

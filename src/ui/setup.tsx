@@ -21,6 +21,8 @@ export interface SetupResult {
   permissionMode: 'auto' | 'ask';
   gatewayHint?: string;
   createBrain?: boolean;
+  /** true = chain into the full persona questionnaire after setup (Root → 'persona' phase) */
+  setupPersona?: boolean;
 }
 
 type Step =
@@ -35,6 +37,7 @@ type Step =
   | 'tools'
   | 'gateway'
   | 'brain-offer'
+  | 'persona-offer'
   | 'complete';
 
 /** first-run setup wizard: language → welcome → provider → auth → model → brain → complete */
@@ -57,6 +60,7 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
   const [codexDeviceAttempt, setCodexDeviceAttempt] = useState(0);
   const [permissionMode, setPermissionMode] = useState<'auto' | 'ask'>('ask');
   const [gatewayHint, setGatewayHint] = useState<string | undefined>();
+  const [createBrain, setCreateBrain] = useState(false);
 
   const cfg = provider ? PROVIDERS[provider] : undefined;
   const providerOptions = setupProviderOptions();
@@ -129,24 +133,9 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
   }, [step, cfg, key]);
 
   const modelOptions = cfg ? mergeModelOptions(cfg, remote) : [];
-  const finish = (createBrain?: boolean): void => {
-    if (createBrain) {
-      onComplete({
-        locale,
-        provider,
-        model,
-        envVar: cfg?.envVar ?? '',
-        key,
-        permissionMode,
-        gatewayHint,
-        createBrain: true,
-      });
-      return;
-    }
-    setStep('complete');
-  };
-
-  const finishRepl = (): void =>
+  // single terminal exit — carries both post-setup branch flags (brain creation + persona questionnaire).
+  // Root sequences them: setup → (brain?) → (persona?) → REPL.
+  const complete = (flags: { createBrain: boolean; setupPersona: boolean }): void =>
     onComplete({
       locale,
       provider,
@@ -155,7 +144,8 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
       key,
       permissionMode,
       gatewayHint,
-      createBrain: false,
+      createBrain: flags.createBrain,
+      setupPersona: flags.setupPersona,
     });
 
   const backToProvider = (): void => {
@@ -462,7 +452,30 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
               { label: m.brainYes, value: 'yes' },
               { label: m.brainNo, value: 'no' },
             ]}
-            onChange={(v) => finish(v === 'yes')}
+            onChange={(v) => {
+              setCreateBrain(v === 'yes');
+              setStep('persona-offer');
+            }}
+          />
+        </Box>
+      )}
+
+      {step === 'persona-offer' && (
+        <Box flexDirection="column">
+          <Text>{m.stepPersona}</Text>
+          <Text color="gray">{m.personaQuestion}</Text>
+          <Select
+            options={[
+              { label: m.personaYes, value: 'yes' },
+              { label: m.personaNo, value: 'no' },
+            ]}
+            onChange={(v) => {
+              const setupPersona = v === 'yes';
+              // jump straight to onComplete when a follow-up phase (brain/persona) will run; otherwise
+              // show the summary 'complete' screen before entering the REPL.
+              if (setupPersona || createBrain) complete({ createBrain, setupPersona });
+              else setStep('complete');
+            }}
           />
         </Box>
       )}
@@ -477,7 +490,7 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
           <Text color="gray">   permissionMode: {permissionMode}</Text>
           <Select
             options={[{ label: m.completeRepl, value: 'repl' }]}
-            onChange={() => finishRepl()}
+            onChange={() => complete({ createBrain: false, setupPersona: false })}
           />
         </Box>
       )}
