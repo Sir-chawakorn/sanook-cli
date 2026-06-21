@@ -6,6 +6,7 @@ import { getBrainPath } from './memory.js';
 import { PROVIDERS, parseSpec } from './providers/registry.js';
 import { makeSummarizer } from './summarize.js';
 import { distilledFactsFromMessages } from './session-distill.js';
+import { autoMaintainEnabled } from './auto-maintain.js';
 import { saveSession, type Session } from './session.js';
 
 export interface ReplTurn {
@@ -48,7 +49,8 @@ function injectSessionSummary(template: string, summary: string, facts: string[]
     .filter(Boolean)
     .join('\n');
   if (/^## Summary\s*$/m.test(template)) {
-    return template.replace(/^## Summary\s*$/m, `## Summary\n\n${summaryBlock}`);
+    // replacer function so `$`-sequences in the AI summary/facts aren't interpreted as replace patterns
+    return template.replace(/^## Summary\s*$/m, () => `## Summary\n\n${summaryBlock}`);
   }
   return `${template.trimEnd()}\n\n## Summary\n\n${summaryBlock}\n`;
 }
@@ -113,6 +115,13 @@ export async function finalizeReplSession(options: FinalizeReplSessionOptions): 
   const raw = await readFile(report.path, 'utf8');
   const next = injectSessionSummary(raw, summary, facts.slice(0, 8));
   await writeFile(report.path, next, 'utf8');
+
+  // also compound the distilled facts into durable auto-memory (not just the session note) so the
+  // self-retrieving brain surfaces them next session. Gated by autoMaintain (default on). Best-effort.
+  if (await autoMaintainEnabled()) {
+    const { appendMemory } = await import('./memory.js');
+    for (const fact of facts.slice(0, 8)) await appendMemory(fact).catch(() => {});
+  }
 
   return {
     sessionSaved: true,

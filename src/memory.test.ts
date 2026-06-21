@@ -152,6 +152,17 @@ describe('appendBrainWorklog (auto worklog → vault Sessions)', () => {
     expect(c.trimEnd().endsWith('up:: [[Sessions/_Index]]')).toBe(true);
   });
 
+  it('ไม่ลบเนื้อหา user ที่บังเอิญมีบรรทัด up:: [[Sessions/_Index]] (กัน data loss — ยอม footer ซ้ำได้)', async () => {
+    const file = join(vault, 'Sessions', '2026-06-15-worklog.md');
+    // ผู้ใช้ paste เนื้อหาที่มีบรรทัด canonical footer กลาง body (ไม่มี trailing footer)
+    await writeFile(file, '---\nnote_type: session-log\n---\n\n# old\nup:: [[Sessions/_Index]]\n\n## stray\nBODYTEXT\n');
+    await appendBrainWorklog(vault, { prompt: 'new task', summary: 'done', model: 'm', today: '2026-06-15' });
+    const c = await readFile(file, 'utf8');
+    expect(c).toContain('BODYTEXT'); // เนื้อหา user ไม่หาย (สำคัญสุด — กัน data loss)
+    expect(c).toContain('new task'); // turn ใหม่ต่อท้าย
+    expect(c.trimEnd().endsWith('up:: [[Sessions/_Index]]')).toBe(true); // จบด้วย footer เสมอ
+  });
+
   it('ไม่เขียนถ้าไม่มี Sessions/ (ไม่ใช่ vault)', async () => {
     const notVault = await mkdtemp(join(tmpdir(), 'x-'));
     expect(await appendBrainWorklog(notVault, { prompt: 'x', summary: 'y', model: 'm', today: '2026-06-15' })).toBe(false);

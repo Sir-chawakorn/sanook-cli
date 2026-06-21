@@ -346,6 +346,10 @@ function ensureSessionNoteScaffold(content: string, header: string): string {
   let next = clean;
   if (!next) next = header.trimEnd();
   else if (!next.includes('note_type: session-log')) next = `${header.trimEnd()}\n\n${next}`;
+  // Append a trailing footer only if the file doesn't already end with one. We deliberately do NOT strip
+  // any mid-file `up:: ` line — it may be real user content (e.g. pasted vault text). In the rare
+  // manual-edit case where a canonical footer sits mid-body, this yields a harmless duplicate footer line
+  // rather than risk deleting vault content.
   if (!UP_FOOTER_RE.test(`${next}\n`)) next = `${next.trimEnd()}\n\nup:: [[Sessions/_Index]]`;
   return `${next.trimEnd()}\n`;
 }

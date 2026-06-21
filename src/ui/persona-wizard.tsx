@@ -46,10 +46,14 @@ export function PersonaWizard({ onComplete }: { onComplete: (a: PersonaAnswers) 
   // Select always focuses the first option on (re)mount and ignores defaultValue for the highlight, so
   // with no defaultValue pressing Enter selects the focused (first) option — making that the prior
   // answer keeps "Esc-back then Enter to re-confirm" from silently overwriting it with the first option.
+  // If the prior answer was a custom "อื่นๆ" value (not a literal option), highlight the PERSONA_OTHER
+  // option so Enter re-enters other-mode (where the TextInput restores the typed text via defaultValue).
   const selectOptions = (() => {
     const opts = (q.options ?? []).map((o) => ({ label: o.label, value: o.value }));
     const prior = answers[q.id];
-    const i = prior ? opts.findIndex((o) => o.value === prior) : -1;
+    if (!prior) return opts;
+    let i = opts.findIndex((o) => o.value === prior);
+    if (i < 0) i = opts.findIndex((o) => o.value === PERSONA_OTHER); // custom typed value → highlight "อื่นๆ"
     return i > 0 ? [opts[i], ...opts.slice(0, i), ...opts.slice(i + 1)] : opts;
   })();
 
@@ -67,11 +71,12 @@ export function PersonaWizard({ onComplete }: { onComplete: (a: PersonaAnswers) 
         {showTextInput ? (
           // key forces a fresh TextInput per question/other-mode — @inkjs/ui keeps the typed value in
           // internal state with no reset-on-prop-change (so without a changing key the previous answer
-          // carries into the next question). defaultValue restores a prior answer on Esc-back so pressing
-          // Enter doesn't overwrite it with '' (empty otherMode follow-up starts blank).
+          // carries into the next question). defaultValue restores the stored answer on Esc-back (for both
+          // plain text questions and a custom "อื่นๆ" value) so re-confirming with Enter never overwrites
+          // it with blank; a fresh question has no stored answer so it starts empty.
           <TextInput
             key={`text-${index}-${otherMode ? 'other' : 'main'}`}
-            defaultValue={otherMode ? '' : answers[q.id]}
+            defaultValue={answers[q.id] ?? ''}
             placeholder={otherMode ? 'พิมพ์คำตอบของคุณ…' : (q.placeholder ?? '')}
             onSubmit={(v) => advance(v.trim())}
           />

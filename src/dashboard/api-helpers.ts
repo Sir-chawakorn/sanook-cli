@@ -1,5 +1,5 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { join, resolve, relative } from 'node:path';
+import { join, resolve, relative, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { appHomePath, BRAND } from '../brand.js';
 import { loadConfig } from '../config.js';
@@ -72,12 +72,22 @@ function safeRoot(root: string): string {
   return resolve(root);
 }
 
+/**
+ * True only if `target` is the root itself or strictly inside it. Uses path.relative (not startsWith)
+ * so a sibling dir sharing the root's name-prefix (e.g. .sanook-secrets vs .sanook) and absolute-path
+ * escapes are both rejected — prevents directory traversal in the dashboard file API.
+ */
+function isWithin(target: string, root: string): boolean {
+  const rel = relative(safeRoot(root), target);
+  return !rel.startsWith('..') && !isAbsolute(rel);
+}
+
 export async function dashboardListFiles(subpath = ''): Promise<{ root: string; entries: { name: string; dir: boolean }[] }> {
   const config = await loadConfig({});
   const roots = [appHomePath(), config.brainPath ? resolve(config.brainPath) : null].filter(Boolean) as string[];
   const root = safeRoot(roots[0] ?? appHomePath());
   const target = safeRoot(join(root, subpath.replace(/^\/+/, '')));
-  if (!target.startsWith(root) && !roots.some((r) => target.startsWith(safeRoot(r)))) {
+  if (!roots.some((r) => isWithin(target, r))) {
     throw new Error('path not allowed');
   }
   const entries = await readdir(target, { withFileTypes: true });
@@ -94,7 +104,7 @@ export async function dashboardReadFile(subpath: string): Promise<{ path: string
   const config = await loadConfig({});
   const allowedRoots = [appHomePath(), config.brainPath ? resolve(config.brainPath) : null].filter(Boolean) as string[];
   const target = safeRoot(subpath.startsWith('/') ? subpath : join(appHomePath(), subpath));
-  if (!allowedRoots.some((root) => target.startsWith(safeRoot(root)))) throw new Error('path not allowed');
+  if (!allowedRoots.some((root) => isWithin(target, root))) throw new Error('path not allowed');
   const info = await stat(target);
   if (!info.isFile()) throw new Error('not a file');
   if (info.size > 512_000) throw new Error('file too large');

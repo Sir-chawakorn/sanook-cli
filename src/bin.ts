@@ -126,14 +126,12 @@ async function runHeadless(
     } catch {
       /* best-effort */
     }
-    // opt-in (experimental, default OFF): auto-distill durable decisions/gotchas/preferences from this
-    // session into the compounding memory store so the self-retrieving brain surfaces them next time.
-    // Off by default per experiment H5 — extraction is high-precision (~0.88) but end-to-end recall is
-    // gated by retrieval quality (semantic helps). Enable with SANOOK_AUTO_DISTILL=1.
-    if (envFlag('SANOOK_AUTO_DISTILL')) {
-      const { distilledFactsFromMessages } = await import('./session-distill.js');
-      const { appendMemory } = await import('./memory.js');
-      for (const fact of distilledFactsFromMessages(messages)) await appendMemory(fact).catch(() => {});
+    // auto-distill durable decisions/gotchas/preferences from this turn into the compounding memory store
+    // so the self-retrieving brain surfaces them next time. Default ON via autoMaintain (gating + cap live
+    // in auto-maintain.ts); legacy SANOOK_AUTO_DISTILL still forces it on. Best-effort.
+    {
+      const { autoDistillToMemory, autoMaintainEnabled } = await import('./auto-maintain.js');
+      if (envFlag('SANOOK_AUTO_DISTILL') || (await autoMaintainEnabled())) await autoDistillToMemory(messages);
     }
   } catch (err) {
     const msg = redactKey((err as Error).message);
@@ -283,7 +281,7 @@ config & mcp:
   ${BRAND.cliName} runtimes [--json]               ดู Python/Rust optional runtime + บทบาทใน Sanook
   ${BRAND.cliName} web status [--json]             ดู web-search/fetch readiness และ grounding policy
   ${BRAND.cliName} tools                          ดู tool surface ที่ agent ใช้ได้
-  ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/fallbackModel/budgetUsd/maxSteps/permissionMode/brainPath/brainTranscript/cacheTtl/compaction/contextCompression/thinking/summaryModel/embeddingModel/personality)
+  ${BRAND.cliName} config [get|set <k> <v>]       ดู/แก้ ${appHomePath('config.json')} (model/fallbackModel/budgetUsd/maxSteps/permissionMode/brainPath/brainTranscript/autoMaintain/cacheTtl/compaction/contextCompression/thinking/summaryModel/embeddingModel/personality)
   ${BRAND.cliName} mcp [search|info|install|test|doctor|enable|disable|preset|list|add|remove]   จัดการ MCP servers
   ${BRAND.cliName} trust [status|add|remove]      อนุญาต/ยกเลิก project .sanook mcp/hooks/skills/commands
 
@@ -596,6 +594,7 @@ async function runAgentSetupSummary(): Promise<void> {
   console.log(`  budgetUsd:      ${cfg.budgetUsd ?? '(not set)'}`);
   console.log(`  brainPath:      ${cfg.brainPath ?? '(not set)'}`);
   console.log(`  brainTranscript:${cfg.brainTranscript ? ' on' : ' off'}`);
+  console.log(`  autoMaintain:   ${cfg.autoMaintain === false ? 'off' : 'on'} (consolidate+distill อัตโนมัติ)`);
   console.log(`  insights:       ${BRAND.cliName} insights [--days N]`);
   console.log('\nแก้ค่าได้ด้วย:');
   console.log(`  ${BRAND.cliName} config set personality concise`);
@@ -3682,6 +3681,7 @@ async function runConfig(args: string[]): Promise<void> {
     'permissionMode',
     'brainPath',
     'brainTranscript',
+    'autoMaintain',
     'pricing',
     'cacheTtl',
     'compaction',
@@ -3732,12 +3732,12 @@ async function runConfig(args: string[]): Promise<void> {
       // store absolute — getBrainPath() is read from arbitrary cwd, so a relative path drifts
       const { expandHome } = await import('./brain.js');
       value = resolve(expandHome(raw.trim()));
-    } else if (key === 'brainTranscript') {
+    } else if (key === 'brainTranscript' || key === 'autoMaintain') {
       const v = raw.trim().toLowerCase();
       if (['on', 'true', '1', 'yes'].includes(v)) value = true;
       else if (['off', 'false', '0', 'no'].includes(v)) value = false;
       else {
-        console.error('brainTranscript ต้องเป็น on/off, true/false หรือ yes/no');
+        console.error(`${key} ต้องเป็น on/off, true/false หรือ yes/no`);
         process.exit(1);
       }
     } else if (key === 'thinking') {

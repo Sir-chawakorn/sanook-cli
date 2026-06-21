@@ -128,6 +128,9 @@ export function Root({ needsSetup, appProps, clearScreen }: RootProps) {
 /** เปิดแอป: wizard (ถ้า first-run) → REPL — Ink render ครั้งเดียว (fix: พิมพ์ในช่องแชทไม่ได้) */
 export function startApp(props: RootProps): void {
   requireInteractiveTTY();
+  // background, best-effort: weekly memory + vault consolidation (auto-maintain). Non-blocking so the
+  // REPL opens instantly; the consolidated store is ready for the next turn. Runs only when due + enabled.
+  void import('../auto-maintain.js').then((m) => m.maybeStartupMaintain()).catch(() => {});
   let instance: ReturnType<typeof render> | undefined;
   // \x1b[2J เคลียร์จอ · \x1b[3J เคลียร์ scrollback · \x1b[H cursor กลับมุมซ้ายบน
   // instance.clear() ลบ frame ล่าสุดที่ Ink จำไว้ → App วาดใหม่จากบนสุดไม่เหลือเศษ wizard

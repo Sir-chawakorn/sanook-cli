@@ -44,6 +44,9 @@ export const ConfigSchema = z.object({
   brainPath: z.string().optional(),
   // เก็บบทสนทนาเต็ม (prompt + คำตอบ AI ทุก turn) ลง vault Sessions/*-chat.md — opt-in (vault โตไว)
   brainTranscript: z.boolean().optional().catch(undefined),
+  // auto-maintenance: consolidate memory+vault อัตโนมัติ (รายสัปดาห์ตอน startup) + distill session → memory.
+  // default on (undefined = on); ตั้ง false เพื่อปิด หรือ env SANOOK_DISABLE_AUTO_MAINTAIN=1
+  autoMaintain: z.boolean().optional().catch(undefined),
   // pricing override/extension per "provider:model" → ทำให้ budget cap ใช้ได้กับ model ที่ยังไม่มีในตาราง
   pricing: PricingOverrideSchema.optional(),
   // ── token/cost tuning (ดู agentTuning) — .catch กันค่า config.json ผิดทำ boot พัง (agentTuning อ่าน raw + coerce เองด้วย) ──

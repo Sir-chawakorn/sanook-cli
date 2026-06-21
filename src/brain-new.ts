@@ -219,15 +219,17 @@ export function instantiateNoteTemplate(
     return heading;
   });
 
+  // replacer functions throughout — the parent path is user-derived (--output), so `$`-sequences in it
+  // must be written literally, not interpreted as String.replace patterns.
   const parentValue = `"[[${options.parent}]]"`;
   if (/^parent:/m.test(content)) {
-    content = content.replace(/^parent:.*$/m, `parent: ${parentValue}`);
+    content = content.replace(/^parent:.*$/m, () => `parent: ${parentValue}`);
   } else if (/^---[\s\S]*?---/m.test(content)) {
-    content = content.replace(/^---\n/m, `---\nparent: ${parentValue}\n`);
+    content = content.replace(/^---\n/m, () => `---\nparent: ${parentValue}\n`);
   }
 
   const upLink = `up:: [[${options.parent}]]`;
-  if (content.includes('up:: [[')) content = content.replace(/^up:: \[\[[^\]]+\]\]\s*$/m, upLink);
+  if (content.includes('up:: [[')) content = content.replace(/^up:: \[\[[^\]]+\]\]\s*$/m, () => upLink);
   else content = `${content.trimEnd()}\n\n${upLink}\n`;
 
   if (options.type === 'golden-case') content = content.replace(/^note_type:\s*template/m, 'note_type: golden-case');

@@ -187,7 +187,12 @@ export async function attachShell(server: Server): Promise<void> {
 
   server.on('upgrade', (req, socket, head) => {
     const url = new URL(req.url ?? '/', 'http://local');
-    if (url.pathname !== '/api/terminal/shell') return;
+    if (url.pathname !== '/api/terminal/shell') {
+      // not ours — destroy the half-open upgraded socket so it doesn't leak (this is the only
+      // 'upgrade' handler on the dashboard server; with noServer ws, Node won't auto-close it).
+      socket.destroy();
+      return;
+    }
     wss.handleUpgrade(req, socket as never, head, (ws: WsLike) => {
       const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || 'bash';
       const term = pty.spawn(shell, [], {

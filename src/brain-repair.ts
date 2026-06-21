@@ -92,7 +92,8 @@ export function applyParentFix(content: string, relPath: string): string {
   const parentLine = `parent: "[[${parent}]]"`;
   const match = content.match(/^---\n([\s\S]*?)---\n/);
   if (!match) return `---\n${parentLine}\n---\n\n${content}`;
-  return content.replace(/^---\n/, `---\n${parentLine}\n`);
+  // replacer function so `$`-sequences in the inferred parent path aren't interpreted as replace patterns
+  return content.replace(/^---\n/, () => `---\n${parentLine}\n`);
 }
 
 export function applyUpLinkFix(content: string, relPath: string): string {

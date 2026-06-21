@@ -1312,7 +1312,10 @@ function InputView({
 }) {
   if (busy && !value) {
     const runningTool = toolTrail?.find((item) => item.status === 'running');
-    const detail = agentStatus || (runningTool ? `Tool · ${runningTool.name}` : 'Working…');
+    // prefer the running tool's friendly activity title (e.g. "📖 อ่านไฟล์ src/x.ts", "$ npm test") over
+    // the raw "Tool · read_file" status — same detail the tool trail shows, so the one-line status during a
+    // turn says specifically what's happening; falls back to agentStatus (Thinking…/Writing…/Agent · model).
+    const detail = runningTool?.activity?.title || agentStatus || (runningTool ? `Tool · ${runningTool.name}` : 'Working…');
     // wrap="truncate-end": status ต้องอยู่ 1 บรรทัดเสมอ — กัน timer/elapsed ทำบรรทัดเด้งหลังส่ง prompt
     return (
       <Text dimColor wrap="truncate-end">
