@@ -1,8 +1,10 @@
+import { clipToWidth } from './text-width.js';
+
 export const QUEUE_WINDOW = 3;
 
+// display-width aware: queued items are user prompts (often Thai) — clip by columns, not code units
 export function compactPreview(text: string, width: number): string {
-  const max = Math.max(8, width);
-  return text.length > max ? `${text.slice(0, Math.max(0, max - 1))}…` : text;
+  return clipToWidth(text, Math.max(8, width));
 }
 
 export function getQueueWindow(queueLength: number, activeIndex: number | null = null) {

@@ -8,6 +8,7 @@ import type { CompletionItem } from '../slash-completion.js';
 import type { Skill } from '../skills.js';
 import type { ToolCatalogEntry } from '../tool-catalog.js';
 import type { TaskRecord } from '../orchestrate.js';
+import { clipToWidth, padEndToWidth } from './text-width.js';
 
 export type OverlayKind = 'hotkeys' | 'mcp' | 'model' | 'pager' | 'skills' | 'sessions' | 'tasks' | 'tools';
 
@@ -156,9 +157,10 @@ function overlayWidth(columns: number): number {
   return Math.max(34, Math.min(Math.max(MIN_OVERLAY_COLUMNS, Math.floor(columns || 80) - 4), MAX_OVERLAY_COLUMNS));
 }
 
+// display-width aware (Thai marks 0, emoji/CJK 2) so the bordered overlay columns + right edge stay
+// aligned for non-ASCII session titles / skill names / mcp targets / model labels.
 function clip(text: string, width: number): string {
-  if (width <= 0) return '';
-  return text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text;
+  return clipToWidth(text, width);
 }
 
 export function completionOverlayLines(items: CompletionItem[], selected: number, columns: number): string[] {
@@ -173,7 +175,7 @@ export function completionOverlayLines(items: CompletionItem[], selected: number
   const lines = visible.map((item, offset) => {
     const index = start + offset;
     const cursor = index === safeSelected ? '>' : ' ';
-    return `${cursor} ${clip(item.display, commandWidth).padEnd(commandWidth)} ${clip(item.meta, metaWidth)}`;
+    return `${cursor} ${padEndToWidth(clip(item.display, commandWidth), commandWidth)} ${clip(item.meta, metaWidth)}`;
   });
   lines.push('↑↓ select · Tab/Enter complete');
   return lines;
@@ -265,7 +267,7 @@ export function modelOverlayLines(overlay: ModelOverlayState, columns: number): 
       const index = window.start + offset;
       const cursor = index === overlay.selected ? '>' : ' ';
       lines.push(
-        `${cursor} ${clip(provider.label, nameWidth).padEnd(nameWidth)} ${provider.modelCount} models · ${provider.status}`,
+        `${cursor} ${padEndToWidth(clip(provider.label, nameWidth), nameWidth)} ${provider.modelCount} models · ${provider.status}`,
       );
     }
     if (window.end < overlay.providers.length) lines.push(`... ${overlay.providers.length - window.end} more`);
@@ -285,7 +287,7 @@ export function modelOverlayLines(overlay: ModelOverlayState, columns: number): 
     const index = window.start + offset;
     const cursor = index === overlay.selected ? '>' : ' ';
     const current = option.current ? '*' : ' ';
-    lines.push(`${cursor}${current} ${clip(option.label, optionWidth).padEnd(optionWidth)} ${clip(option.meta, metaWidth)}`);
+    lines.push(`${cursor}${current} ${padEndToWidth(clip(option.label, optionWidth), optionWidth)} ${clip(option.meta, metaWidth)}`);
   }
   if (window.end < overlay.options.length) lines.push(`... ${overlay.options.length - window.end} more`);
   lines.push('Enter switch · Esc back to providers · q close');
@@ -357,7 +359,7 @@ export function mcpOverlayLines(overlay: McpOverlayState, columns: number): stri
     const index = window.start + offset;
     const cursor = index === overlay.selected ? '>' : ' ';
     lines.push(
-      `${cursor} ${clip(server.name, nameWidth).padEnd(nameWidth)} ${server.transport.padEnd(5)} ${clip(server.target, targetWidth)}`,
+      `${cursor} ${padEndToWidth(clip(server.name, nameWidth), nameWidth)} ${server.transport.padEnd(5)} ${clip(server.target, targetWidth)}`,
     );
   }
   if (window.end < overlay.servers.length) lines.push(`... ${overlay.servers.length - window.end} more`);
@@ -476,7 +478,7 @@ export function skillsOverlayLines(overlay: SkillsOverlayState, columns: number)
   for (const [offset, skill] of visible.entries()) {
     const index = window.start + offset;
     const cursor = index === overlay.selected ? '>' : ' ';
-    lines.push(`${cursor} ${clip(skill.name, nameWidth).padEnd(nameWidth)} ${clip(skill.description || '(no description)', descWidth)}`);
+    lines.push(`${cursor} ${padEndToWidth(clip(skill.name, nameWidth), nameWidth)} ${clip(skill.description || '(no description)', descWidth)}`);
   }
   if (window.end < overlay.skills.length) lines.push(`... ${overlay.skills.length - window.end} more`);
   lines.push('↑↓/jk select · Enter inspect · Esc/q close');
@@ -539,7 +541,7 @@ export function toolsOverlayLines(overlay: ToolsOverlayState, columns: number): 
     const index = window.start + offset;
     const cursor = index === overlay.selected ? '>' : ' ';
     lines.push(
-      `${cursor} ${clip(tool.group, groupWidth).padEnd(groupWidth)} ${clip(tool.name, nameWidth).padEnd(nameWidth)} ${clip(tool.summary, summaryWidth)}`,
+      `${cursor} ${padEndToWidth(clip(tool.group, groupWidth), groupWidth)} ${padEndToWidth(clip(tool.name, nameWidth), nameWidth)} ${clip(tool.summary, summaryWidth)}`,
     );
   }
   if (window.end < overlay.tools.length) lines.push(`... ${overlay.tools.length - window.end} more`);
@@ -723,7 +725,7 @@ export function sessionsOverlayLines(overlay: SessionsOverlayState, columns: num
     const title = sessionTitle(session, overlay.currentCwd);
     const meta = `${session.model} · ${shortDate(session.updated)}`;
     lines.push(
-      `${cursor} ${clip(session.id, idWidth).padEnd(idWidth)} ${clip(title, titleWidth).padEnd(titleWidth)} ${clip(meta, metaWidth)}`,
+      `${cursor} ${padEndToWidth(clip(session.id, idWidth), idWidth)} ${padEndToWidth(clip(title, titleWidth), titleWidth)} ${clip(meta, metaWidth)}`,
     );
   }
   if (window.end < overlay.sessions.length) lines.push(`... ${overlay.sessions.length - window.end} more`);

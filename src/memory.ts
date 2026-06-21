@@ -4,6 +4,7 @@ import { buildContextPackBlock, listContextPacks, readContextPackExcerpt, select
 import { buildProjectContextBlock, resolveVaultProject } from './project-registry.js';
 import { appHomePath, BRAND, brainTranscriptEnvForced, persistenceEnabled, worklogEnabled } from './brand.js';
 import { redactKey } from './providers/keys.js';
+import { neutralizeBlockTags } from './prompt-safety.js';
 import { loadStore, saveStore, mergeFact, maybeConsolidate, consolidate, renderPromptBlock, activeFacts, type NoteType, type Incoming } from './memory-store.js';
 import { renderPersonaProfile, personaFacts, mergePersonaAnswers, parsePersonaProfileMarkdown, personaAnswersFromFacts, renderOwnerPersonaPromptBlock, type PersonaAnswers } from './persona.js';
 
@@ -55,7 +56,9 @@ export async function loadMemory(cwd: string = process.cwd()): Promise<string> {
     seen.add(p);
     try {
       const content = (await readFile(p, 'utf8')).trim();
-      if (content) blocks.push(`<memory src="${p}">\n${content}\n</memory>`);
+      // SANOOK.md is untrusted (anyone can drop one in a shared parent dir) — fence so it can't forge
+      // a block boundary / role tag and smuggle instructions into the system prompt (§10.4).
+      if (content) blocks.push(`<memory src="${p}">\n${neutralizeBlockTags(content)}\n</memory>`);
     } catch {
       // ไม่มีไฟล์ = ข้าม
     }
@@ -201,7 +204,10 @@ export async function buildBrainContextParts(brainPath: string, options: BuildBr
 export function renderBrainContext(brainPath: string, parts: readonly BrainContextPart[]): string {
   const content = parts.map((part) => part.content).filter(Boolean);
   if (!content.length) return '';
-  return `<brain_vault path="${brainPath}" note="second-brain ของ user — สิ่งที่จำไว้/state ปัจจุบันอยู่ใน block นี้; route โน้ตตาม Vault Structure Map; อ่าน/เขียนไฟล์ใน vault ด้วย absolute path ได้">\n${content.join('\n\n')}\n</brain_vault>`;
+  // vault files are user/ingested content (clippings, intake, pasted notes) = untrusted data, not
+  // instructions (§10.4). Fence so a note containing `</brain_vault>` or `<system>…` can't break out.
+  const fenced = neutralizeBlockTags(content.join('\n\n'));
+  return `<brain_vault path="${brainPath}" note="second-brain ของ user — สิ่งที่จำไว้/state ปัจจุบันอยู่ใน block นี้; route โน้ตตาม Vault Structure Map; อ่าน/เขียนไฟล์ใน vault ด้วย absolute path ได้">\n${fenced}\n</brain_vault>`;
 }
 
 /** ประกอบ brain context จาก vault path (pure → testable) — entry + current-state + remembered facts + optional context pack */

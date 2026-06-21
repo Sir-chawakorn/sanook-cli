@@ -1,11 +1,14 @@
+import { clipToWidth } from './text-width.js';
+
 export type DetailsDisplayMode = 'collapsed' | 'expanded' | 'hidden';
 
 const THINKING_CHAR_LIMIT = 2_000;
 const THINKING_LINE_LIMIT = 6;
 
+// display-width aware: the panel body is the model's Thai reasoning — .length-based clipping under-fills
+// the line and can split a cluster (orphaned tone mark)
 function clip(text: string, width: number): string {
-  if (width <= 0) return '';
-  return text.length > width ? `${text.slice(0, Math.max(0, width - 3))}...` : text;
+  return clipToWidth(text, width, '...');
 }
 
 function normalize(text: string): string {
