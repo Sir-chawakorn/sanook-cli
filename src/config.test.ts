@@ -18,6 +18,7 @@ describe('loadConfig layering', () => {
   });
   afterEach(async () => {
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
     for (const key of Object.keys(PRICING)) {
       if (key.startsWith('test:')) delete PRICING[key];
     }
@@ -57,6 +58,8 @@ describe('loadConfig layering', () => {
   });
 
   it('malformed config FIELDS degrade to defaults instead of throwing on boot', async () => {
+    const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    vi.stubEnv('SANOOK_TRUST_PROJECT', '1');
     // valid JSON, but several fields violate the schema (would have crashed ConfigSchema.parse)
     await writeFile(
       join(dir, '.sanook', 'config.json'),
@@ -67,6 +70,11 @@ describe('loadConfig layering', () => {
     expect(c.maxSteps).toBe(20); // bad field → default
     expect(c.permissionMode).toBe('ask'); // bad field → default
     expect(c.budgetUsd).toBeUndefined(); // bad budget dropped (no silent cap), surfaced via stderr warn
+    expect(stderrWrite).toHaveBeenCalledOnce();
+    const warning = String(stderrWrite.mock.calls[0]?.[0]);
+    expect(warning).toContain('budgetUsd');
+    expect(warning).toContain('maxSteps');
+    expect(warning).toContain('permissionMode');
   });
 
   it('budgetUsd ผ่าน CLI override', async () => {
@@ -116,6 +124,19 @@ describe('loadConfig layering', () => {
     expect(hasPricingForKey('test:untrusted-pricing')).toBe(false);
   });
 
+  it('untrusted project config redirect/force vault and auto-maintain settings ไม่ได้', async () => {
+    const ownerBrain = join(home, 'owner-brain');
+    const repoBrain = join(dir, 'repo-brain');
+    await writeFile(join(home, '.sanook', 'config.json'), JSON.stringify({ brainPath: ownerBrain, brainTranscript: false, autoMaintain: false }));
+    await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ brainPath: repoBrain, brainTranscript: true, autoMaintain: true }));
+
+    const c = await loadConfig({}, dir);
+
+    expect(c.brainPath).toBe(ownerBrain);
+    expect(c.brainTranscript).toBe(false);
+    expect(c.autoMaintain).toBe(false);
+  });
+
   it('trusted project ตั้ง budgetUsd ได้', async () => {
     vi.stubEnv('SANOOK_TRUST_PROJECT', '1');
     await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ budgetUsd: 2.5 }));
@@ -126,6 +147,20 @@ describe('loadConfig layering', () => {
     vi.stubEnv('SANOOK_TRUST_PROJECT', '1');
     await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ permissionMode: 'auto' }));
     expect((await loadConfig({}, dir)).permissionMode).toBe('auto');
+  });
+
+  it('trusted project config ตั้ง vault and auto-maintain settings ได้', async () => {
+    vi.stubEnv('SANOOK_TRUST_PROJECT', '1');
+    const ownerBrain = join(home, 'owner-brain');
+    const repoBrain = join(dir, 'repo-brain');
+    await writeFile(join(home, '.sanook', 'config.json'), JSON.stringify({ brainPath: ownerBrain, brainTranscript: false, autoMaintain: false }));
+    await writeFile(join(dir, '.sanook', 'config.json'), JSON.stringify({ brainPath: repoBrain, brainTranscript: true, autoMaintain: true }));
+
+    const c = await loadConfig({}, dir);
+
+    expect(c.brainPath).toBe(repoBrain);
+    expect(c.brainTranscript).toBe(true);
+    expect(c.autoMaintain).toBe(true);
   });
 
   it('pricing override ต้องเป็น numeric object ที่ schema รองรับ', () => {

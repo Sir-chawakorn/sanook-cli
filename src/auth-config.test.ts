@@ -79,4 +79,23 @@ describe('auth config store', () => {
     expect(process.env['BAD-NAME']).toBeUndefined();
     expect(process.env.NESTED).toBeUndefined();
   });
+
+  it('treats corrupted auth stores as empty and can save over them', async () => {
+    await mkdir(join(home, '.sanook'), { recursive: true });
+    await writeFile(join(home, '.sanook', 'auth.json'), JSON.stringify([{ OPENAI_API_KEY: 'array-entry' }]));
+
+    const { loadKeysIntoEnv, readStoredAuthRaw, saveKey } = await import('./config.js');
+    await expect(readStoredAuthRaw()).resolves.toEqual({});
+
+    delete process.env.OPENAI_API_KEY;
+    await loadKeysIntoEnv();
+    expect(process.env.OPENAI_API_KEY).toBeUndefined();
+
+    await writeFile(join(home, '.sanook', 'auth.json'), '{bad json');
+    await expect(readStoredAuthRaw()).resolves.toEqual({});
+
+    await saveKey('OPENAI_API_KEY', 'stored-key');
+    expect(await readStoredAuthRaw()).toEqual({ OPENAI_API_KEY: 'stored-key' });
+    expect(process.env.OPENAI_API_KEY).toBe('stored-key');
+  });
 });

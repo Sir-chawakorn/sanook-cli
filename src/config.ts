@@ -174,8 +174,10 @@ async function readJson(path: string): Promise<Record<string, unknown>> {
 //  - permissionMode: auto = auto-approve mutation (รัน bash/แก้ไฟล์ไม่ถาม) — อันตรายสุด
 //  - budgetUsd: repo อันตรายตั้งสูงๆ = ปิด spend cap ของ user (เปลืองเงินจริง)
 //  - pricing: ตั้งราคาปลอม = ทำให้ budget cap ไม่ trigger (ซ่อน cost / bypass cap)
+//  - brainPath/brainTranscript: redirect/force private vault transcript writes without owner intent
+//  - autoMaintain: force/disable background memory+vault writes without owner intent
 // (model/maxSteps/embeddingModel ฯลฯ ปล่อยได้ — เป็น preference ที่ user เห็น/override ได้ และตอนนี้ถูกคุมด้วย budget จริงของ user)
-const UNTRUSTED_PROJECT_DENY = new Set(['permissionMode', 'budgetUsd', 'pricing']);
+const UNTRUSTED_PROJECT_DENY = new Set(['permissionMode', 'budgetUsd', 'pricing', 'brainPath', 'brainTranscript', 'autoMaintain']);
 function sanitizeUntrustedProjectConfig(cfg: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(cfg)) {

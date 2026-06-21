@@ -856,7 +856,7 @@ SANOOK.md                    project memory (hierarchical, cwd → project root 
 {brainPath}/                 your Obsidian vault — worklogs, session notes, Projects/, Shared/
 ```
 
-Untrusted project config can set ordinary project defaults, but it cannot lower `permissionMode` to `auto`; trust the project first if you want project-local config to control mutation approval.
+Untrusted project config can set ordinary project defaults, but it cannot control sensitive local state: `permissionMode=auto`, `budgetUsd`, `pricing`, `brainPath`, `brainTranscript`, and `autoMaintain` are ignored until you trust the project.
 
 ### Token / cost tuning
 
