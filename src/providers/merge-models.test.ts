@@ -44,4 +44,9 @@ describe('mergeModelOptions — no duplicate options (the "two identical choices
     expect(values).toContain('brand-new-model'); // genuinely new id kept
     expect(values.filter((v) => v === 'gpt-5.5')).toHaveLength(1); // gpt-5.5 already curated → not re-added
   });
+
+  it('codex offers only ChatGPT-plan-safe models (no legacy *-codex ids)', () => {
+    const opts = mergeModelOptions(PROVIDERS.codex, ['gpt-5-codex', 'gpt-5.3-codex']);
+    expect(opts.map((o) => o.value).sort()).toEqual(['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.5']);
+  });
 });

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.10
+
+- Patch release (npm republish guard — use this version after 0.5.9 is already on the registry).
+
+## 0.5.9
+
+### Codex (ChatGPT plan) + install
+
+- **Codex models** — setup, `/model` picker, and config migration now only offer ChatGPT-plan-safe models (`gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`); legacy `gpt-5-codex` / `*-codex` ids auto-migrate instead of failing at runtime.
+- **Codex errors** — surface JSONL API errors from `codex exec` (not just opaque exit codes).
+- **Install** — README install section, GitHub Pages deploy script, npm publish guard (`scripts/publish-npm.sh`).
+
 ## 0.5.8
 
 ### Self-maintaining memory + reliability & security hardening

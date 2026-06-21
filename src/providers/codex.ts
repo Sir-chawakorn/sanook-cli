@@ -66,10 +66,76 @@ export async function detectCodex(): Promise<CodexStatus> {
 }
 
 export interface CodexEvent {
-  type: 'text' | 'usage' | 'thread';
+  type: 'text' | 'usage' | 'thread' | 'error';
   text?: string;
   threadId?: string;
   usage?: unknown;
+  message?: string;
+}
+
+/** Models rejected by official `codex exec` when auth is ChatGPT plan (not OpenAI API key). */
+export const CODEX_CHATGPT_UNSUPPORTED_MODELS = new Set([
+  'gpt-5-codex',
+  'gpt-5.2-codex',
+  'gpt-5.3-codex',
+  'gpt-5.3-codex-spark',
+]);
+
+/** Models verified to work with ChatGPT-plan auth via `codex exec` (Jun 2026). */
+export const CODEX_CHATGPT_SUPPORTED_MODELS = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'] as const;
+
+/** Curated aliases for setup + /model picker — only ChatGPT-plan-safe ids. */
+export const CODEX_CHATGPT_MODEL_ALIASES: Record<string, string> = {
+  default: 'gpt-5.5',
+  codex: 'gpt-5.5',
+  smart: 'gpt-5.5',
+  '5.5': 'gpt-5.5',
+  '5.4': 'gpt-5.4',
+  '5.4-mini': 'gpt-5.4-mini',
+  fast: 'gpt-5.4-mini',
+};
+
+export function isCodexChatGptSupportedModel(model: string): boolean {
+  return (CODEX_CHATGPT_SUPPORTED_MODELS as readonly string[]).includes(model.trim());
+}
+
+/** Migrate saved config specs that still point at deprecated Codex CLI model ids. */
+export function migrateDeprecatedCodexModel(spec: string): string {
+  const idx = spec.indexOf(':');
+  if (idx === -1) return spec;
+  const provider = spec.slice(0, idx);
+  if (provider !== 'codex') return spec;
+  const { model, migratedFrom } = normalizeCodexChatGptModel(spec.slice(idx + 1));
+  return migratedFrom ? `${provider}:${model}` : spec;
+}
+
+/** Map legacy/unsupported Codex CLI model ids to a ChatGPT-plan-safe default. */
+export function normalizeCodexChatGptModel(model: string): { model: string; migratedFrom?: string } {
+  const trimmed = model.trim();
+  if (!trimmed || !CODEX_CHATGPT_UNSUPPORTED_MODELS.has(trimmed)) {
+    return { model: trimmed };
+  }
+  return { model: 'gpt-5.5', migratedFrom: trimmed };
+}
+
+function extractCodexErrorMessage(raw: string): string {
+  const t = raw.trim();
+  if (!t) return '';
+  try {
+    const outer = JSON.parse(t) as { message?: string; error?: { message?: string } };
+    const nested = typeof outer.message === 'string' ? outer.message : '';
+    if (nested.startsWith('{')) {
+      try {
+        const inner = JSON.parse(nested) as { error?: { message?: string }; message?: string };
+        return inner.error?.message ?? inner.message ?? nested;
+      } catch {
+        return nested;
+      }
+    }
+    return outer.error?.message ?? outer.message ?? t;
+  } catch {
+    return t;
+  }
 }
 
 export interface RunCodexOptions {
@@ -104,6 +170,7 @@ export async function runCodex(opts: RunCodexOptions): Promise<{ text: string; t
     let threadId: string | undefined;
     let buf = '';
     let stderr = '';
+    let jsonlError = '';
     let aborted = false;
 
     const handleStdoutLine = (line: string) => {
@@ -116,7 +183,14 @@ export async function runCodex(opts: RunCodexOptions): Promise<{ text: string; t
         return;
       }
       try {
-        const ev = JSON.parse(t) as { type?: string; thread_id?: string; item?: { type?: string; text?: string }; usage?: unknown };
+        const ev = JSON.parse(t) as {
+          type?: string;
+          thread_id?: string;
+          message?: string;
+          error?: { message?: string };
+          item?: { type?: string; text?: string };
+          usage?: unknown;
+        };
         if (ev.type === 'thread.started' && ev.thread_id) {
           threadId = ev.thread_id;
           opts.onEvent?.({ type: 'thread', threadId });
@@ -125,6 +199,12 @@ export async function runCodex(opts: RunCodexOptions): Promise<{ text: string; t
           opts.onEvent?.({ type: 'text', text: finalText });
         } else if (ev.type === 'turn.completed') {
           opts.onEvent?.({ type: 'usage', usage: ev.usage });
+        } else if (ev.type === 'error' || ev.type === 'turn.failed') {
+          const msg = extractCodexErrorMessage(ev.message ?? ev.error?.message ?? t);
+          if (msg) {
+            jsonlError = msg;
+            opts.onEvent?.({ type: 'error', message: msg });
+          }
         }
       } catch {
         // malformed JSON line — ข้าม
@@ -170,7 +250,10 @@ export async function runCodex(opts: RunCodexOptions): Promise<{ text: string; t
       buf = '';
       if (aborted) reject(new Error(`codex exec ถูกยกเลิก${stderr.trim() ? `: ${stderr.trim()}` : ''}`));
       else if (code === 0) resolve({ text: finalText.trim(), threadId });
-      else reject(new Error(`codex exec จบด้วย exit code ${code}${stderr.trim() ? `: ${stderr.trim()}` : ''}`));
+      else {
+        const detail = jsonlError.trim() || stderr.trim();
+        reject(new Error(`codex exec จบด้วย exit code ${code}${detail ? `: ${detail}` : ''}`));
+      }
     });
   });
 }

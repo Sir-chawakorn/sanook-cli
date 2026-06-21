@@ -63,9 +63,9 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
   const providerMenuLines = setupProviderMenuLines();
 
   const advanceIfCodexReady = (status: CodexStatus): void => {
-    if (!status.loggedIn) return;
+    if (!status.loggedIn || !status.installed) return;
     setModel(`codex:${PROVIDERS.codex.models.default}`);
-    if (status.installed) setStep('agent');
+    setStep('model');
   };
 
   // codex-auth: เช็ก codex CLI ติดตั้ง + login ChatGPT (re-run เมื่อกด "เช็กใหม่")
@@ -385,6 +385,7 @@ export function SetupWizard({ onComplete }: { onComplete: (r: SetupResult) => vo
               {m.stepModel} — {m.modelPick}
               {remote.length ? <Text color="gray"> ({modelOptions.length})</Text> : null}:
             </Text>
+            {provider === 'codex' ? <Text color="gray">   {m.codexModelHint}</Text> : null}
             <Select
               options={modelOptions}
               onChange={(v) => {

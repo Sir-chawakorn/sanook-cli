@@ -47,6 +47,7 @@ describe('model specs', () => {
     expect(canonicalSpec('gpt')).toBe('openai:gpt-5.5');
     expect(canonicalSpec('openai:gpt')).toBe('openai:gpt-5.5');
     expect(canonicalSpec('codex')).toBe('codex:gpt-5.5');
+    expect(canonicalSpec('codex:gpt-5-codex')).toBe('codex:gpt-5.5');
   });
 
   it('OpenAI missing-key errors point ChatGPT-plan users to Codex', () => {

@@ -37,6 +37,7 @@ export interface SetupMessages {
   codexOptionRecheck: string;
   codexOptionBack: string;
   codexInstallCmd: string;
+  codexModelHint: string;
   keyEscHint: string;
   keyOpenAiCodexHint: string;
   keyFormatHint: string;

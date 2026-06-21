@@ -1,14 +1,14 @@
 import stringWidth from 'string-width';
-import { graphemeBoundaries } from './useEditor.js';
+import { clampCursorToGrapheme, graphemeBoundaries } from './useEditor.js';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Stable, Thai-safe rendering of the REPL input line.
+// Regression guards: repl-layout-guard.test.ts + input-view.test.ts (width + gap cursor).
 //
 // Two bugs this fixes (เทียบกับ CLI เจ้าอื่นที่ "นิ่ง"):
-//  1) cursor split a grapheme cluster — the old code did value.slice(cursor, cursor+1),
-//     which on Thai cuts a base char away from its combining vowel/tone mark (สระ/วรรณยุกต์
-//     เป็น zero-width). The orphaned mark then renders on its own cell → "อักษรห่างเกินไป".
-//     Fix: the cursor highlights a WHOLE grapheme cluster (base + all its marks).
+//  1) block cursor on Thai text — inverting the grapheme under the caret paints a solid
+//     cell over the base char + combining marks and looks like the cursor "covers" the letter.
+//     Fix: gap cursor — render an inverse space BETWEEN clusters, never on top of a letter.
 //  2) the line bounced between 1 and 2 rows while typing — a wrapping <Text> grows the box
 //     vertically the moment content crosses the right edge, shoving the footer down on every
 //     keystroke. Fix: a fixed-width horizontal viewport (readline-style) so the input box is
@@ -26,7 +26,7 @@ export interface InputViewport {
   lead: boolean;
   /** text left of the cursor that is within the visible window */
   before: string;
-  /** the single grapheme cluster under the cursor (rendered inverse); ' ' at end of line */
+  /** gap cursor cell (inverse space) — never overlays a letter */
   at: string;
   /** text right of the cursor that is within the visible window */
   after: string;
@@ -42,15 +42,20 @@ export function graphemesOf(value: string): string[] {
   return out;
 }
 
-/** grapheme-cluster index that a code-unit cursor sits at (0..graphemeCount) */
-export function cursorGraphemeIndex(value: string, cursor: number): number {
+/** insert position between grapheme clusters (0 = before first char, n = after last) */
+export function cursorInsertGraphemeIndex(value: string, cursor: number): number {
+  const clamped = clampCursorToGrapheme(value, cursor);
   const bounds = graphemeBoundaries(value);
-  let index = 0;
   for (let i = 0; i < bounds.length; i += 1) {
-    if (bounds[i] <= cursor) index = i;
-    else break;
+    if (bounds[i] === clamped) return i;
   }
-  return index;
+  return bounds.length - 1;
+}
+
+/** @deprecated use cursorInsertGraphemeIndex — kept for callers that need cluster index */
+export function cursorGraphemeIndex(value: string, cursor: number): number {
+  const insert = cursorInsertGraphemeIndex(value, cursor);
+  return insert >= graphemesOf(value).length ? Math.max(0, insert - 1) : insert;
 }
 
 /** display width of one grapheme, never less than 1 cell (so the cursor always has a cell) */
@@ -66,39 +71,43 @@ function cellWidth(grapheme: string): number {
 export function inputViewport(value: string, cursor: number, width: number): InputViewport {
   const w = Math.max(4, Math.floor(width));
   const graphemes = graphemesOf(value);
-  const ci = cursorGraphemeIndex(value, cursor);
-  // a trailing sentinel cell so a cursor parked at end-of-line still has somewhere to sit
-  const units = [...graphemes.map((g) => ({ text: g, width: cellWidth(g) })), { text: ' ', width: 1 }];
-  const cursorUnit = Math.min(ci, units.length - 1);
+  const insertAt = cursorInsertGraphemeIndex(value, cursor);
 
+  type Unit = { text: string; width: number; isCursor: boolean };
+  const units: Unit[] = [];
+  for (let i = 0; i < insertAt; i += 1) {
+    units.push({ text: graphemes[i]!, width: cellWidth(graphemes[i]!), isCursor: false });
+  }
+  units.push({ text: ' ', width: 1, isCursor: true });
+  for (let i = insertAt; i < graphemes.length; i += 1) {
+    units.push({ text: graphemes[i]!, width: cellWidth(graphemes[i]!), isCursor: false });
+  }
+
+  const cursorUnit = insertAt;
   const totalWidth = units.reduce((sum, u) => sum + u.width, 0);
   if (totalWidth <= w) {
     return {
       lead: false,
-      before: graphemes.slice(0, cursorUnit).join(''),
-      at: cursorUnit < graphemes.length ? graphemes[cursorUnit] : ' ',
-      after: cursorUnit < graphemes.length ? graphemes.slice(cursorUnit + 1).join('') : '',
+      before: graphemes.slice(0, insertAt).join(''),
+      at: ' ',
+      after: graphemes.slice(insertAt).join(''),
       tail: false,
     };
   }
 
-  // overflow → slide a window that always contains the cursor unit; reserve 1 cell for each
-  // truncation marker that will actually be shown.
   let start = cursorUnit;
   let end = cursorUnit + 1;
-  let used = units[cursorUnit].width;
+  let used = units[cursorUnit]!.width;
 
-  // extend right first (so typing at end keeps the tail in view), then backfill left context.
-  // the marker reservations (start>0 ⇒ ‹, end<len ⇒ ›) are folded into each fit check.
   while (end < units.length) {
-    const next = units[end].width;
+    const next = units[end]!.width;
     if (used + next + (start > 0 ? 1 : 0) + (end + 1 < units.length ? 1 : 0) <= w) {
       used += next;
       end += 1;
     } else break;
   }
   while (start > 0) {
-    const prev = units[start - 1].width;
+    const prev = units[start - 1]!.width;
     if (used + prev + (start - 1 > 0 ? 1 : 0) + (end < units.length ? 1 : 0) <= w) {
       used += prev;
       start -= 1;
@@ -108,14 +117,14 @@ export function inputViewport(value: string, cursor: number, width: number): Inp
   const slice = (from: number, to: number): string =>
     units
       .slice(from, to)
+      .filter((u) => !u.isCursor)
       .map((u) => u.text)
       .join('');
 
-  const atUnit = units[cursorUnit];
   return {
     lead: start > 0,
     before: slice(start, cursorUnit),
-    at: cursorUnit === units.length - 1 ? ' ' : atUnit.text,
+    at: ' ',
     after: slice(cursorUnit + 1, end),
     tail: end < units.length,
   };

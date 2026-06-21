@@ -39,6 +39,7 @@ export const th: LocaleCatalog = {
     codexOptionRecheck: 'เช็กใหม่ (หลังติดตั้ง/login)',
     codexOptionBack: '← กลับไปเลือก provider อื่น',
     codexInstallCmd: 'npm i -g @openai/codex',
+    codexModelHint: 'ChatGPT plan ใช้ได้ gpt-5.5 · gpt-5.4 · gpt-5.4-mini เท่านั้น (โมเดล *-codex เก่าใช้ไม่ได้)',
     keyEscHint: '(Esc = กลับ)',
     keyOpenAiCodexHint:
       'มี ChatGPT Plus/Pro? กด Esc แล้วเลือก OpenAI Codex (ChatGPT plan) — ไม่ต้อง API key',

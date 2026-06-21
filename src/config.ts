@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { appHomePath, appProjectPath, BRAND } from './brand.js';
 import { projectRoot, projectTrustStatus } from './trust.js';
 import { registerPricing, type Pricing } from './cost.js';
+import { migrateDeprecatedCodexModel } from './providers/codex.js';
 
 export function configHomeDir(): string {
   return appHomePath();
@@ -208,6 +209,11 @@ export async function loadConfig(
 
   const merged = { ...global, ...project, ...envConfig, ...cleanOverrides };
   const config = parseConfigGraceful(merged);
+  const migratedModel = migrateDeprecatedCodexModel(config.model);
+  if (migratedModel !== config.model) {
+    config.model = migratedModel;
+    void saveGlobalConfig({ model: migratedModel }).catch(() => {});
+  }
   // pricing override: config.pricing + env SANOOK_PRICING (JSON) → ลงทะเบียนเข้า cost table
   registerPricing(config.pricing);
   registerPricing(parseEnvPricing());

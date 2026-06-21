@@ -1,6 +1,8 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { canonicalSpec, consoleUrl, hasUsableEnvKey, PROVIDERS, parseSpec } from './providers/registry.js';
+import { mergeModelOptions } from './providers/models.js';
+import { CODEX_CHATGPT_UNSUPPORTED_MODELS } from './providers/codex.js';
 import { appHomePath, BRAND } from './brand.js';
 import { parseFrontmatter } from './skills.js';
 import { projectConfigPathIfTrusted } from './trust.js';
@@ -138,15 +140,18 @@ function modelMenu(current: string): string {
   const { provider } = parseSpec(current);
   const cfg = PROVIDERS[provider];
   const list = cfg
-    ? Object.entries(cfg.models)
-        .filter(([alias]) => alias !== 'default')
-        .map(([alias, id]) => `  ${provider}:${alias}  →  ${id}`)
+    ? mergeModelOptions(cfg)
+        .map((o) => `  ${provider}:${o.value}  (${o.label})`)
         .join('\n')
     : '';
+  const codexNote =
+    provider === 'codex'
+      ? '\nChatGPT plan: ใช้ได้ gpt-5.5 · gpt-5.4 · gpt-5.4-mini (โมเดล *-codex เก่าไม่รองรับ)'
+      : '';
   return [
     `model ปัจจุบัน: ${current}`,
-    cfg ? `\nเลือกของ ${cfg.label}:\n${list}` : '',
-    `\nเปลี่ยน: /model <spec>  (เช่น /model sonnet, /model openai:gpt-5.5)`,
+    cfg ? `\nเลือกของ ${cfg.label}:\n${list}${codexNote}` : '',
+    `\nเปลี่ยน: /model <spec>  (เช่น /model sonnet, /model codex:5.5)`,
     `provider อื่น: ${Object.keys(PROVIDERS).join(' · ')}`,
   ]
     .filter(Boolean)
@@ -204,11 +209,16 @@ function modelChange(spec: string): CommandResult {
       message: `model spec ไม่ครบ: "${spec}" — ใช้ /model <alias> หรือ /model <provider:model>`,
     };
   }
+  const rawModel = spec.includes(':') ? spec.slice(spec.indexOf(':') + 1).trim() : '';
+  const migratedNote =
+    provider === 'codex' && rawModel && CODEX_CHATGPT_UNSUPPORTED_MODELS.has(rawModel)
+      ? `\n⚠ โมเดล ${rawModel} ไม่รองรับ ChatGPT plan → ใช้ ${canonical} แทน`
+      : '';
   const hint = missingKeyHint(provider);
   return {
     handled: true,
     modelChange: canonical,
-    message: [`เปลี่ยน model → ${canonical}`, hint].filter(Boolean).join('\n'),
+    message: [`เปลี่ยน model → ${canonical}`, migratedNote, hint].filter(Boolean).join('\n'),
   };
 }
 

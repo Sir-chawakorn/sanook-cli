@@ -8,7 +8,7 @@ const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
 
 vi.mock('node:child_process', () => ({ spawn: spawnMock }));
 
-import { codexHome, detectCodex, runCodex } from './codex.js';
+import { codexHome, detectCodex, migrateDeprecatedCodexModel, normalizeCodexChatGptModel, runCodex } from './codex.js';
 
 type MockChild = EventEmitter & {
   stdin: EventEmitter & { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> };
@@ -131,6 +131,15 @@ describe('runCodex', () => {
 
     controller.abort();
     expect(child.kill).not.toHaveBeenCalled();
+  });
+});
+
+describe('codex model migration', () => {
+  it('maps deprecated ChatGPT-plan models to gpt-5.5', () => {
+    expect(normalizeCodexChatGptModel('gpt-5-codex')).toEqual({ model: 'gpt-5.5', migratedFrom: 'gpt-5-codex' });
+    expect(normalizeCodexChatGptModel('gpt-5.5')).toEqual({ model: 'gpt-5.5' });
+    expect(migrateDeprecatedCodexModel('codex:gpt-5-codex')).toBe('codex:gpt-5.5');
+    expect(migrateDeprecatedCodexModel('anthropic:sonnet')).toBe('anthropic:sonnet');
   });
 });
 

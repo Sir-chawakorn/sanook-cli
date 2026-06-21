@@ -7,6 +7,7 @@ import { createMistral } from '@ai-sdk/mistral';
 import { createGroq } from '@ai-sdk/groq';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { resolveKeyFromEnv, assertDirectApiKey, type KeyPolicy } from './keys.js';
+import { CODEX_CHATGPT_MODEL_ALIASES, normalizeCodexChatGptModel } from './codex.js';
 import { BRAND } from '../brand.js';
 
 export interface ProviderConfig extends KeyPolicy {
@@ -160,21 +161,11 @@ export const PROVIDERS: Record<string, ProviderConfig> = {
     requiresKey: false,
     localPlaceholderKey: 'codex',
     keyFormat: null,
-    models: {
-      default: 'gpt-5.5',
-      codex: 'gpt-5.5',
-      '5.5': 'gpt-5.5',
-      '5.4': 'gpt-5.4',
-      '5.4-mini': 'gpt-5.4-mini',
-      '5.3-codex': 'gpt-5.3-codex',
-      '5.2-codex': 'gpt-5.2-codex',
-      '5-codex': 'gpt-5-codex',
-      spark: 'gpt-5.3-codex-spark',
-    },
+    models: { ...CODEX_CHATGPT_MODEL_ALIASES },
     create: () => {
       throw new Error('codex เป็น delegate provider — ใช้ผ่าน codex subprocess ไม่ใช่ Vercel AI SDK');
     },
-    note: 'ใช้ ChatGPT plan quota ผ่าน official codex CLI (ToS-safe, ไม่เก็บ credential). ต้อง codex login ก่อน',
+    note: 'ChatGPT plan ผ่าน codex CLI — รองรับ gpt-5.5 / gpt-5.4 / gpt-5.4-mini เท่านั้น (ต้อง codex login)',
   },
 };
 
@@ -212,7 +203,8 @@ export function parseSpec(spec: string): ParsedSpec {
     const rest = spec.slice(idx + 1);
     const cfg = PROVIDERS[provider];
     // ถ้าเป็น alias ของ provider นั้น → map เป็น model id จริง, ไม่งั้นใช้ rest เป็น raw model id
-    const model = cfg?.models[rest] ?? rest;
+    let model = cfg?.models[rest] ?? rest;
+    if (provider === 'codex') model = normalizeCodexChatGptModel(model).model;
     return { provider, model };
   }
   const g = GLOBAL_ALIAS[spec];

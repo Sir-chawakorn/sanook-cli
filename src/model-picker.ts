@@ -1,4 +1,5 @@
 import { canonicalSpec, hasUsableEnvKey, PROVIDERS, parseSpec } from './providers/registry.js';
+import { isCodexChatGptSupportedModel } from './providers/codex.js';
 
 export interface ModelPickerOption {
   aliases: string;
@@ -34,7 +35,9 @@ export function modelPickerOptions(current: string): ModelPickerOption[] {
     }
 
     const status = statusFor(provider);
-    return [...grouped.entries()].map(([model, aliases]) => {
+    return [...grouped.entries()]
+      .filter(([model]) => provider !== 'codex' || isCodexChatGptSupportedModel(model))
+      .map(([model, aliases]) => {
       const nonDefaultAliases = aliases.filter((alias) => alias !== 'default');
       const displayAliases = nonDefaultAliases.length ? nonDefaultAliases.join('/') : 'default';
       const spec = `${provider}:${model}`;

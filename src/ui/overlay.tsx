@@ -107,6 +107,8 @@ export interface CompletionOverlayProps {
   columns: number;
   items: CompletionItem[];
   selected: number;
+  /** Reserve a fixed-height slot above the input (prevents layout jump while / or @ completions open). */
+  reserved?: boolean;
 }
 
 interface OverlayBoxProps {
@@ -124,6 +126,22 @@ const TASK_WINDOW = 10;
 const TOOL_WINDOW = 10;
 const DEFAULT_PAGER_PAGE_SIZE = 12;
 const COMPLETION_WINDOW = 8;
+/** Item rows + footer hint row — fixed slot height so / and @ completions do not bounce the input dock. */
+export const COMPLETION_OVERLAY_SLOT_LINES = COMPLETION_WINDOW + 1;
+/** Terminal rows reserved above the input while slash/@ completion is active (content + border). */
+export const COMPLETION_OVERLAY_RESERVED_ROWS = COMPLETION_OVERLAY_SLOT_LINES + 2;
+
+export function shouldReserveCompletionSlot(input: string, items: readonly CompletionItem[]): boolean {
+  if (items.length > 0) return true;
+  return input.startsWith('/') || input.includes('@');
+}
+
+export function completionOverlaySlotLines(items: CompletionItem[], selected: number, columns: number): string[] {
+  const active = completionOverlayLines(items, selected, columns);
+  const slot = active.length ? [...active] : [];
+  while (slot.length < COMPLETION_OVERLAY_SLOT_LINES) slot.push('');
+  return slot.slice(0, COMPLETION_OVERLAY_SLOT_LINES);
+}
 
 function OverlayBox({ children, columns }: OverlayBoxProps) {
   const width = overlayWidth(columns);
@@ -161,27 +179,32 @@ export function completionOverlayLines(items: CompletionItem[], selected: number
   return lines;
 }
 
-export function CompletionOverlay({ columns, items, selected }: CompletionOverlayProps) {
+export function CompletionOverlay({ columns, items, selected, reserved = false }: CompletionOverlayProps) {
+  if (!reserved) return null;
   const width = Math.max(28, Math.min(Math.max(34, columns - 6), MAX_OVERLAY_COLUMNS));
   const innerWidth = Math.max(1, width - 4);
-  const lines = completionOverlayLines(items, selected, columns);
-  if (!lines.length) return null;
+  const lines = completionOverlaySlotLines(items, selected, columns);
+  const visible = items.length > 0;
   return (
-    <Box borderStyle="round" borderColor="cyan" flexDirection="column" marginBottom={1} paddingX={1} width={width}>
-      {lines.map((line, index) => {
-        const isActive = line.startsWith('>');
-        return (
-          <Text
-            key={`${index}-${line}`}
-            color={isActive ? 'green' : undefined}
-            dimColor={!isActive}
-            inverse={isActive}
-            wrap="truncate-end"
-          >
-            {clip(line, innerWidth)}
-          </Text>
-        );
-      })}
+    <Box flexDirection="column" height={COMPLETION_OVERLAY_RESERVED_ROWS} justifyContent="flex-end" marginBottom={1} width={width}>
+      {visible ? (
+        <Box borderStyle="round" borderColor="cyan" flexDirection="column" paddingX={1}>
+          {lines.map((line, index) => {
+            const isActive = line.startsWith('>');
+            return (
+              <Text
+                key={`${index}-${line || 'blank'}`}
+                color={isActive ? 'green' : undefined}
+                dimColor={!isActive}
+                inverse={isActive}
+                wrap="truncate-end"
+              >
+                {clip(line || ' ', innerWidth)}
+              </Text>
+            );
+          })}
+        </Box>
+      ) : null}
     </Box>
   );
 }

@@ -1,8 +1,8 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, type ReactElement } from 'react';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ModelMessage } from 'ai';
-import { Box, Text, useApp, useInput, useStdout } from 'ink';
+import { Box, Static, Text, useApp, useInput, useStdout } from 'ink';
 import { homedir } from 'node:os';
 import {
   BUILTIN_COMMANDS,
@@ -43,13 +43,13 @@ import { expandMentions } from './mentions.js';
 import { BRAND } from '../brand.js';
 import { backgroundTaskRunningCount, listBackgroundTasks } from '../tools/task.js';
 import { Banner, type BannerSignal } from './banner.js';
-import { CompletionOverlay, FloatingOverlay, firstUserSummary, type OverlayState } from './overlay.js';
+import { CompletionOverlay, FloatingOverlay, firstUserSummary, shouldReserveCompletionSlot, type OverlayState } from './overlay.js';
 import { clampQueueActiveIndex, compactPreview, getQueueWindow, queueActiveIndexAfterDelete } from './queue.js';
 import { MarkdownText, StreamingMarkdownText } from './markdown.js';
 import { SessionPanel, type StartupSectionPreview } from './session-panel.js';
 import { getTranscriptWindow, transcriptScrollStep, transcriptWindowSize } from './transcript.js';
 import { footerStatus } from './status.js';
-import { inputViewport, graphemesOf, cursorGraphemeIndex, SCROLL_LEAD, SCROLL_TAIL } from './input-view.js';
+import { inputViewport, graphemesOf, cursorInsertGraphemeIndex, SCROLL_LEAD, SCROLL_TAIL } from './input-view.js';
 import { PersonaOverlay } from './persona-wizard.js';
 import { thinkingPanelLines, snapshotThinking, type DetailsDisplayMode } from './thinking-panel.js';
 import { toolTrailLines, toolTrailHeader, toolTrailWidth, updateToolTrailOnEvent, type ToolTrailDisplayMode, type ToolTrailItem } from './tool-trail.js';
@@ -234,6 +234,9 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
 
   const addTurn = (role: Turn['role'], text: string, extras?: { thinking?: string; toolTrail?: ToolTrailItem[] }): void => {
     setTranscriptScroll(0);
+    // Remount frozen transcript when history grows so scrollback styling (e.g. latest-only expanded
+    // tool diffs) stays correct. Keystrokes never call addTurn, so the input dock stays stable while typing.
+    setHistoryResetKey((key) => key + 1);
     setHistory((h) => [
       ...h,
       {
@@ -277,6 +280,7 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const pagerPageSize = Math.max(5, Math.min(18, (stdout?.rows ?? 24) - 10));
   const completion = !overlay && !busy ? completionForInput(editor.value, cwd) : { items: [], replaceFrom: 0 };
   const completions = completion.items;
+  const reserveCompletionSlot = shouldReserveCompletionSlot(editor.value, completions);
   const selectedCompletion = clampCompletionIndex(completionIndex, completions.length);
 
   useEffect(() => {
@@ -1208,6 +1212,21 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
   const transcriptLimit = transcriptWindowSize(stdout?.rows);
   const transcriptView = getTranscriptWindow(history.length, transcriptLimit, transcriptScroll);
   const visibleHistory = history.slice(transcriptView.start, transcriptView.end);
+  // REPL layout invariants — see repl-layout-guard.test.ts (regression guards if this jumps while typing).
+  // Pinned to latest: freeze completed turns in Ink <Static> so keystrokes only redraw input/footer
+  // (readline / Claude Code pattern). When scrolled up, fall back to a windowed dynamic transcript.
+  const pinnedToBottom = transcriptScroll === 0;
+
+  const renderTurn = (turn: Turn): ReactElement => (
+    <TurnView
+      key={turn.id}
+      columns={columns}
+      isLatest={turn.id === latestTrailTurnId}
+      thinkingMode={thinkingMode}
+      toolTrailMode={toolTrailMode}
+      turn={turn}
+    />
+  );
 
   return (
     <Box flexDirection="column">
@@ -1224,80 +1243,88 @@ export function App({ initialModel, fallbackModel, budgetUsd, permissionMode = '
           />
         </>
       ) : null}
-      {transcriptView.showOlder ? (
-        <Text dimColor>… {transcriptView.start} older turns · PgUp/Ctrl+U scroll · PgDn/Ctrl+D newer</Text>
-      ) : null}
-      {visibleHistory.map((turn) => (
-        <TurnView
-          key={`${historyResetKey}-${turn.id}`}
-          columns={columns}
-          isLatest={turn.id === latestTrailTurnId}
-          thinkingMode={thinkingMode}
-          toolTrailMode={toolTrailMode}
-          turn={turn}
-        />
-      ))}
-      {transcriptView.showNewer ? (
-        <Text dimColor>… {transcriptView.scrollFromBottom} newer turns hidden · PgDn/Ctrl+D to catch up</Text>
-      ) : null}
-      {thinkingView.length ? <ThinkingView columns={columns} mode={thinkingMode} text={thinking} /> : null}
-      {streaming ? (
-        <Box flexDirection="column" marginTop={1}>
-          <StreamingMarkdownText columns={columns} text={streaming} />
-        </Box>
-      ) : null}
-      {showToolTrail ? (
-        <ToolTrailView columns={columns} items={toolTrail} mode={toolTrailMode} />
-      ) : null}
-      <FloatingOverlay columns={columns} overlay={overlay} pageSize={pagerPageSize} />
-      <CompletionOverlay columns={columns} items={completions} selected={selectedCompletion} />
-      {queued.length ? (
-        <Box flexDirection="column" marginTop={1}>
-          <Text dimColor>queued ({queued.length}) · ↑↓ select · Ctrl+X delete · Esc clears</Text>
-          {queueWindow.showLead ? <Text dimColor> …</Text> : null}
-          {queued.slice(queueWindow.start, queueWindow.end).map((q, i) => (
-            <Text
-              key={`${queueWindow.start + i}-${q.slice(0, 16)}`}
-              color={queueWindow.start + i === activeQueueIndex ? 'yellow' : undefined}
-              dimColor={queueWindow.start + i !== activeQueueIndex}
-            >
-              {queueWindow.start + i === activeQueueIndex ? '›' : ' '} {queueWindow.start + i + 1}.{' '}
-              {compactPreview(q, Math.max(16, columns - 10))}
-            </Text>
-          ))}
-          {queueWindow.showTail ? <Text dimColor>  …and {queued.length - queueWindow.end} more</Text> : null}
-        </Box>
-      ) : null}
-      {approvalReq ? (
-        <Box marginTop={1} borderStyle="round" borderColor="yellow" paddingX={1} flexDirection="column">
-          <Text color="yellow">อนุมัติรัน {approvalReq.tool}?</Text>
-          <Text dimColor>{approvalReq.summary}</Text>
-          <Text dimColor>y = รัน · n = ปฏิเสธ</Text>
-        </Box>
-      ) : personaOpen ? (
-        <PersonaOverlay onDone={(msg) => { setPersonaOpen(false); addTurn('system', msg); }} />
+      {pinnedToBottom ? (
+        history.length ? (
+          <Static items={history} key={historyResetKey}>
+            {(turn) => renderTurn(turn)}
+          </Static>
+        ) : null
       ) : (
-        <Box marginTop={1} borderStyle="round" borderColor={busy ? 'gray' : 'blue'} paddingX={1}>
-          <Text color={busy ? 'gray' : 'cyan'}>{busy ? '· ' : '› '}</Text>
-          <InputView value={editor.value} cursor={editor.cursor} busy={busy} agentStatus={agentStatus} toolTrail={toolTrail} columns={columns} />
-        </Box>
+        <>
+          {transcriptView.showOlder ? (
+            <Text dimColor>… {transcriptView.start} older turns · PgUp/Ctrl+U scroll · PgDn/Ctrl+D newer</Text>
+          ) : null}
+          {visibleHistory.map((turn) => renderTurn(turn))}
+          {transcriptView.showNewer ? (
+            <Text dimColor>… {transcriptView.scrollFromBottom} newer turns hidden · PgDn/Ctrl+D to catch up</Text>
+          ) : null}
+        </>
       )}
-      <Text dimColor wrap="truncate-end">
-        {footerStatus({
-          branch: gitBranch,
-          backgroundTaskCount: bgTaskCount,
-          busy,
-          columns,
-          contextCompression,
-          contextTokens,
-          costHint,
-          cwd,
-          elapsedSeconds: busyElapsedSeconds,
-          model,
-          mode: permissionMode === 'ask' ? 'ask' : 'auto',
-          queuedCount: queued.length,
-        })}
-      </Text>
+      <Box flexDirection="column" flexShrink={0}>
+        {thinkingView.length ? <ThinkingView columns={columns} mode={thinkingMode} text={thinking} /> : null}
+        {streaming ? (
+          <Box flexDirection="column" marginTop={1}>
+            <StreamingMarkdownText columns={columns} text={streaming} />
+          </Box>
+        ) : null}
+        {showToolTrail ? (
+          <ToolTrailView columns={columns} items={toolTrail} mode={toolTrailMode} />
+        ) : null}
+        <FloatingOverlay columns={columns} overlay={overlay} pageSize={pagerPageSize} />
+        <CompletionOverlay
+          columns={columns}
+          items={completions}
+          reserved={reserveCompletionSlot}
+          selected={selectedCompletion}
+        />
+        {queued.length ? (
+          <Box flexDirection="column" marginTop={1}>
+            <Text dimColor>queued ({queued.length}) · ↑↓ select · Ctrl+X delete · Esc clears</Text>
+            {queueWindow.showLead ? <Text dimColor> …</Text> : null}
+            {queued.slice(queueWindow.start, queueWindow.end).map((q, i) => (
+              <Text
+                key={`${queueWindow.start + i}-${q.slice(0, 16)}`}
+                color={queueWindow.start + i === activeQueueIndex ? 'yellow' : undefined}
+                dimColor={queueWindow.start + i !== activeQueueIndex}
+              >
+                {queueWindow.start + i === activeQueueIndex ? '›' : ' '} {queueWindow.start + i + 1}.{' '}
+                {compactPreview(q, Math.max(16, columns - 10))}
+              </Text>
+            ))}
+            {queueWindow.showTail ? <Text dimColor>  …and {queued.length - queueWindow.end} more</Text> : null}
+          </Box>
+        ) : null}
+        {approvalReq ? (
+          <Box marginTop={1} borderStyle="round" borderColor="yellow" paddingX={1} flexDirection="column">
+            <Text color="yellow">อนุมัติรัน {approvalReq.tool}?</Text>
+            <Text dimColor>{approvalReq.summary}</Text>
+            <Text dimColor>y = รัน · n = ปฏิเสธ</Text>
+          </Box>
+        ) : personaOpen ? (
+          <PersonaOverlay onDone={(msg) => { setPersonaOpen(false); addTurn('system', msg); }} />
+        ) : (
+          <Box marginTop={1} borderStyle="round" borderColor={busy ? 'gray' : 'blue'} paddingX={1} flexDirection="row" flexShrink={0}>
+            <Text color={busy ? 'gray' : 'cyan'}>{busy ? '· ' : '› '}</Text>
+            <InputView value={editor.value} cursor={editor.cursor} busy={busy} agentStatus={agentStatus} toolTrail={toolTrail} columns={columns} />
+          </Box>
+        )}
+        <Text dimColor wrap="truncate-end">
+          {footerStatus({
+            branch: gitBranch,
+            backgroundTaskCount: bgTaskCount,
+            busy,
+            columns,
+            contextCompression,
+            contextTokens,
+            costHint,
+            cwd,
+            elapsedSeconds: busyElapsedSeconds,
+            model,
+            mode: permissionMode === 'ask' ? 'ask' : 'auto',
+            queuedCount: queued.length,
+          })}
+        </Text>
+      </Box>
     </Box>
   );
 }
@@ -1341,15 +1368,14 @@ function InputView({
 
   // multiline (กด Alt+Enter / ลงท้าย \) — สูงหลายบรรทัดตั้งใจอยู่แล้ว: render grapheme-cursor แบบ wrap ปกติ
   if (value.includes('\n')) {
-    const ci = cursorGraphemeIndex(value, cursor);
+    const insertAt = cursorInsertGraphemeIndex(value, cursor);
     const graphemes = graphemesOf(value);
-    const before = graphemes.slice(0, ci).join('');
-    const at = ci < graphemes.length ? graphemes[ci] : ' ';
-    const after = ci < graphemes.length ? graphemes.slice(ci + 1).join('') : '';
+    const before = graphemes.slice(0, insertAt).join('');
+    const after = graphemes.slice(insertAt).join('');
     return (
       <Text>
         {before}
-        <Text inverse>{at}</Text>
+        <Text inverse>{' '}</Text>
         {after}
         {busy ? <Text dimColor>{'  '}(⏎ ต่อคิว)</Text> : null}
       </Text>

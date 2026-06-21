@@ -39,6 +39,7 @@ export const en: LocaleCatalog = {
     codexOptionRecheck: 'Re-check (after install/login)',
     codexOptionBack: '← Choose another provider',
     codexInstallCmd: 'npm i -g @openai/codex',
+    codexModelHint: 'ChatGPT plan supports gpt-5.5 · gpt-5.4 · gpt-5.4-mini only (legacy *-codex ids are not available)',
     keyEscHint: '(Esc = back)',
     keyOpenAiCodexHint:
       'Have ChatGPT Plus/Pro? Press Esc and pick OpenAI Codex (ChatGPT plan) — no API key needed.',

@@ -227,10 +227,20 @@ async function runDelegate(opts: RunAgentOptions): Promise<RunAgentResult> {
   const sandbox: 'read-only' | 'workspace-write' =
     opts.planMode || (opts.permissionMode ?? 'ask') === 'ask' ? 'read-only' : 'workspace-write';
   opts.onEvent?.({ type: 'status', detail: `Codex · ${model} · ${sandbox}` });
+  const { normalizeCodexChatGptModel } = await import('./providers/codex.js');
+  const normalized = normalizeCodexChatGptModel(model);
+  if (normalized.migratedFrom) {
+    opts.onEvent?.({
+      type: 'status',
+      detail: `Codex model ${normalized.migratedFrom} ไม่รองรับ ChatGPT plan → ใช้ ${normalized.model} แทน (sanook model เพื่ออัปเดต: /model codex)`,
+    });
+  }
   let text = '';
+  const execModel =
+    normalized.model === PROVIDERS.codex.models.default ? undefined : normalized.model;
   const out = await runCodex({
     prompt,
-    model: model === PROVIDERS.codex.models.default ? undefined : model,
+    model: execModel,
     sandbox,
     cwd: opts.cwd, // worktree isolation ของ sub-agent
     signal: opts.signal,

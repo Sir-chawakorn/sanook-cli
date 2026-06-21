@@ -3,17 +3,25 @@ import { render } from 'ink-testing-library';
 import { modelPickerOptions, modelProviderEntries } from '../model-picker.js';
 import { TOOL_CATALOG } from '../tool-catalog.js';
 import {
+  CompletionOverlay,
   FloatingOverlay,
+  COMPLETION_OVERLAY_SLOT_LINES,
   completionOverlayLines,
+  completionOverlaySlotLines,
   hotkeyOverlayLines,
   mcpOverlayLines,
   modelOverlayLines,
   pagerOverlayLines,
   sessionsOverlayLines,
+  shouldReserveCompletionSlot,
   skillsOverlayLines,
   tasksOverlayLines,
   toolsOverlayLines,
 } from './overlay.js';
+
+function frameLineCount(frame: string | undefined): number {
+  return (frame ?? '').split('\n').length;
+}
 
 const sampleSkills = [
   { name: 'build-cli-tool', description: 'Build a polished CLI workflow', path: '/skills/build-cli-tool/SKILL.md' },
@@ -80,6 +88,40 @@ describe('FloatingOverlay', () => {
     expect(lines.join('\n')).toContain('> /sessions');
     expect(lines.join('\n')).toContain('Tab/Enter complete');
     expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(62);
+  });
+
+  it('pads completion slots to a fixed line count', () => {
+    const padded = completionOverlaySlotLines([{ text: '/help', display: '/help', meta: 'commands' }], 0, 62);
+    expect(padded).toHaveLength(COMPLETION_OVERLAY_SLOT_LINES);
+    expect(padded.filter(Boolean)).toHaveLength(2);
+  });
+
+  it('reserves completion slot for slash and mention prefixes', () => {
+    expect(shouldReserveCompletionSlot('/', [])).toBe(true);
+    expect(shouldReserveCompletionSlot('@src', [])).toBe(true);
+    expect(shouldReserveCompletionSlot('hello', [])).toBe(false);
+    expect(shouldReserveCompletionSlot('hello', [{ text: '/help', display: '/help', meta: 'x' }])).toBe(true);
+  });
+
+  it('renders a fixed-height completion slot while reserved', () => {
+    const empty = render(<CompletionOverlay columns={62} items={[]} reserved selected={0} />);
+    const filled = render(
+      <CompletionOverlay
+        columns={62}
+        items={[
+          { text: '/skills', display: '/skills', meta: 'browse loaded skills' },
+          { text: '/sessions', display: '/sessions', meta: 'resume saved sessions' },
+        ]}
+        reserved
+        selected={1}
+      />,
+    );
+
+    expect(frameLineCount(empty.lastFrame())).toBe(frameLineCount(filled.lastFrame()));
+    expect(frameLineCount(filled.lastFrame())).toBeGreaterThan(0);
+    expect(filled.lastFrame()).toContain('> /sessions');
+    empty.unmount();
+    filled.unmount();
   });
 
   it('renders the Sanook hotkeys overlay', () => {

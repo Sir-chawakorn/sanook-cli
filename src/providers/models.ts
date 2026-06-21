@@ -1,4 +1,15 @@
 import type { ProviderConfig } from './registry.js';
+import { isCodexChatGptSupportedModel, normalizeCodexChatGptModel } from './codex.js';
+
+function curatedModels(cfg: ProviderConfig): Record<string, string> {
+  if (cfg.id !== 'codex') return cfg.models;
+  const out: Record<string, string> = {};
+  for (const [alias, id] of Object.entries(cfg.models)) {
+    const model = normalizeCodexChatGptModel(id).model;
+    if (isCodexChatGptSupportedModel(model)) out[alias] = model;
+  }
+  return out;
+}
 
 export interface ModelOption {
   label: string;
@@ -59,11 +70,12 @@ export async function listRemoteModels(
  * → ตัวเลือกโผล่ซ้ำ/หาย (bug "มีตัวเลือกสองตัวเลือกเป็น model เดียวกัน"). ใช้ทั้ง setup wizard และ /model picker
  */
 export function mergeModelOptions(cfg: ProviderConfig, remote: string[] = []): ModelOption[] {
+  const models = curatedModels(cfg);
   // group alias ทั้งหมดตาม id (รวม 'default' ด้วย — กัน id ที่มีแต่ alias 'default' เช่น lmstudio:local-model,
   // ollama:llama3.3 หายไปจนเลือกไม่ได้/Select ว่าง). ตอนทำ label ค่อยซ่อนคำ "default" ถ้ามีชื่ออื่นอยู่แล้ว
   const aliasesById = new Map<string, string[]>();
   const order: string[] = []; // คง first-seen order ของ id
-  for (const [alias, id] of Object.entries(cfg.models)) {
+  for (const [alias, id] of Object.entries(models)) {
     if (!aliasesById.has(id)) {
       aliasesById.set(id, []);
       order.push(id);
@@ -77,6 +89,9 @@ export function mergeModelOptions(cfg: ProviderConfig, remote: string[] = []): M
     return { id, label: `${shown.join(' / ')} — ${id}` };
   });
   const seen = new Set(order);
-  const extra = [...new Set(remote)].filter((id) => id && !seen.has(id)).map((id) => ({ id, label: id }));
+  const extra =
+    cfg.id === 'codex'
+      ? []
+      : [...new Set(remote)].filter((id) => id && !seen.has(id)).map((id) => ({ id, label: id }));
   return [...curated, ...extra].map((o) => ({ label: o.label, value: o.id }));
 }
