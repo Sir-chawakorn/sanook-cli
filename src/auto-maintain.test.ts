@@ -177,7 +177,7 @@ describe('auto-maintain', () => {
             },
           ]),
         ).resolves.toBe(1);
-        expect(appendMemory).toHaveBeenCalledWith('We decided to keep local-first memory.');
+        expect(appendMemory).toHaveBeenCalledWith('We decided to keep local-first memory.', 'decision');
       } finally {
         vi.doUnmock('./memory.js');
       }
@@ -200,16 +200,18 @@ describe('auto-maintain', () => {
             },
           ]),
         ).resolves.toBe(1);
-        expect(appendMemory).toHaveBeenCalledWith('We decided to tolerate malformed distill messages.');
+        expect(appendMemory).toHaveBeenCalledWith('We decided to tolerate malformed distill messages.', 'decision');
       } finally {
         vi.doUnmock('./memory.js');
       }
     });
     it('passes only user and assistant messages with content to the distiller', async () => {
       const appendMemory = vi.fn().mockResolvedValue(undefined);
-      const distilledFactsFromMessages = vi.fn().mockReturnValue(['We decided to persist only conversation facts.']);
+      const distilledCandidatesFromMessages = vi.fn().mockReturnValue([
+        { text: 'We decided to persist only conversation facts.', kind: 'decision' },
+      ]);
       vi.doMock('./memory.js', () => ({ appendMemory }));
-      vi.doMock('./session-distill.js', () => ({ distilledFactsFromMessages }));
+      vi.doMock('./session-distill.js', () => ({ distilledCandidatesFromMessages }));
       const contentParts = [{ type: 'text', text: 'The convention is to keep local memory scoped to conversations.' }];
       try {
         await expect(
@@ -237,11 +239,11 @@ describe('auto-maintain', () => {
             { role: 'user', content: contentParts },
           ]),
         ).resolves.toBe(1);
-        expect(distilledFactsFromMessages).toHaveBeenCalledWith([
+        expect(distilledCandidatesFromMessages).toHaveBeenCalledWith([
           { role: 'assistant', content: 'We decided to persist only conversation facts.' },
           { role: 'user', content: contentParts },
         ]);
-        expect(appendMemory).toHaveBeenCalledWith('We decided to persist only conversation facts.');
+        expect(appendMemory).toHaveBeenCalledWith('We decided to persist only conversation facts.', 'decision');
       } finally {
         vi.doUnmock('./memory.js');
         vi.doUnmock('./session-distill.js');
@@ -249,7 +251,7 @@ describe('auto-maintain', () => {
     });
     it('skips distiller and memory imports when no messages are distillable', async () => {
       const memoryFactory = vi.fn(() => ({ appendMemory: vi.fn() }));
-      const distillerFactory = vi.fn(() => ({ distilledFactsFromMessages: vi.fn() }));
+      const distillerFactory = vi.fn(() => ({ distilledCandidatesFromMessages: vi.fn() }));
       vi.doMock('./memory.js', memoryFactory);
       vi.doMock('./session-distill.js', distillerFactory);
       try {
@@ -276,6 +278,130 @@ describe('auto-maintain', () => {
         ).resolves.toBe(0);
         expect(distillerFactory).not.toHaveBeenCalled();
         expect(memoryFactory).not.toHaveBeenCalled();
+      } finally {
+        vi.doUnmock('./memory.js');
+        vi.doUnmock('./session-distill.js');
+      }
+    });
+    it('maps distilled candidate kinds to memory note types', async () => {
+      const appendMemory = vi.fn().mockResolvedValue(undefined);
+      const distilledCandidatesFromMessages = vi.fn().mockReturnValue([
+        { text: 'We decided to use SQLite for local cache.', kind: 'decision' },
+        { text: 'Pick prefers concise Thai replies.', kind: 'preference' },
+        { text: 'Secrets must never be written into the repo.', kind: 'constraint' },
+        { text: 'The bug was stale auto-maintain state.', kind: 'gotcha' },
+      ]);
+      vi.doMock('./memory.js', () => ({ appendMemory }));
+      vi.doMock('./session-distill.js', () => ({ distilledCandidatesFromMessages }));
+      try {
+        await expect(
+          autoDistillToMemory([
+            {
+              role: 'assistant',
+              content:
+                'We decided to use SQLite for local cache. Pick prefers concise Thai replies. Secrets must never be written into the repo. The bug was stale auto-maintain state.',
+            },
+          ]),
+        ).resolves.toBe(4);
+        expect(appendMemory).toHaveBeenNthCalledWith(1, 'We decided to use SQLite for local cache.', 'decision');
+        expect(appendMemory).toHaveBeenNthCalledWith(2, 'Pick prefers concise Thai replies.', 'preference');
+        expect(appendMemory).toHaveBeenNthCalledWith(3, 'Secrets must never be written into the repo.', 'convention');
+        expect(appendMemory).toHaveBeenNthCalledWith(4, 'The bug was stale auto-maintain state.', 'fact');
+      } finally {
+        vi.doUnmock('./memory.js');
+        vi.doUnmock('./session-distill.js');
+      }
+    });
+    it('skips malformed distilled candidates without aborting valid candidates', async () => {
+      const appendMemory = vi.fn().mockResolvedValue(undefined);
+      const distilledCandidatesFromMessages = vi.fn().mockReturnValue([
+        null,
+        { text: '', kind: 'decision' },
+        { text: 'Never write API keys to memory.', kind: 'constraint' },
+        { text: 'This candidate has an unknown kind.', kind: 'unknown' },
+      ]);
+      vi.doMock('./memory.js', () => ({ appendMemory }));
+      vi.doMock('./session-distill.js', () => ({ distilledCandidatesFromMessages }));
+      try {
+        await expect(
+          autoDistillToMemory([
+            {
+              role: 'assistant',
+              content: 'Never write API keys to memory.',
+            },
+          ]),
+        ).resolves.toBe(1);
+        expect(appendMemory).toHaveBeenCalledTimes(1);
+        expect(appendMemory).toHaveBeenCalledWith('Never write API keys to memory.', 'convention');
+      } finally {
+        vi.doUnmock('./memory.js');
+        vi.doUnmock('./session-distill.js');
+      }
+    });
+    it('skips memory import when the distiller returns malformed output', async () => {
+      const memoryFactory = vi.fn(() => ({ appendMemory: vi.fn() }));
+      const distilledCandidatesFromMessages = vi.fn().mockReturnValue(undefined);
+      vi.doMock('./memory.js', memoryFactory);
+      vi.doMock('./session-distill.js', () => ({ distilledCandidatesFromMessages }));
+      try {
+        await expect(
+          autoDistillToMemory([
+            {
+              role: 'assistant',
+              content: 'We decided to keep auto-distill best-effort.',
+            },
+          ]),
+        ).resolves.toBe(0);
+        expect(memoryFactory).not.toHaveBeenCalled();
+      } finally {
+        vi.doUnmock('./memory.js');
+        vi.doUnmock('./session-distill.js');
+      }
+    });
+    it('persists legacy string distill results as facts', async () => {
+      const appendMemory = vi.fn().mockResolvedValue(undefined);
+      const distilledCandidatesFromMessages = vi.fn().mockReturnValue([
+        'Legacy distillers returned fact text directly.',
+      ]);
+      vi.doMock('./memory.js', () => ({ appendMemory }));
+      vi.doMock('./session-distill.js', () => ({ distilledCandidatesFromMessages }));
+      try {
+        await expect(
+          autoDistillToMemory([
+            {
+              role: 'assistant',
+              content: 'Legacy distillers returned fact text directly.',
+            },
+          ]),
+        ).resolves.toBe(1);
+        expect(appendMemory).toHaveBeenCalledWith('Legacy distillers returned fact text directly.', 'fact');
+      } finally {
+        vi.doUnmock('./memory.js');
+        vi.doUnmock('./session-distill.js');
+      }
+    });
+    it('does not count malformed distilled candidates toward the per-session write cap', async () => {
+      const appendMemory = vi.fn().mockResolvedValue(undefined);
+      const distilledCandidatesFromMessages = vi.fn().mockReturnValue([
+        ...Array.from({ length: 8 }, () => ({ text: '', kind: 'decision' })),
+        ...Array.from({ length: 9 }, (_, i) => ({
+          text: `We decided to keep durable valid fact ${i} in memory.`,
+          kind: 'decision',
+        })),
+      ]);
+      vi.doMock('./memory.js', () => ({ appendMemory }));
+      vi.doMock('./session-distill.js', () => ({ distilledCandidatesFromMessages }));
+      try {
+        await expect(
+          autoDistillToMemory([
+            {
+              role: 'assistant',
+              content: 'We decided to keep durable valid facts in memory.',
+            },
+          ]),
+        ).resolves.toBe(8);
+        expect(appendMemory).toHaveBeenCalledTimes(8);
+        expect(appendMemory).toHaveBeenLastCalledWith('We decided to keep durable valid fact 7 in memory.', 'decision');
       } finally {
         vi.doUnmock('./memory.js');
         vi.doUnmock('./session-distill.js');
@@ -311,7 +437,7 @@ describe('auto-maintain', () => {
           ]),
         ).resolves.toBe(8);
         expect(appendMemory).toHaveBeenCalledTimes(8);
-        expect(appendMemory).toHaveBeenLastCalledWith('We decided to keep durable fact 7 in memory.');
+        expect(appendMemory).toHaveBeenLastCalledWith('We decided to keep durable fact 7 in memory.', 'decision');
       } finally {
         vi.doUnmock('./memory.js');
       }

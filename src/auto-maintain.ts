@@ -9,6 +9,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { appHomePath, envFlag, persistenceEnabled } from './brand.js';
 import { loadConfig } from './config.js';
+import type { NoteType } from './memory-store.js';
+import type { DistillKind } from './session-distill.js';
 
 const STATE_FILE = 'auto-maintain.json';
 /** วิ่ง vault/memory consolidation อย่างมากสัปดาห์ละครั้ง — กัน startup ทำงานหนักทุกครั้ง */
@@ -43,6 +45,30 @@ function isDistillableMessage(value: unknown): value is DistillableMessage {
   if (!isRecord(value)) return false;
   const { role, content } = value;
   return (role === 'user' || role === 'assistant') && hasTextContent(content);
+}
+
+const NOTE_TYPE_BY_DISTILL_KIND = {
+  decision: 'decision',
+  preference: 'preference',
+  constraint: 'convention',
+  gotcha: 'fact',
+} satisfies Record<DistillKind, NoteType>;
+
+function noteTypeForDistillKind(kind: unknown): NoteType | null {
+  if (typeof kind !== 'string') return null;
+  return (NOTE_TYPE_BY_DISTILL_KIND as Partial<Record<string, NoteType>>)[kind] ?? null;
+}
+
+function distilledMemoryEntry(value: unknown): { text: string; noteType: NoteType } | null {
+  if (typeof value === 'string') {
+    const text = value.trim();
+    return text ? { text, noteType: 'fact' } : null;
+  }
+  if (!isRecord(value)) return null;
+  const text = typeof value.text === 'string' ? value.text.trim() : '';
+  if (!text) return null;
+  const noteType = noteTypeForDistillKind(value.kind);
+  return noteType ? { text, noteType } : null;
 }
 
 /**
@@ -128,13 +154,21 @@ export async function autoDistillToMemory(messages: unknown): Promise<number> {
   const distillableMessages = messages.filter(isDistillableMessage);
   if (!distillableMessages.length) return 0;
   try {
-    const { distilledFactsFromMessages } = await import('./session-distill.js');
+    const { distilledCandidatesFromMessages } = await import('./session-distill.js');
+    const candidates = distilledCandidatesFromMessages(distillableMessages);
+    if (!Array.isArray(candidates)) return 0;
+    const facts: { text: string; noteType: NoteType }[] = [];
+    for (const candidate of candidates) {
+      if (facts.length >= MAX_DISTILL_FACTS) break;
+      const fact = distilledMemoryEntry(candidate);
+      if (fact) facts.push(fact);
+    }
+    if (!facts.length) return 0;
     const { appendMemory } = await import('./memory.js');
-    const facts = distilledFactsFromMessages(distillableMessages).slice(0, MAX_DISTILL_FACTS);
     let written = 0;
     for (const fact of facts) {
       try {
-        await appendMemory(fact);
+        await appendMemory(fact.text, fact.noteType);
         written += 1;
       } catch {
         // Keep auto-maintain best-effort, but only count facts that actually persisted.

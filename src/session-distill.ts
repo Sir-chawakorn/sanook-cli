@@ -22,8 +22,9 @@ const SIGNALS: { kind: DistillKind; re: RegExp }[] = [
   { kind: 'constraint', re: /\b(must not|must|never|do ?n['’]?t|don['’]t|required to|is required|only (?:use|run|allow)|forbidden|not allowed|has to)\b/i },
   { kind: 'gotcha', re: /\b(gotcha|caveat|watch out|the (?:bug|issue|problem|error) (?:was|is)|turned out|root cause|fix(?:ed)? (?:was|by|it by)|fails? (?:if|when|because)|breaks? (?:if|when)|broke because|because the|note that|important:|heads up)\b/i },
 ];
+const KIND_PRECEDENCE: DistillKind[] = ['preference', 'constraint', 'gotcha', 'decision'];
 // Strong "X not Y" / "X instead of Y" decision signal (e.g. "pnpm not npm", "tabs over spaces").
-const X_NOT_Y = /\b[\w.@/+-]{2,}\s+(?:not|instead of|over|rather than)\s+[\w.@/+-]{2,}\b/i;
+const X_NOT_Y = /\b[\w.@/+-]{2,}\s*,?\s+(?:not|instead of|over|rather than)\s+[\w.@/+-]{2,}\b/i;
 
 const MAX_CANDIDATES = 12;
 const MIN_WORDS = 4;
@@ -48,6 +49,14 @@ function normalize(s: string): string {
   return s.replace(/\s+/g, ' ').replace(/^[-*•\d.)\s]+/, '').trim();
 }
 
+function classifyKind(s: string): DistillKind | undefined {
+  const matched = new Set(SIGNALS.filter((sig) => sig.re.test(s)).map((sig) => sig.kind));
+  for (const kind of KIND_PRECEDENCE) {
+    if (matched.has(kind)) return kind;
+  }
+  return X_NOT_Y.test(s) ? 'decision' : undefined;
+}
+
 /**
  * Extract durable-fact candidates from a transcript. Skips questions, chit-chat, code/log lines,
  * and too-short/too-long sentences; requires a decision/gotcha/preference/constraint signal.
@@ -63,8 +72,7 @@ export function distillSession(messages: DistillMessage[]): DistillCandidate[] {
       if (words.length < MIN_WORDS || words.length > MAX_WORDS) continue;
       if (s.endsWith('?')) continue; // questions aren't durable facts
       if (looksLikeCodeOrLog(s)) continue;
-      const signal = SIGNALS.find((sig) => sig.re.test(s));
-      const kind: DistillKind | undefined = signal?.kind ?? (X_NOT_Y.test(s) ? 'decision' : undefined);
+      const kind = classifyKind(s);
       if (!kind) continue;
       const key = s.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
       if (!key || seen.has(key)) continue;
@@ -86,7 +94,12 @@ function messageText(content: unknown): string {
     .trim();
 }
 
+/** distill durable-fact candidates from a finished conversation (ModelMessage[]-shaped). Pure. */
+export function distilledCandidatesFromMessages(messages: { role: string; content: unknown }[]): DistillCandidate[] {
+  return distillSession(messages.map((m) => ({ role: m.role, text: messageText(m.content) })));
+}
+
 /** distill durable-fact texts from a finished conversation (ModelMessage[]-shaped). Pure. */
 export function distilledFactsFromMessages(messages: { role: string; content: unknown }[]): string[] {
-  return distillSession(messages.map((m) => ({ role: m.role, text: messageText(m.content) }))).map((c) => c.text);
+  return distilledCandidatesFromMessages(messages).map((c) => c.text);
 }

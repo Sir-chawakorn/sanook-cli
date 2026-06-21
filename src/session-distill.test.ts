@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { distillSession, distilledFactsFromMessages } from './session-distill.js';
+import { distillSession, distilledCandidatesFromMessages, distilledFactsFromMessages } from './session-distill.js';
 
 // Proven by the H5 experiment at ~0.88 precision / 0.70 recall on an independently-generated
 // benchmark. NOT wired as a default yet — end-to-end recall is gated by BM25 paraphrase retrieval,
@@ -41,14 +41,47 @@ describe('distillSession', () => {
   });
 
   it('distilledFactsFromMessages flattens ModelMessage content (string + parts) to fact texts', () => {
-    const facts = distilledFactsFromMessages([
+    const messages = [
       { role: 'user', content: 'We decided to use Bun, not Node, for the test runner.' },
       { role: 'assistant', content: [{ type: 'text', text: 'Noted. The convention is to keep tests next to source files.' }] },
       { role: 'assistant', content: [{ type: 'tool-call', toolName: 'read_file' }] }, // no text part → ignored
-    ]);
+    ];
+    const candidates = distilledCandidatesFromMessages(messages);
+    expect(candidates.map((c) => c.kind)).toEqual(['decision', 'preference']);
+
+    const facts = distilledFactsFromMessages(messages);
     const joined = facts.join(' | ').toLowerCase();
     expect(joined).toContain('bun');
     expect(joined).toContain('convention');
+  });
+
+  it('uses the strongest kind when a sentence has mixed durable-memory signals', () => {
+    const out = distillSession([
+      { role: 'user', text: 'We decided API keys must never be committed to the repo.' },
+      { role: 'assistant', text: 'The convention is that release checks must run before packaging.' },
+    ]);
+    expect(out).toEqual([
+      { text: 'We decided API keys must never be committed to the repo.', kind: 'constraint' },
+      { text: 'The convention is that release checks must run before packaging.', kind: 'preference' },
+    ]);
+  });
+
+  it('keeps explicit preferences stronger than X-over-Y decision fallback', () => {
+    const out = distillSession([
+      { role: 'user', text: 'Pick prefers Playwright over Puppeteer for browser automation.' },
+    ]);
+    expect(out).toEqual([
+      { text: 'Pick prefers Playwright over Puppeteer for browser automation.', kind: 'preference' },
+    ]);
+  });
+
+  it('treats comma-separated X-not-Y phrasing as a decision signal', () => {
+    const out = distillSession([
+      { role: 'user', text: 'Use pnpm, not npm, for package management.' },
+    ]);
+    expect(out).toEqual([
+      { text: 'Use pnpm, not npm, for package management.', kind: 'decision' },
+    ]);
   });
 
   it('dedupes repeated facts and ignores system messages', () => {
