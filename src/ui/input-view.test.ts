@@ -141,3 +141,32 @@ describe('inputViewport — Thai-safe single-line render (gap cursor)', () => {
     }
   });
 });
+
+const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+describe('cursor on a Thai leading vowel (เ แ โ ใ ไ) — block, not a gap that hides it', () => {
+  it('cursor before ไหม keeps ไ visible with no inserted gap (reported "ได้█หม" bug)', () => {
+    const vp = { lead: false, before: 'ได้', at: ' ', after: 'ไหม', tail: false };
+    const out = stripAnsi(formatInputLineDisplay(vp));
+    expect(out).toContain('ได้ไหม'); // ไ present, sits right after ได้ (cursor blocks ON the vowel)
+    expect(out).not.toContain('ได้ ไหม'); // old gap cursor inserted a space here → vowel overrun
+  });
+
+  it('non-leading-vowel cursor still uses the gap cursor (unchanged for combining marks)', () => {
+    const vp = { lead: false, before: 'ที่', at: ' ', after: 'นี่', tail: false };
+    const out = stripAnsi(formatInputLineDisplay(vp));
+    expect(out).toContain('ที่ นี่'); // น is not a leading vowel → gap space remains
+  });
+
+  it('end-of-line cursor is a trailing gap space (no leading vowel to block)', () => {
+    const vp = { lead: false, before: 'สวัสดี', at: ' ', after: '', tail: false };
+    const out = stripAnsi(formatInputLineDisplay(vp));
+    expect(out).toBe('สวัสดี '); // trailing space cursor, unchanged
+  });
+
+  it('multiline: cursor on a leading vowel highlights it (no leading gap space)', () => {
+    const out = stripAnsi(formatMultilineInputDisplay('ไหม', 0));
+    expect(out.startsWith('ไ')).toBe(true);
+    expect(out.startsWith(' ')).toBe(false);
+  });
+});

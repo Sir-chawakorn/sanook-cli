@@ -136,15 +136,36 @@ export function inputCursorCell(): string {
   return chalk.bgCyan.black(' ');
 }
 
+// Thai PRE-BASE (leading) vowels render to the LEFT of their consonant: เ แ โ ใ ไ (U+0E40–U+0E44).
+// A gap-cursor space placed immediately before one of these is visually overrun — the vowel paints onto
+// the cursor cell, so the letter looks like it vanished under the block (reported bug: "ได้ไหม" shown as
+// "ได้█หม", the ไ swallowed). When the cursor sits ON such a vowel, draw the cursor as a BLOCK on the
+// vowel itself (highlight it) instead of a gap before it — the vowel stays visible and the cursor is
+// unmistakably on it. This is the standard block-cursor treatment (ink-text-input / readline highlight
+// the cell under the cursor); we apply it only to the leading-vowel case and keep the gap cursor
+// elsewhere, where it deliberately avoids inverse-video over above/below combining marks.
+const THAI_LEADING_VOWEL_RE = /^[เ-ไ]/;
+
+/** before-text + cursor + after-text, with the leading-vowel-safe cursor rendering applied. */
+function renderCursorOverlay(before: string, after: string): string {
+  const graphemes = graphemesOf(after);
+  const head = graphemes[0];
+  if (head && THAI_LEADING_VOWEL_RE.test(head)) {
+    return `${before}${chalk.bgCyan.black(head)}${graphemes.slice(1).join('')}`;
+  }
+  return `${before}${inputCursorCell()}${after}`;
+}
+
 /**
  * Render the whole input line as one string so Thai clusters are shaped once (no split Text nodes).
- * The cursor is a single highlighted gap cell between grapheme clusters, never on a letter.
+ * The cursor is a single highlighted gap cell between clusters — or a block on a Thai leading vowel when
+ * the cursor sits on one (so เ แ โ ใ ไ are never hidden under the gap cell).
  */
 export function formatInputLineDisplay(vp: InputViewport, opts?: { queueHint?: string }): string {
   const lead = vp.lead ? chalk.dim(SCROLL_LEAD) : '';
   const tail = vp.tail ? chalk.dim(SCROLL_TAIL) : '';
   const queue = opts?.queueHint ? chalk.dim(opts.queueHint) : '';
-  return `${lead}${vp.before}${inputCursorCell()}${vp.after}${tail}${queue}`;
+  return `${lead}${renderCursorOverlay(vp.before, vp.after)}${tail}${queue}`;
 }
 
 /** Multiline input: same single-string cursor treatment at the grapheme insert point. */
@@ -154,5 +175,5 @@ export function formatMultilineInputDisplay(value: string, cursor: number, opts?
   const before = graphemes.slice(0, insertAt).join('');
   const after = graphemes.slice(insertAt).join('');
   const queue = opts?.queueHint ? chalk.dim(opts.queueHint) : '';
-  return `${before}${inputCursorCell()}${after}${queue}`;
+  return `${renderCursorOverlay(before, after)}${queue}`;
 }
