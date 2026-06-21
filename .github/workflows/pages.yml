@@ -1,8 +1,7 @@
 name: Pages
 
-# Deploy install scripts to GitHub Pages (custom domain: sanook.ai)
-# After first run: Repo Settings → Pages → Custom domain → sanook.ai
-# DNS: CNAME sanook.ai → Sir-chawakorn.github.io (or A records for GitHub Pages)
+# Prefer branch deploy (no Actions billing): bash scripts/deploy-sanook-ai-pages.sh
+# This workflow re-runs the same deploy on push when Actions is available.
 on:
   push:
     branches: [main]
@@ -10,31 +9,18 @@ on:
       - 'packaging/sanook-ai/**'
       - 'scripts/install.sh'
       - 'scripts/install.ps1'
+      - 'scripts/deploy-sanook-ai-pages.sh'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
+  contents: write
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Sync install scripts
-        run: bash scripts/sync-sanook-ai-site.sh
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: packaging/sanook-ai
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - run: bash scripts/deploy-sanook-ai-pages.sh
+        env:
+          GH_TOKEN: ${{ github.token }}

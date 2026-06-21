@@ -7,8 +7,12 @@ export const INSTALL_PKG = 'sanook-cli';
 export const INSTALL_REPO = 'Sir-chawakorn/sanook-cli';
 export const INSTALL_REPO_URL = `https://github.com/${INSTALL_REPO}`;
 export const INSTALL_BRANCH = 'main';
-/** Custom domain when hosted — optional; GitHub raw works without it */
+/** Custom domain when DNS + Pages are configured */
 export const INSTALL_DOMAIN = 'sanook.ai';
+/** GitHub Pages project URL (works when gh-pages branch is deployed) */
+export const INSTALL_PAGES_URL = `https://${INSTALL_REPO.split('/')[0]}.github.io/${INSTALL_REPO.split('/')[1]}`;
+/** jsDelivr CDN — stable short URL without custom domain */
+export const INSTALL_CDN_URL = `https://cdn.jsdelivr.net/gh/${INSTALL_REPO}@${INSTALL_BRANCH}/scripts`;
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 /** package.json version at build time (repo root when running from src/) */
@@ -26,6 +30,14 @@ export function installScriptUrl(name: 'install.sh' | 'install.ps1', preferDomai
   return `https://raw.githubusercontent.com/${INSTALL_REPO}/${INSTALL_BRANCH}/scripts/${name}`;
 }
 
+export function installScriptPagesUrl(name: 'install.sh' | 'install.ps1'): string {
+  return `${INSTALL_PAGES_URL}/${name}`;
+}
+
+export function installScriptCdnUrl(name: 'install.sh' | 'install.ps1'): string {
+  return `${INSTALL_CDN_URL}/${name}`;
+}
+
 export interface InstallMethod {
   id: string;
   label: string;
@@ -39,8 +51,9 @@ export interface InstallMethod {
 export function installMethods(): InstallMethod[] {
   const sh = installScriptUrl('install.sh');
   const ps1 = installScriptUrl('install.ps1');
+  const shPages = installScriptPagesUrl('install.sh');
   const shDomain = installScriptUrl('install.sh', true);
-  const ps1Domain = installScriptUrl('install.ps1', true);
+  const shCdn = installScriptCdnUrl('install.sh');
 
   return [
     {
@@ -61,26 +74,29 @@ export function installMethods(): InstallMethod[] {
       commands: [
         { os: 'macOS / Linux / WSL (GitHub raw)', cmd: `curl -fsSL ${sh} | bash` },
         { os: 'Windows PowerShell (GitHub raw)', cmd: `irm ${ps1} | iex` },
-        { os: 'Short URL (optional domain)', cmd: `curl -fsSL ${shDomain} | bash` },
+        { os: 'CDN (jsDelivr)', cmd: `curl -fsSL ${shCdn} | bash` },
+        { os: 'GitHub Pages', cmd: `curl -fsSL ${shPages} | bash` },
+        { os: `Short URL (${INSTALL_DOMAIN})`, cmd: `curl -fsSL ${shDomain} | bash` },
       ],
-      note: `สคริปต์ใน repo — โฮสต์ที่ ${INSTALL_DOMAIN} ได้ถ้ามีโดเมน (ดู docs/INSTALL_INFRA.md)`,
+      note: `${INSTALL_DOMAIN} ต้องตั้ง DNS ที่ GoDaddy ก่อน — ดู scripts/configure-sanook-ai-dns.sh`,
     },
     {
       id: 'homebrew',
       label: 'Homebrew',
       ready: true,
       commands: [
+        { os: 'macOS / Linux (trust tap ครั้งแรก)', cmd: `brew trust ${INSTALL_REPO.split('/')[0]}/tap` },
         { os: 'macOS / Linux', cmd: `brew tap ${INSTALL_REPO.split('/')[0]}/tap` },
         { os: 'macOS / Linux', cmd: `brew install ${INSTALL_PKG}` },
       ],
-      note: `Formula ใน homebrew-tap repo แล้ว — brew tap ${INSTALL_REPO.split('/')[0]}/tap && brew install ${INSTALL_PKG}`,
+      note: `Live ที่ homebrew-tap — brew tap ${INSTALL_REPO.split('/')[0]}/tap && brew install ${INSTALL_PKG}`,
     },
     {
       id: 'winget',
       label: 'WinGet',
       ready: false,
       commands: [{ os: 'Windows', cmd: 'winget install Sanook.SanookCLI' }],
-      note: 'PR ส่งแล้วที่ microsoft/winget-pkgs — รอ merge แล้วใช้ได้ (GitHub Release v0.5.7 พร้อมแล้ว)',
+      note: 'CLA ลงนามแล้ว — PR #391114 รอ validation + merge (release zip v0.5.7 พร้อม)',
     },
   ];
 }

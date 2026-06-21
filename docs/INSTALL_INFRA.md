@@ -1,8 +1,7 @@
 # Sanook CLI — Install & Distribution Infrastructure
 
 This guide walks through everything you need to make the multi-platform install commands
-(shown on the Dashboard **Install** page) actually work. Today only **npm** works out of the box;
-the rest need the one-time setup below.
+(shown on the Dashboard **Install** page) actually work.
 
 > Package name used everywhere: **`sanook-cli`** (binaries: `sanook`, `sanookai`).
 
@@ -70,6 +69,7 @@ When `sanook dashboard` is running, scripts are also at:
 **Status: live** — https://github.com/Sir-chawakorn/homebrew-tap
 
 ```bash
+brew trust Sir-chawakorn/tap   # once on newer Homebrew
 brew tap Sir-chawakorn/tap
 brew install sanook-cli
 ```
@@ -82,7 +82,7 @@ Formula template in this repo: `packaging/homebrew/sanook-cli.rb`.
 
 ## 3. WinGet (`winget install Sanook.SanookCLI`)
 
-**Status: PR open** — https://github.com/microsoft/winget-pkgs/pull/391114  
+**Status: CLA signed — PR open** — https://github.com/microsoft/winget-pkgs/pull/391114  
 **Release asset:** https://github.com/Sir-chawakorn/sanook-cli/releases/tag/v0.5.7 (`sanook-cli-win-x64.zip`)
 
 After the PR merges:
@@ -111,15 +111,24 @@ Release workflow `.github/workflows/release.yml` on tag `v*`: npm publish → Wi
 
 Static site lives in `packaging/sanook-ai/` (install scripts + landing page).
 
-1. **Enable Pages** (once): Repo → Settings → Pages → Source: **GitHub Actions**  
-   Or: `gh api repos/Sir-chawakorn/sanook-cli/pages -X POST -f build_type=workflow`
-2. Push to `main` — workflow `.github/workflows/pages.yml` deploys on change.
-3. **Custom domain** — `packaging/sanook-ai/CNAME` already contains `sanook.ai`.  
-   In Pages settings, set custom domain to `sanook.ai` and enable HTTPS.
-4. **DNS** at your registrar (choose one):
-   - **CNAME** `@` or `www` → `Sir-chawakorn.github.io` (if supported for apex, use ALIAS/ANAME)
-   - **A records** for apex `@` → GitHub Pages IPs: `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153`
-   - **CNAME** `www` → `Sir-chawakorn.github.io`
+**Deploy (no Actions minutes — uses `gh-pages` branch):**
+```bash
+bash scripts/deploy-sanook-ai-pages.sh              # → sir-chawakorn.github.io/sanook-cli/
+bash scripts/deploy-sanook-ai-pages.sh --cname sanook.ai   # after DNS is ready
+```
+
+**GitHub Pages works today:**
+```bash
+curl -fsSL https://sir-chawakorn.github.io/sanook-cli/install.sh | bash
+```
+
+**Custom domain `sanook.ai`** — domain is on **GoDaddy** (currently parking). Steps:
+
+1. GoDaddy → DNS → remove Website Builder / forwarding on `@`
+2. Run `bash scripts/configure-sanook-ai-dns.sh` (prints manual steps, or set `GODADDY_API_KEY` + `GODADDY_API_SECRET`)
+3. A records `@` → `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153`
+4. CNAME `www` → `Sir-chawakorn.github.io`
+5. `bash scripts/deploy-sanook-ai-pages.sh --cname sanook.ai`
 
 After DNS propagates:
 ```bash

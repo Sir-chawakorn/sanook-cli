@@ -249,7 +249,15 @@ irm https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/inst
 <tr><td><b>Homebrew</b> · macOS / Linux</td><td>
 
 ```bash
-brew tap Sir-chawakorn/tap && brew install sanook-cli
+```bash
+brew trust Sir-chawakorn/tap && brew tap Sir-chawakorn/tap && brew install sanook-cli
+```
+
+</td><td>✅ Ready</td></tr>
+<tr><td><b>GitHub Pages</b> · install script</td><td>
+
+```bash
+curl -fsSL https://sir-chawakorn.github.io/sanook-cli/install.sh | bash
 ```
 
 </td><td>✅ Ready</td></tr>
@@ -262,7 +270,7 @@ winget install Sanook.SanookCLI
 </td><td>⏳ PR pending</td></tr>
 </table>
 
-**npm/npx**, **curl|bash / irm|iex** (GitHub raw or optional [sanook.ai](https://sanook.ai)), and **Homebrew** work today — see [docs/INSTALL_INFRA.md](docs/INSTALL_INFRA.md). WinGet is waiting on [microsoft/winget-pkgs#391114](https://github.com/microsoft/winget-pkgs/pull/391114). The Dashboard also serves install scripts at `http://127.0.0.1:9119/install.sh` when running locally.
+**npm/npx**, **curl|bash / irm|iex** (GitHub raw), **GitHub Pages**, and **Homebrew** work today — see [docs/INSTALL_INFRA.md](docs/INSTALL_INFRA.md). Optional [sanook.ai](https://sanook.ai) short URLs need GoDaddy DNS (`scripts/configure-sanook-ai-dns.sh`). WinGet CLA signed — waiting on [microsoft/winget-pkgs#391114](https://github.com/microsoft/winget-pkgs/pull/391114).
 
 > ⚠️ **`'sanook' is not recognized` / command not found?** You installed it locally — `npm i sanook-cli` (without `-g`) drops it into the current folder, **not on your PATH**, so the `sanook` command isn't found. Fix: reinstall with `npm install -g sanook-cli`, or just run it via **`npx sanook`** (uses the local copy you already installed).
 > Run **`npx sanook doctor`** to auto-diagnose Node version / PATH / install state and print the exact fix for your OS (incl. a safe Windows PATH one-liner).
