@@ -11,6 +11,16 @@ describe('process runner', () => {
     expect(formatProcessResult(result)).toBe('ok');
   });
 
+  it('passes stdin input to the child process', async () => {
+    const result = await runProcess(process.execPath, ['-e', 'process.stdin.pipe(process.stdout)'], {
+      input: 'hello from stdin',
+      timeoutMs: 5_000,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(formatProcessResult(result)).toBe('hello from stdin');
+  });
+
   it('returns a structured error for non-zero exit', async () => {
     const result = await runProcess(process.execPath, ['-e', 'console.error("bad"); process.exit(7)'], {
       timeoutMs: 5_000,
@@ -40,6 +50,48 @@ describe('process runner', () => {
       TMP: '/tmp',
       NODE_PATH: '/opt/node_modules',
       NVM_DIR: '/home/me/.nvm',
+    });
+  });
+
+  it('keeps Windows runtime variables needed to spawn tools', () => {
+    expect(
+      safeProcessEnv({
+        Path: 'C:\\Windows\\System32',
+        PATHEXT: '.COM;.EXE;.BAT;.CMD',
+        SystemRoot: 'C:\\Windows',
+        WINDIR: 'C:\\Windows',
+        ComSpec: 'C:\\Windows\\System32\\cmd.exe',
+        USERPROFILE: 'C:\\Users\\pick',
+        APPDATA: 'C:\\Users\\pick\\AppData\\Roaming',
+        LOCALAPPDATA: 'C:\\Users\\pick\\AppData\\Local',
+        PROGRAMDATA: 'C:\\ProgramData',
+        SECRET_TOKEN: 'nope',
+        SystemDrive: 'C:',
+      }),
+    ).toEqual({
+      Path: 'C:\\Windows\\System32',
+      PATHEXT: '.COM;.EXE;.BAT;.CMD',
+      SystemRoot: 'C:\\Windows',
+      WINDIR: 'C:\\Windows',
+      ComSpec: 'C:\\Windows\\System32\\cmd.exe',
+      USERPROFILE: 'C:\\Users\\pick',
+      APPDATA: 'C:\\Users\\pick\\AppData\\Roaming',
+      LOCALAPPDATA: 'C:\\Users\\pick\\AppData\\Local',
+      PROGRAMDATA: 'C:\\ProgramData',
+      SystemDrive: 'C:',
+    });
+  });
+
+  it('matches safe environment keys case-insensitively', () => {
+    expect(
+      safeProcessEnv({
+        path: '/bin',
+        appdata: 'C:\\Users\\pick\\AppData\\Roaming',
+        secret_token: 'nope',
+      }),
+    ).toEqual({
+      path: '/bin',
+      appdata: 'C:\\Users\\pick\\AppData\\Roaming',
     });
   });
 });

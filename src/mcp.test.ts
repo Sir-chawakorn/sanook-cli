@@ -147,6 +147,38 @@ describe('MCP config loading', () => {
     });
   });
 
+  it('passes shared safe env keys to stdio MCP servers', async () => {
+    vi.stubEnv('Path', 'C:\\Windows\\System32');
+    const server = `
+      const readline = require('node:readline');
+      const rl = readline.createInterface({ input: process.stdin });
+      rl.on('line', (line) => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        if (msg.method === 'initialize') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'env-test', version: '1.0.0' } },
+          }) + '\\n');
+        }
+        if (msg.method === 'tools/list') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { tools: [{ name: process.env.Path === 'C:\\\\Windows\\\\System32' ? 'path_ok' : 'path_missing' }] },
+          }) + '\\n');
+        }
+      });
+    `;
+
+    await expect(probeMcpServer({ command: process.execPath, args: ['-e', server] }, 500)).resolves.toMatchObject({
+      ok: true,
+      transport: 'stdio',
+      tools: [{ name: 'path_ok' }],
+    });
+  });
+
   it('applies the probe timeout while initializing stdio servers', async () => {
     const started = Date.now();
 

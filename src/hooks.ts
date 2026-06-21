@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import type { ToolSet } from 'ai';
 import { appHomePath, BRAND_ENV, envFlag } from './brand.js';
 import { hasUntrustedProjectConfig, projectConfigPathIfTrusted, projectRoot } from './trust.js';
+import { safeProcessEnv } from './process-runner.js';
 
 // hooks = รัน command ของ user ก่อน/หลัง tool (เลียน Claude Code hooks) — บังคับ lint/format/policy
 // config: ~/.sanook/hooks.json + project .sanook/hooks.json (merge)
@@ -15,21 +16,6 @@ interface HookEntry {
 interface HooksConfig {
   PreToolUse?: HookEntry[];
   PostToolUse?: HookEntry[];
-}
-
-// รวม Windows-critical — hooks รันด้วย shell:true (cmd.exe ผ่าน ComSpec); ขาด SystemRoot/ComSpec/PATHEXT
-// = cmd.exe spawn ไม่ขึ้น/หา .cmd ไม่เจอ → hooks พังทั้งหมดบน Windows
-const SAFE_ENV_KEYS = [
-  'PATH', 'HOME', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR',
-  'APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'SystemRoot', 'SystemDrive', 'windir', 'PATHEXT', 'ComSpec',
-];
-function safeEnv(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const k of SAFE_ENV_KEYS) {
-    const v = process.env[k];
-    if (v != null) out[k] = v;
-  }
-  return out;
 }
 
 async function readHooksFile(path: string, merged: HooksConfig): Promise<void> {
@@ -81,7 +67,7 @@ function runCommand(command: string, payload: unknown, timeoutMs = 10_000): Prom
   return new Promise((resolve) => {
     const child = spawn(command, {
       shell: true,
-      env: envFlag(BRAND_ENV.hooksInheritEnv) ? process.env : safeEnv(),
+      env: envFlag(BRAND_ENV.hooksInheritEnv) ? process.env : safeProcessEnv(),
     });
     let stdout = '';
     let stderr = '';

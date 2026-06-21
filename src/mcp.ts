@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dynamicTool, jsonSchema, type ToolSet } from 'ai';
 import { appHomePath, appProjectPath, BRAND } from './brand.js';
 import { hasUntrustedProjectConfig, projectConfigPathIfTrusted, projectRoot } from './trust.js';
+import { safeProcessEnv } from './process-runner.js';
 
 // version จาก package.json (single source of truth) — กัน drift เหมือน bin.ts/banner
 const VERSION = (
@@ -19,17 +20,6 @@ export const PROTOCOL_VERSION = '2024-11-05'; // shared by the MCP client (here)
 const MAX_BUF = 16 * 1024 * 1024; // กัน server ส่ง byte ยาวไม่มี newline → memory โต unbounded
 const REQUEST_TIMEOUT = 20_000;
 export const MAX_MCP_TOOL_OUTPUT_CHARS = 200_000;
-
-// env ปลอดภัยที่ส่งให้ MCP child (ไม่มี secret) — server ที่ต้อง token ให้ตั้งใน cfg.env เอง
-const SAFE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR', 'APPDATA'];
-function safeEnv(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const k of SAFE_ENV_KEYS) {
-    const v = process.env[k];
-    if (v != null) out[k] = v;
-  }
-  return out;
-}
 
 export interface McpServerConfig {
   command?: string;
@@ -115,7 +105,7 @@ class StdioTransport implements Transport {
     this.proc = spawn(cfg.command!, cfg.args ?? [], {
       // minimal env เท่านั้น (PATH/HOME/locale) + cfg.env ที่ user ตั้งเอง — ไม่ส่ง secret
       // (ANTHROPIC_API_KEY/TELEGRAM_BOT_TOKEN/ฯลฯ) ให้ทุก MCP server (supply chain = npx -y <pkg>)
-      env: { ...safeEnv(), ...cfg.env },
+      env: { ...safeProcessEnv(), ...cfg.env },
       // Windows: `npx`/`npm`/JS bins เป็น .cmd shim → spawn ตรงๆ = ENOENT. shell=true ให้ผ่าน PATHEXT.
       // (config นี้ user เป็นเจ้าของ/trust แล้ว — bare-name resolution เท่านั้น)
       shell: process.platform === 'win32',

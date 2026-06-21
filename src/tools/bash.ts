@@ -6,19 +6,10 @@ import { clamp } from './util.js';
 import { checkBash } from './permission.js';
 import { maybeSandbox } from './sandbox.js';
 import { agentCwd } from '../agentContext.js';
+import { safeProcessEnv } from '../process-runner.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
-const SAFE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR', 'APPDATA'];
-
-function safeEnv(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const k of SAFE_ENV_KEYS) {
-    const v = process.env[k];
-    if (v != null) out[k] = v;
-  }
-  return out;
-}
 
 export const bashTool = tool({
   description: 'รันคำสั่ง shell (ls/grep/find/cat/test/npm ฯลฯ) เพื่อค้นหา ตรวจสอบ หรือรัน build/test',
@@ -29,7 +20,7 @@ export const bashTool = tool({
     const guard = checkBash(cmd);
     if (!guard.ok) return `BLOCKED: ${guard.reason}`;
     const cwd = agentCwd(); // worktree ของ sub-agent ถ้ามี (sandbox confine write ตาม cwd นี้)
-    const opts = { cwd, env: safeEnv(), timeout: 120_000, maxBuffer: 10 * 1024 * 1024 };
+    const opts = { cwd, env: safeProcessEnv(), timeout: 120_000, maxBuffer: 10 * 1024 * 1024 };
     try {
       // OS sandbox (Seatbelt/bubblewrap) confine write ให้อยู่ใน workspace ถ้ามี — ไม่งั้นรันตรงตามเดิม
       const sb = await maybeSandbox(cmd, cwd);

@@ -84,6 +84,20 @@ describe('file tools (real workspace)', () => {
     expect(out).toContain('sanook-ok');
   });
 
+  it('run_bash preserves shared safe env keys for child tools', async () => {
+    const { bashTool } = await import('./tools/index.js');
+    const previous = process.env.Path;
+    process.env.Path = 'C:\\Windows\\System32';
+    try {
+      const cmd = `${JSON.stringify(process.execPath)} -e "process.stdout.write(process['e'+'nv'].Path || '')"`;
+      const out = (await bashTool.execute!({ cmd }, opt)) as string;
+      expect(out).toBe('C:\\Windows\\System32');
+    } finally {
+      if (previous == null) delete process.env.Path;
+      else process.env.Path = previous;
+    }
+  });
+
   it('run_bash บล็อกคำสั่ง destructive', async () => {
     const { bashTool } = await import('./tools/index.js');
     const out = (await bashTool.execute!({ cmd: 'rm -rf /' }, opt)) as string;

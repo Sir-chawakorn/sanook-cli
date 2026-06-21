@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadHooksConfig, matches } from './hooks.js';
+import { loadHooksConfig, matches, maybeWrapHooks } from './hooks.js';
 
 describe('hooks matcher', () => {
   it('"*" และ "" → match ทุก tool', () => {
@@ -53,5 +53,19 @@ describe('loadHooksConfig', () => {
 
     const cfg = await loadHooksConfig(home);
     expect(cfg.PreToolUse).toEqual([{ matcher: 'write_file', command: 'echo ok' }]);
+  });
+
+  it('passes shared safe env keys to hook commands', async () => {
+    await mkdir(join(home, '.sanook'), { recursive: true });
+    vi.stubEnv('Path', 'C:\\Windows\\System32');
+    const command = `${JSON.stringify(process.execPath)} -e "process.stdout.write(process.env.Path || 'missing'); process.exit(9)"`;
+    await writeFile(join(home, '.sanook', 'hooks.json'), JSON.stringify({ PreToolUse: [{ matcher: 'x', command }] }));
+
+    const fake = { x: { execute: async () => 'ok' } } as never;
+    const wrapped = (await maybeWrapHooks(fake, home)) as unknown as {
+      x: { execute: (input: unknown, opts: unknown) => Promise<string> };
+    };
+
+    await expect(wrapped.x.execute({}, {})).resolves.toContain('C:\\Windows\\System32');
   });
 });

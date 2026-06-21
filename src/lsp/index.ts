@@ -17,26 +17,12 @@ import { getRepoRoot } from '../worktree.js';
 import { encode, LspDecoder } from './framing.js';
 import { LspSession, waitForDiagnostics, type Diagnostic, type LspTransport } from './client.js';
 import { resolveServer } from './servers.js';
-
-// รวม Windows-critical (SystemRoot/windir/PATHEXT/ComSpec/USERPROFILE/LOCALAPPDATA/TMP) —
-// ถ้าขาด SystemRoot/PATHEXT โปรเซสลูกบน Windows มัก spawn ไม่ขึ้น/หา .cmd ไม่เจอ
-const SAFE_ENV_KEYS = [
-  'PATH', 'HOME', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR',
-  'APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'SystemRoot', 'SystemDrive', 'windir', 'PATHEXT', 'ComSpec',
-];
-function safeEnv(): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const k of SAFE_ENV_KEYS) {
-    const v = process.env[k];
-    if (v != null) out[k] = v;
-  }
-  return out;
-}
+import { safeProcessEnv } from '../process-runner.js';
 
 /** real stdio transport: spawn the server, frame with Content-Length both ways. */
 function spawnTransport(binPath: string, args: string[], cwd: string): { transport: LspTransport; proc: ChildProcess } {
   // Windows: LSP bin มัก resolve เป็น .cmd shim → spawn ตรงไม่ขึ้น ต้อง shell
-  const proc = spawn(binPath, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: safeEnv(), shell: process.platform === 'win32' });
+  const proc = spawn(binPath, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: safeProcessEnv(), shell: process.platform === 'win32' });
   const decoder = new LspDecoder();
   let handler: ((m: Parameters<LspTransport['onMessage']>[0] extends (m: infer M) => void ? M : never) => void) | null = null;
   proc.stdout?.on('data', (buf: Buffer) => {

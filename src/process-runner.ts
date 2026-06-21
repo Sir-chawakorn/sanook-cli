@@ -1,7 +1,31 @@
 import { spawn } from 'node:child_process';
 import { clamp } from './tools/util.js';
 
-const SAFE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'USER', 'SHELL', 'TERM', 'NODE_PATH', 'NVM_DIR', 'APPDATA'];
+const SAFE_ENV_KEYS = [
+  'PATH',
+  'Path',
+  'HOME',
+  'USERPROFILE',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'LANG',
+  'LC_ALL',
+  'USER',
+  'SHELL',
+  'TERM',
+  'NODE_PATH',
+  'NVM_DIR',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'PROGRAMDATA',
+  'SystemRoot',
+  'SystemDrive',
+  'WINDIR',
+  'ComSpec',
+  'PATHEXT',
+];
+const SAFE_ENV_KEY_SET = new Set(SAFE_ENV_KEYS.map((key) => key.toLowerCase()));
 const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024;
 
 export interface ProcessRunOptions {
@@ -24,9 +48,10 @@ export interface ProcessRunResult {
 
 export function safeProcessEnv(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const key of SAFE_ENV_KEYS) {
-    const value = env[key];
-    if (value != null) out[key] = value;
+  for (const [key, value] of Object.entries(env)) {
+    if (value != null && SAFE_ENV_KEY_SET.has(key.toLowerCase())) {
+      out[key] = value;
+    }
   }
   return out;
 }
