@@ -54,6 +54,8 @@ export function installMethods(): InstallMethod[] {
   const shPages = installScriptPagesUrl('install.sh');
   const shDomain = installScriptUrl('install.sh', true);
   const shCdn = installScriptCdnUrl('install.sh');
+  const version = installPkgVersion();
+  const releaseTag = version === 'latest' ? 'latest' : `v${version}`;
 
   return [
     {
@@ -96,7 +98,7 @@ export function installMethods(): InstallMethod[] {
       label: 'WinGet',
       ready: false,
       commands: [{ os: 'Windows', cmd: 'winget install Sanook.SanookCLI' }],
-      note: 'CLA ลงนามแล้ว — PR #391114 รอ validation + merge (release zip v0.5.7 พร้อม)',
+      note: `CLA ลงนามแล้ว — PR #391114 รอ validation + merge (release zip ${releaseTag} พร้อม)`,
     },
   ];
 }

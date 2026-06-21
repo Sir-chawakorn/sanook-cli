@@ -1,7 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { dashboardInstall } from './api-helpers.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { appHomePath } from '../brand.js';
+import { dashboardInstall, dashboardListFiles, dashboardReadFile } from './api-helpers.js';
 import { shellStatus } from './terminal.js';
-import { installScriptUrl } from '../install-info.js';
+import { installPkgVersion, installScriptUrl } from '../install-info.js';
 
 describe('dashboardInstall', () => {
   it('returns the package name and npm as the ready/recommended method', () => {
@@ -27,12 +31,72 @@ describe('dashboardInstall', () => {
     const winget = dashboardInstall().methods.find((m) => m.id === 'winget');
     expect(winget?.ready).toBe(false);
   });
+
+  it('keeps the winget release note aligned with package.json', () => {
+    const winget = dashboardInstall().methods.find((m) => m.id === 'winget');
+
+    expect(winget?.note).toContain(`v${installPkgVersion()}`);
+    expect(winget?.note).not.toContain('v0.5.7');
+  });
 });
 
 describe('installScriptUrl', () => {
   it('points install scripts at GitHub raw by default', () => {
     expect(installScriptUrl('install.sh')).toContain('raw.githubusercontent.com/Sir-chawakorn/sanook-cli');
     expect(installScriptUrl('install.ps1', true)).toContain('sanook.ai/install.ps1');
+  });
+});
+
+describe('dashboard file API', () => {
+  let home: string;
+  let brain: string;
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'sanook-dashboard-home-'));
+    brain = join(home, 'Second Brain');
+    vi.stubEnv('HOME', home);
+    await mkdir(appHomePath(), { recursive: true });
+    await writeFile(appHomePath('note.md'), '# allowed\n', 'utf8');
+    await writeFile(appHomePath('config.json'), JSON.stringify({ brainPath: brain }, null, 2), 'utf8');
+    await mkdir(appHomePath('etc'), { recursive: true });
+    await mkdir(brain, { recursive: true });
+    await writeFile(join(brain, 'vault-note.md'), '# vault\n', 'utf8');
+    await mkdir(join(home, '.sanook-secrets'), { recursive: true });
+    await writeFile(join(home, '.sanook-secrets', 'secret.md'), '# secret\n', 'utf8');
+  });
+
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    await rm(home, { recursive: true, force: true });
+  });
+
+  it('reads files inside the app home root', async () => {
+    await expect(dashboardListFiles()).resolves.toMatchObject({
+      entries: expect.arrayContaining([{ name: 'note.md', dir: false }]),
+    });
+    await expect(dashboardReadFile(appHomePath('note.md'))).resolves.toMatchObject({
+      content: '# allowed\n',
+    });
+  });
+
+  it('lists and reads files inside the configured brain root by absolute path', async () => {
+    await expect(dashboardListFiles(brain)).resolves.toMatchObject({
+      entries: expect.arrayContaining([{ name: 'vault-note.md', dir: false }]),
+    });
+    await expect(dashboardReadFile(join(brain, 'vault-note.md'))).resolves.toMatchObject({
+      content: '# vault\n',
+    });
+  });
+
+  it('rejects sibling paths that only share the app-home name prefix', async () => {
+    const siblingFile = join(home, '.sanook-secrets', 'secret.md');
+
+    await expect(dashboardListFiles('../.sanook-secrets')).rejects.toThrow('path not allowed');
+    await expect(dashboardReadFile(siblingFile)).rejects.toThrow('path not allowed');
+  });
+
+  it('rejects absolute list paths outside the allowed roots', async () => {
+    await expect(dashboardListFiles('/etc')).rejects.toThrow('path not allowed');
   });
 });
 

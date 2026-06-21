@@ -49,6 +49,20 @@ function wingetManifest(path: string): { identifier: string; version: string } {
   };
 }
 
+function projectPackageMetadata(): {
+  name: string;
+  version: string;
+  bin: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+} {
+  return JSON.parse(readProjectFile('package.json')) as {
+    name: string;
+    version: string;
+    bin: Record<string, string>;
+    optionalDependencies?: Record<string, string>;
+  };
+}
+
 async function writePackagingFixture(root: string): Promise<void> {
   await mkdir(join(root, 'packaging/homebrew'), { recursive: true });
   await mkdir(join(root, 'packaging/homebrew-tap/Formula'), { recursive: true });
@@ -99,6 +113,24 @@ describe('packaging manifests', () => {
     }
   });
 
+  it('keeps npm package metadata executable via npx and synced with the lockfile', () => {
+    const pkg = projectPackageMetadata();
+    const lock = JSON.parse(readProjectFile('package-lock.json')) as {
+      version: string;
+      packages: {
+        '': { version: string; bin?: Record<string, string>; optionalDependencies?: Record<string, string> };
+      };
+    };
+
+    expect(pkg.bin[pkg.name]).toBe('dist/bin.js');
+    expect(pkg.bin.sanook).toBe('dist/bin.js');
+    expect(pkg.bin.sanookai).toBe('dist/bin.js');
+    expect(lock.version).toBe(pkg.version);
+    expect(lock.packages[''].version).toBe(pkg.version);
+    expect(lock.packages[''].bin).toEqual(pkg.bin);
+    expect(lock.packages[''].optionalDependencies).toEqual(pkg.optionalDependencies);
+  });
+
   it('keeps the bundled and tap Homebrew formulas on the same release artifact', () => {
     expect(homebrewRelease('packaging/homebrew-tap/Formula/sanook-cli.rb')).toEqual(
       homebrewRelease('packaging/homebrew/sanook-cli.rb'),
@@ -121,6 +153,23 @@ describe('packaging manifests', () => {
     expect(matchOne(installer, /^    InstallerUrl: (.+)$/m, 'WinGet InstallerUrl')).toBe(
       `https://github.com/Sir-chawakorn/sanook-cli/releases/download/v${version}/sanook-cli-win-x64.zip`,
     );
+  });
+
+  it('defaults the WinGet publish script to the package.json version', () => {
+    const script = readProjectFile('scripts/publish-winget-pr.sh');
+
+    expect(script).toContain('readFileSync(process.argv[1]');
+    expect(script).toContain('"$ROOT/package.json"');
+    expect(script).not.toContain('VERSION="${1:-0.5.7}"');
+  });
+
+  it('guards WinGet PR publishing against stale local manifests', () => {
+    const script = readProjectFile('scripts/publish-winget-pr.sh');
+
+    expect(script).toContain('PackageVersion: $VERSION');
+    expect(script).toContain('InstallerUrl: https://github.com/Sir-chawakorn/sanook-cli/releases/download/v${VERSION}/sanook-cli-win-x64.zip');
+    expect(script).toContain('node scripts/sync-packaging.mjs $VERSION');
+    expect(script).toContain('cp "${MANIFESTS[@]}" "$MANIFEST_DIR/"');
   });
 
   it('rewrites Homebrew formulas through the packaging sync helper', async () => {

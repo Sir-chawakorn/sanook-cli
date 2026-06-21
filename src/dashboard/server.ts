@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { join, extname } from 'node:path';
+import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BRAND } from '../brand.js';
 import { loadConfig, readGlobalConfigRaw } from '../config.js';
@@ -208,8 +208,12 @@ async function handleApi(req: IncomingMessage, res: ServerResponse, pathname: st
 }
 
 async function serveStatic(res: ServerResponse, staticDir: string, pathname: string): Promise<void> {
-  const safe = pathname === '/' ? '/index.html' : pathname;
-  const filePath = join(staticDir, safe.replace(/^\/+/, ''));
+  const filePath = dashboardStaticFilePath(staticDir, pathname);
+  if (!filePath) {
+    res.writeHead(404);
+    res.end('Not found');
+    return;
+  }
   try {
     const info = await stat(filePath);
     if (!info.isFile()) {
@@ -289,4 +293,18 @@ export async function startDashboardServer(opts: DashboardServerOptions = {}): P
 
 export function dashboardStaticRoot(): string {
   return dashboardStaticDir();
+}
+
+export function dashboardStaticFilePath(staticDir: string, pathname: string): string | null {
+  let safePath: string;
+  try {
+    safePath = decodeURIComponent(pathname === '/' ? '/index.html' : pathname);
+  } catch {
+    return null;
+  }
+  const root = resolve(staticDir);
+  const filePath = resolve(root, safePath.replace(/^[/\\]+/, ''));
+  const rel = relative(root, filePath);
+  if (rel.startsWith('..') || isAbsolute(rel)) return null;
+  return filePath;
 }

@@ -82,11 +82,21 @@ function isWithin(target: string, root: string): boolean {
   return !rel.startsWith('..') && !isAbsolute(rel);
 }
 
+function resolveDashboardListTarget(subpath: string, root: string, allowedRoots: string[]): string {
+  if (!subpath || subpath === '/') return root;
+  if (isAbsolute(subpath)) {
+    const absoluteTarget = safeRoot(subpath);
+    if (allowedRoots.some((allowedRoot) => isWithin(absoluteTarget, allowedRoot))) return absoluteTarget;
+    throw new Error('path not allowed');
+  }
+  return safeRoot(join(root, subpath.replace(/^[/\\]+/, '')));
+}
+
 export async function dashboardListFiles(subpath = ''): Promise<{ root: string; entries: { name: string; dir: boolean }[] }> {
   const config = await loadConfig({});
   const roots = [appHomePath(), config.brainPath ? resolve(config.brainPath) : null].filter(Boolean) as string[];
   const root = safeRoot(roots[0] ?? appHomePath());
-  const target = safeRoot(join(root, subpath.replace(/^\/+/, '')));
+  const target = resolveDashboardListTarget(subpath, root, roots);
   if (!roots.some((r) => isWithin(target, r))) {
     throw new Error('path not allowed');
   }
