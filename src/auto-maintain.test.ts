@@ -77,6 +77,23 @@ describe('auto-maintain', () => {
   });
 
   describe('maybeStartupMaintain', () => {
+    it('creates the state directory before claiming a startup consolidate run', async () => {
+      const now = Date.now();
+      await rm(stateDir, { recursive: true, force: true });
+      const runBrainConsolidate = vi.fn().mockResolvedValue({
+        ok: true,
+        steps: [],
+      });
+      vi.doMock('./brain-consolidate.js', () => ({ runBrainConsolidate }));
+      try {
+        await expect(maybeStartupMaintain(now)).resolves.toBe(null);
+        const state = JSON.parse(await readFile(appHomePath('auto-maintain.json'), 'utf8')) as { lastConsolidate?: unknown };
+        expect(state.lastConsolidate).toBe(now);
+      } finally {
+        vi.doUnmock('./brain-consolidate.js');
+      }
+    });
+
     it('repairs invalid state when claiming a startup consolidate run', async () => {
       const now = Date.now();
       await writeFile(appHomePath('auto-maintain.json'), JSON.stringify({ lastConsolidate: now + 30 * DAY }));
@@ -167,7 +184,8 @@ describe('auto-maintain', () => {
     });
     it('returns 0 for empty / non-array input', async () => {
       expect(await autoDistillToMemory([])).toBe(0);
-      expect(await autoDistillToMemory(undefined as never)).toBe(0);
+      expect(await autoDistillToMemory(undefined)).toBe(0);
+      expect(await autoDistillToMemory({ role: 'user', content: 'We decided to ignore non-array transcripts.' })).toBe(0);
     });
     it('ignores malformed message entries without dropping valid facts', async () => {
       const appendMemory = vi.fn().mockResolvedValue(undefined);
@@ -185,6 +203,82 @@ describe('auto-maintain', () => {
         expect(appendMemory).toHaveBeenCalledWith('We decided to tolerate malformed distill messages.');
       } finally {
         vi.doUnmock('./memory.js');
+      }
+    });
+    it('passes only user and assistant messages with content to the distiller', async () => {
+      const appendMemory = vi.fn().mockResolvedValue(undefined);
+      const distilledFactsFromMessages = vi.fn().mockReturnValue(['We decided to persist only conversation facts.']);
+      vi.doMock('./memory.js', () => ({ appendMemory }));
+      vi.doMock('./session-distill.js', () => ({ distilledFactsFromMessages }));
+      const contentParts = [{ type: 'text', text: 'The convention is to keep local memory scoped to conversations.' }];
+      try {
+        await expect(
+          autoDistillToMemory([
+            null,
+            'not a message',
+            { role: 'system', content: 'We decided system prompts are not conversation memory.' },
+            { role: 'developer', content: 'The convention is to keep tool rules out of user memory.' },
+            {
+              role: 'tool',
+              content: [
+                {
+                  type: 'tool-result',
+                  toolName: 'read_file',
+                  output: { type: 'text', value: 'We decided tool outputs are not conversation facts.' },
+                },
+              ],
+            },
+            { role: 'user' },
+            { role: 'assistant', content: '' },
+            { role: 'user', content: [{ type: 'tool-call', toolName: 'read_file' }] },
+            { content: 'missing role' },
+            { role: 7, content: 'bad role' },
+            { role: 'assistant', content: 'We decided to persist only conversation facts.' },
+            { role: 'user', content: contentParts },
+          ]),
+        ).resolves.toBe(1);
+        expect(distilledFactsFromMessages).toHaveBeenCalledWith([
+          { role: 'assistant', content: 'We decided to persist only conversation facts.' },
+          { role: 'user', content: contentParts },
+        ]);
+        expect(appendMemory).toHaveBeenCalledWith('We decided to persist only conversation facts.');
+      } finally {
+        vi.doUnmock('./memory.js');
+        vi.doUnmock('./session-distill.js');
+      }
+    });
+    it('skips distiller and memory imports when no messages are distillable', async () => {
+      const memoryFactory = vi.fn(() => ({ appendMemory: vi.fn() }));
+      const distillerFactory = vi.fn(() => ({ distilledFactsFromMessages: vi.fn() }));
+      vi.doMock('./memory.js', memoryFactory);
+      vi.doMock('./session-distill.js', distillerFactory);
+      try {
+        await expect(
+          autoDistillToMemory([
+            null,
+            { role: 'system', content: 'We decided system prompts are not conversation memory.' },
+            { role: 'developer', content: 'The convention is to keep tool rules out of user memory.' },
+            {
+              role: 'tool',
+              content: [
+                {
+                  type: 'tool-result',
+                  toolName: 'read_file',
+                  output: { type: 'text', value: 'We decided tool outputs are not conversation facts.' },
+                },
+              ],
+            },
+            { role: 'assistant' },
+            { role: 'assistant', content: '   ' },
+            { role: 'user', content: [{ type: 'tool-call', toolName: 'read_file' }] },
+            { content: 'missing role' },
+          ]),
+        ).resolves.toBe(0);
+        expect(distillerFactory).not.toHaveBeenCalled();
+        expect(memoryFactory).not.toHaveBeenCalled();
+      } finally {
+        vi.doUnmock('./memory.js');
+        vi.doUnmock('./session-distill.js');
       }
     });
     it('counts only facts that append successfully', async () => {

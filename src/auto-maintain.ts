@@ -6,7 +6,7 @@
 // ทั้งหมด best-effort (ไม่ทำให้ flow ล้ม) และ "ไม่ลบของ" — ใช้ archive (กู้คืนได้) ไม่ใช่ delete.
 // ปิดได้: config `autoMaintain=false` หรือ env SANOOK_DISABLE_AUTO_MAINTAIN=1.
 // ============================================================================
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { appHomePath, envFlag, persistenceEnabled } from './brand.js';
 import { loadConfig } from './config.js';
 
@@ -20,14 +20,29 @@ interface AutoMaintainState {
   lastConsolidate: number;
 }
 
-function isDistillableMessage(value: unknown): value is { role: string; content: unknown } {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'role' in value &&
-    typeof (value as { role?: unknown }).role === 'string' &&
-    'content' in value
+type DistillableMessage = { role: 'user' | 'assistant'; content: unknown };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function hasTextContent(content: unknown): boolean {
+  if (typeof content === 'string') return content.trim().length > 0;
+  if (!Array.isArray(content)) return false;
+  return content.some(
+    (part) =>
+      part &&
+      typeof part === 'object' &&
+      'text' in part &&
+      typeof (part as { text?: unknown }).text === 'string' &&
+      (part as { text: string }).text.trim().length > 0,
   );
+}
+
+function isDistillableMessage(value: unknown): value is DistillableMessage {
+  if (!isRecord(value)) return false;
+  const { role, content } = value;
+  return (role === 'user' || role === 'assistant') && hasTextContent(content);
 }
 
 /**
@@ -59,6 +74,7 @@ async function readState(): Promise<AutoMaintainState> {
 
 async function writeState(state: AutoMaintainState): Promise<void> {
   try {
+    await mkdir(appHomePath(), { recursive: true });
     await writeFile(appHomePath(STATE_FILE), `${JSON.stringify(state, null, 2)}\n`);
   } catch {
     /* best-effort — ไม่ critical ถ้าเขียน state ไม่ได้ */
@@ -104,16 +120,16 @@ export async function maybeStartupMaintain(now: number = Date.now()): Promise<st
  * distill บทสนทนา → durable auto-memory (knowledge ที่ compound ข้าม session). เรียกตอนจบ session
  * (REPL exit) และตอนจบ turn (headless). best-effort, ไม่ throw. คืนจำนวน fact ที่เขียน.
  */
-export async function autoDistillToMemory(messages: unknown[]): Promise<number> {
+export async function autoDistillToMemory(messages: unknown): Promise<number> {
   if (!Array.isArray(messages) || !messages.length) return 0;
   if (!persistenceEnabled()) return 0;
   if (envFlag('SANOOK_DISABLE_AUTO_MAINTAIN')) return 0;
   if (!envFlag('SANOOK_AUTO_DISTILL') && !(await autoMaintainEnabled())) return 0;
+  const distillableMessages = messages.filter(isDistillableMessage);
+  if (!distillableMessages.length) return 0;
   try {
     const { distilledFactsFromMessages } = await import('./session-distill.js');
     const { appendMemory } = await import('./memory.js');
-    const distillableMessages = messages.filter(isDistillableMessage);
-    if (!distillableMessages.length) return 0;
     const facts = distilledFactsFromMessages(distillableMessages).slice(0, MAX_DISTILL_FACTS);
     let written = 0;
     for (const fact of facts) {
