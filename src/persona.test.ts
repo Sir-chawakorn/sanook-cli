@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PERSONA_QUESTIONS, PERSONA_OTHER, personaFacts, renderPersonaProfile, parsePersonaProfileMarkdown, personaAnswersFromFacts, type PersonaAnswers } from './persona.js';
+import { PERSONA_QUESTIONS, PERSONA_OTHER, personaFacts, renderOwnerPersonaPromptBlock, renderPersonaProfile, parsePersonaProfileMarkdown, personaAnswersFromFacts, type PersonaAnswers } from './persona.js';
 
 describe('persona questionnaire', () => {
   it('has unique question ids and well-formed select options', () => {
@@ -51,6 +51,19 @@ describe('personaFacts', () => {
 
   it('returns empty for an empty answer set', () => {
     expect(personaFacts({})).toEqual([]);
+  });
+});
+
+describe('renderOwnerPersonaPromptBlock', () => {
+  it('renders compact owner facts for system/delegate injection', () => {
+    const block = renderOwnerPersonaPromptBlock({ ownerName: 'ชวกร', language: 'ไทย + tech-en' });
+    expect(block).toContain('<owner_persona');
+    expect(block).toContain('เจ้าของชื่อ ชวกร');
+    expect(block).toContain('ภาษาที่เจ้าของต้องการให้ตอบ');
+  });
+
+  it('returns empty string when no answers', () => {
+    expect(renderOwnerPersonaPromptBlock({})).toBe('');
   });
 });
 

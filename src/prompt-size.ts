@@ -3,7 +3,7 @@ import { BRAND } from './brand.js';
 import { loadConfig, type Config } from './config.js';
 import { gitContext } from './git.js';
 import { SYSTEM } from './loop.js';
-import { loadAutoMemory, loadBrainContext, loadMemory } from './memory.js';
+import { loadAutoMemory, loadBrainContext, loadMemory, loadOwnerPersonaBlock } from './memory.js';
 import { personalityPrompt } from './personality.js';
 import { loadRepoMap } from './repomap.js';
 import { loadSkills, renderAvailableSkills, type Skill } from './skills.js';
@@ -40,6 +40,7 @@ export interface PromptSizeOptions {
   loadConfigImpl?: (overrides: Record<string, unknown>, cwd: string) => Promise<Config>;
   loadMemoryImpl?: (cwd: string) => Promise<string>;
   loadAutoMemoryImpl?: () => Promise<string>;
+  loadOwnerPersonaBlockImpl?: () => Promise<string>;
   loadSkillsImpl?: (cwd: string) => Promise<Skill[]>;
   gitContextImpl?: (cwd: string) => Promise<string>;
   loadBrainContextImpl?: () => Promise<string>;
@@ -118,6 +119,7 @@ export async function buildPromptSizeBreakdown(options: PromptSizeOptions = {}):
     config,
     memory,
     autoMemory,
+    ownerPersona,
     skills,
     git,
     brain,
@@ -126,6 +128,7 @@ export async function buildPromptSizeBreakdown(options: PromptSizeOptions = {}):
     (options.loadConfigImpl ?? loadConfig)({}, cwd),
     (options.loadMemoryImpl ?? loadMemory)(cwd),
     (options.loadAutoMemoryImpl ?? loadAutoMemory)(),
+    (options.loadOwnerPersonaBlockImpl ?? loadOwnerPersonaBlock)(),
     (options.loadSkillsImpl ?? loadSkills)(cwd),
     (options.gitContextImpl ?? gitContext)(cwd),
     (options.loadBrainContextImpl ?? loadBrainContext)(),
@@ -141,13 +144,14 @@ export async function buildPromptSizeBreakdown(options: PromptSizeOptions = {}):
   const baseSystem = SYSTEM + planSuffix + brainNudge;
   const personality = personalityPrompt(config.personality);
   const skillsBlock = renderAvailableSkills(skills);
-  const staticSystem = joinPromptBlocks([baseSystem, personality, autoMemory, skillsBlock, brain, memory, repoMap]);
+  const staticSystem = joinPromptBlocks([baseSystem, personality, ownerPersona, autoMemory, skillsBlock, brain, memory, repoMap]);
   const systemPromptText = joinPromptBlocks([staticSystem, git]);
   const toolSchemaText = serializeToolSchemas(options.tools ?? builtInTools);
 
   const sections = [
     measurePromptSection('base-system', 'Base system', baseSystem),
     measurePromptSection('personality', 'Personality overlay', personality),
+    measurePromptSection('owner-persona', 'Owner persona', ownerPersona),
     measurePromptSection('auto-memory', 'Auto memory', autoMemory),
     measurePromptSection('skills-index', 'Skills index', skillsBlock),
     measurePromptSection('brain-context', 'Second-brain context', brain),

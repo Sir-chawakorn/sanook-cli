@@ -62,6 +62,7 @@ describe('buildPromptSizeBreakdown', () => {
       loadConfigImpl: async () => testConfig({ personality: 'friendly' }),
       loadMemoryImpl: async () => '<memory>SANOOK.md</memory>',
       loadAutoMemoryImpl: async () => '<auto_memory>remember this</auto_memory>',
+      loadOwnerPersonaBlockImpl: async () => '<owner_persona>owner facts</owner_persona>',
       loadSkillsImpl: async () => [{ name: 'ship', description: 'ship cleanly', path: '/skills/ship/SKILL.md' }],
       gitContextImpl: async () => '<git>main clean</git>',
       loadBrainContextImpl: async () => '<brain_vault>state</brain_vault>',
@@ -81,6 +82,7 @@ describe('buildPromptSizeBreakdown', () => {
     expect(report.sections.map((section) => section.id)).toEqual([
       'base-system',
       'personality',
+      'owner-persona',
       'auto-memory',
       'skills-index',
       'brain-context',

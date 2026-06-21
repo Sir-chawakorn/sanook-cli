@@ -4,6 +4,9 @@ import {
   graphemesOf,
   cursorGraphemeIndex,
   cursorInsertGraphemeIndex,
+  formatInputLineDisplay,
+  formatMultilineInputDisplay,
+  inputCursorCell,
   inputViewport,
   SCROLL_LEAD,
   SCROLL_TAIL,
@@ -113,6 +116,16 @@ describe('inputViewport — Thai-safe single-line render (gap cursor)', () => {
     expect(vp.after).toBe('');
     expect(vp.lead).toBe(false);
     expect(vp.tail).toBe(false);
+  });
+
+  it('renders cursor in one ANSI string (no split Ink nodes over Thai text)', () => {
+    const vp = inputViewport('สวัสดี', 3, 80);
+    const line = formatInputLineDisplay(vp);
+    expect(line).toContain('สวั');
+    expect(line).toContain('สดี');
+    expect(line).toContain(inputCursorCell());
+    expect(line.indexOf(inputCursorCell())).toBeGreaterThan(line.indexOf('สวั'));
+    expect(line.indexOf('สดี')).toBeGreaterThan(line.indexOf(inputCursorCell()));
   });
 
   it('visible slice never exceeds allotted width (prevents 1↔2 row input bounce)', () => {

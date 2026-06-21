@@ -1,3 +1,4 @@
+import chalk from 'chalk';
 import stringWidth from 'string-width';
 import { clampCursorToGrapheme, graphemeBoundaries } from './useEditor.js';
 
@@ -6,9 +7,9 @@ import { clampCursorToGrapheme, graphemeBoundaries } from './useEditor.js';
 // Regression guards: repl-layout-guard.test.ts + input-view.test.ts (width + gap cursor).
 //
 // Two bugs this fixes (เทียบกับ CLI เจ้าอื่นที่ "นิ่ง"):
-//  1) block cursor on Thai text — inverting the grapheme under the caret paints a solid
-//     cell over the base char + combining marks and looks like the cursor "covers" the letter.
-//     Fix: gap cursor — render an inverse space BETWEEN clusters, never on top of a letter.
+//  1) block cursor on Thai text — splitting the line across multiple Ink <Text> nodes breaks
+//     grapheme shaping; inverse video on a middle segment paints over Thai base marks + vowels.
+//     Fix: one ANSI string for the whole line + bgCyan gap cell between clusters (never inverse on letters).
 //  2) the line bounced between 1 and 2 rows while typing — a wrapping <Text> grows the box
 //     vertically the moment content crosses the right edge, shoving the footer down on every
 //     keystroke. Fix: a fixed-width horizontal viewport (readline-style) so the input box is
@@ -128,4 +129,30 @@ export function inputViewport(value: string, cursor: number, width: number): Inp
     after: slice(cursorUnit + 1, end),
     tail: end < units.length,
   };
+}
+
+/** Styled gap cursor cell — background highlight, not inverse video (safer for Thai terminals). */
+export function inputCursorCell(): string {
+  return chalk.bgCyan.black(' ');
+}
+
+/**
+ * Render the whole input line as one string so Thai clusters are shaped once (no split Text nodes).
+ * The cursor is a single highlighted gap cell between grapheme clusters, never on a letter.
+ */
+export function formatInputLineDisplay(vp: InputViewport, opts?: { queueHint?: string }): string {
+  const lead = vp.lead ? chalk.dim(SCROLL_LEAD) : '';
+  const tail = vp.tail ? chalk.dim(SCROLL_TAIL) : '';
+  const queue = opts?.queueHint ? chalk.dim(opts.queueHint) : '';
+  return `${lead}${vp.before}${inputCursorCell()}${vp.after}${tail}${queue}`;
+}
+
+/** Multiline input: same single-string cursor treatment at the grapheme insert point. */
+export function formatMultilineInputDisplay(value: string, cursor: number, opts?: { queueHint?: string }): string {
+  const insertAt = cursorInsertGraphemeIndex(value, cursor);
+  const graphemes = graphemesOf(value);
+  const before = graphemes.slice(0, insertAt).join('');
+  const after = graphemes.slice(insertAt).join('');
+  const queue = opts?.queueHint ? chalk.dim(opts.queueHint) : '';
+  return `${before}${inputCursorCell()}${after}${queue}`;
 }

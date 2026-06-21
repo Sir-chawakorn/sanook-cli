@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.5.13
+
+### Owner memory (Codex + all providers)
+
+- **Codex delegate** — `codex:gpt-5.5` now prepends `<owner_persona>` + `<auto_memory>` + brain/project context into every `codex exec` prompt (previously skipped all durable memory).
+- **SDK providers** — inject `<owner_persona>` into the static system prompt on every turn.
+- **System instructions** — when asked what you remember about the user, answer from persona/memory blocks instead of denying cross-session memory.
+
+## 0.5.12
+
+### Thai input cursor
+
+- **Cursor** — render the whole input line as one ANSI string with a cyan gap cell (`bgCyan`), not split `inverse` Text nodes that break Thai grapheme shaping and cover vowel marks.
+
+## 0.5.11
+
+### REPL layout stability
+
+- **Transcript** — completed chat turns render in Ink `<Static>` so typing no longer redraws the whole history (input dock stays put).
+- **Input** — Thai-safe gap cursor + single-row horizontal viewport (no 1↔2 line bounce).
+- **Completions** — fixed-height slot for `/` and `@` completion overlay so the prompt does not jump when suggestions appear.
+- **Regression guards** — source + behavior tests in `repl-layout-guard.test.ts`, `repl-input.test.tsx`, `overlay.test.tsx`.
+
 ## 0.5.10
 
 - Patch release (npm republish guard — use this version after 0.5.9 is already on the registry).

@@ -5,7 +5,7 @@ import { buildProjectContextBlock, resolveVaultProject } from './project-registr
 import { appHomePath, BRAND, brainTranscriptEnvForced, persistenceEnabled, worklogEnabled } from './brand.js';
 import { redactKey } from './providers/keys.js';
 import { loadStore, saveStore, mergeFact, maybeConsolidate, consolidate, renderPromptBlock, activeFacts, type NoteType, type Incoming } from './memory-store.js';
-import { renderPersonaProfile, personaFacts, mergePersonaAnswers, parsePersonaProfileMarkdown, personaAnswersFromFacts, type PersonaAnswers } from './persona.js';
+import { renderPersonaProfile, personaFacts, mergePersonaAnswers, parsePersonaProfileMarkdown, personaAnswersFromFacts, renderOwnerPersonaPromptBlock, type PersonaAnswers } from './persona.js';
 
 const MEMORY_FILE = BRAND.memoryFileName;
 // auto-memory (สิ่งที่ agent จำเองข้าม session) ย้ายไปอยู่ใน ./memory-store.ts —
@@ -74,6 +74,35 @@ export async function loadAutoMemory(): Promise<string> {
   } catch {
     return '';
   }
+}
+
+/** Owner persona facts for every agent turn (REPL + Codex delegate). Empty until user runs `sanook persona` or `/persona`. */
+export async function loadOwnerPersonaBlock(): Promise<string> {
+  try {
+    return renderOwnerPersonaPromptBlock(await loadPersonaAnswers());
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Context bundle for delegate providers (codex exec) — they skip the SDK system prompt, so we prepend
+ * owner persona + auto-memory + project/brain context manually.
+ */
+export async function loadDelegateContext(cwd: string = process.cwd()): Promise<string> {
+  const [persona, autoMemory, brain, memory] = await Promise.all([
+    loadOwnerPersonaBlock(),
+    loadAutoMemory(),
+    loadBrainContext(cwd),
+    loadMemory(cwd),
+  ]);
+  const instructions = [
+    `You are ${BRAND.agentName}.`,
+    'Durable owner facts live in <owner_persona> and <auto_memory> below.',
+    'When the user asks what you remember about them, their name, or preferences, answer from those blocks — do not claim you have no cross-session memory if facts are present.',
+    `If both blocks are empty, say you have not learned their profile yet and suggest \`${BRAND.cliName} persona\` or \`/persona\` in the REPL.`,
+  ].join(' ');
+  return [instructions, persona, autoMemory, brain, memory].filter(Boolean).join('\n\n');
 }
 
 /**

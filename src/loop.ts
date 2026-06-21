@@ -4,7 +4,7 @@ import { resolveModel, specKey, parseSpec, PROVIDERS } from './providers/registr
 import { CostMeter, SharedBudget, type Usage } from './cost.js';
 import { tools } from './tools/index.js';
 import { agentCwd } from './agentContext.js';
-import { loadMemory, loadAutoMemory, loadBrainContext } from './memory.js';
+import { loadMemory, loadAutoMemory, loadBrainContext, loadDelegateContext, loadOwnerPersonaBlock } from './memory.js';
 import { buildTurnRetrieval, PROJECT_SOURCES } from './turn-retrieval.js';
 import { loadSkills, renderAvailableSkills } from './skills.js';
 import { maybeWrapHooks } from './hooks.js';
@@ -45,6 +45,7 @@ export const SYSTEM = `You are ${BRAND.agentName}, an autonomous coding agent ru
 - If a skill in <available_skills> matches the task, load it with the skill tool BEFORE starting; use find_skills to search when unsure which fits.
 - For work that splits into independent parts (explore N modules, review N angles), fan out with task_parallel instead of doing them serially; for one big exploration whose result you only need summarized, use a single task. Kick off a long job with task_spawn and keep working, then task_collect it later or task_cancel it if it is no longer needed.
 - After finishing a multi-step task that worked and is likely to recur, use create_skill to save the procedure; use remember for durable facts/preferences.
+- Owner identity and durable preferences are injected in <owner_persona> and <auto_memory> — when asked what you remember about the user (name, preferences, past setup), answer from those blocks; do not deny memory if facts are present.
 - If the user asks for something on a schedule or recurring time ("ทุกๆ X", "ตอน X โมง", "every X", a future time), use schedule_task — the gateway (${BRAND.cliName} serve) runs it. Convert their phrasing to canonical when (every 30m / 09:00 / ISO).
 - Be concise. Answer in the user's language. Show what you found, then the answer.
 - Don't paste back file contents or large code blocks you just read or edited — the user already sees the diff/tool output; reference path:line instead. This keeps replies (and token cost) small without losing anything.`;
@@ -205,23 +206,32 @@ async function runDelegate(opts: RunAgentOptions): Promise<RunAgentResult> {
   const { runCodex } = await import('./providers/codex.js');
   const meter = new CostMeter(specKey(opts.model), opts.budgetUsd, agentContext.getStore()?.sharedBudget);
   const { model } = parseSpec(opts.model);
-  // codex exec ไม่เห็น conversation history เอง → prepend transcript ให้มี context ข้าม turn
-  // (ไม่งั้น REPL ทุก turn = contextless, codex ลืมที่คุยมาทั้งหมด)
-  const prior = (opts.history ?? [])
-    .map((m) => {
-      const role = m.role === 'user' ? 'User' : m.role === 'assistant' ? 'Assistant' : '';
-      if (!role) return '';
-      const c =
-        typeof m.content === 'string'
-          ? m.content
-          : Array.isArray(m.content)
-            ? m.content.map((p) => (typeof p === 'object' && p && 'type' in p && p.type === 'text' ? (p as { text: string }).text : '')).join('')
-            : '';
-      return c.trim() ? `${role}: ${c.trim()}` : '';
-    })
+  const [context, priorParts] = await Promise.all([
+    loadDelegateContext(opts.cwd ?? agentCwd()),
+    Promise.resolve(
+      (opts.history ?? [])
+        .map((m) => {
+          const role = m.role === 'user' ? 'User' : m.role === 'assistant' ? 'Assistant' : '';
+          if (!role) return '';
+          const c =
+            typeof m.content === 'string'
+              ? m.content
+              : Array.isArray(m.content)
+                ? m.content.map((p) => (typeof p === 'object' && p && 'type' in p && p.type === 'text' ? (p as { text: string }).text : '')).join('')
+                : '';
+          return c.trim() ? `${role}: ${c.trim()}` : '';
+        })
+        .filter(Boolean)
+        .join('\n\n'),
+    ),
+  ]);
+  const prompt = [
+    context,
+    priorParts ? `Previous conversation:\n${priorParts}` : '',
+    `Now: ${opts.prompt}`,
+  ]
     .filter(Boolean)
-    .join('\n\n');
-  const prompt = prior ? `Previous conversation:\n${prior}\n\n---\nNow: ${opts.prompt}` : opts.prompt;
+    .join('\n\n---\n');
   // sandbox: plan/ask-mode → read-only (สกัด approval รายไฟล์ของ codex ไม่ได้ จึงไม่ให้แก้);
   // auto (--yes / config auto) → workspace-write เพื่อให้ codex แก้ไฟล์ได้จริง (ไม่งั้นเป็น coding agent ที่แก้อะไรไม่ได้)
   const sandbox: 'read-only' | 'workspace-write' =
@@ -302,9 +312,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
 
   // โหลด context: auto-memory + skills + git state + repo map + project SANOOK.md → system prompt
   // sub-agent (opts.tools) ข้าม repo map (มี subset tool + prompt เฉพาะอยู่แล้ว — ประหยัด context)
-  const [memory, autoMemory, skills, git, brain, repoMap, tuning, config] = await Promise.all([
+  const [memory, autoMemory, ownerPersona, skills, git, brain, repoMap, tuning, config] = await Promise.all([
     loadMemory(),
     loadAutoMemory(),
+    loadOwnerPersonaBlock(),
     loadSkills(),
     gitContext(opts.cwd), // worktree ของ sub-agent ถ้ามี → git context สะท้อน tree ที่ถูกต้อง
     loadBrainContext(opts.cwd ?? agentCwd()),
@@ -345,6 +356,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<RunAgentResult> {
   const staticSystem = [
     SYSTEM + planSuffix + brainNudge,
     personalityPrompt(config.personality),
+    ownerPersona,
     autoMemory,
     renderAvailableSkills(skills),
     brain,

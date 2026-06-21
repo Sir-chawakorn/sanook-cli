@@ -49,7 +49,7 @@ import { MarkdownText, StreamingMarkdownText } from './markdown.js';
 import { SessionPanel, type StartupSectionPreview } from './session-panel.js';
 import { getTranscriptWindow, transcriptScrollStep, transcriptWindowSize } from './transcript.js';
 import { footerStatus } from './status.js';
-import { inputViewport, graphemesOf, cursorInsertGraphemeIndex, SCROLL_LEAD, SCROLL_TAIL } from './input-view.js';
+import { inputViewport, formatInputLineDisplay, formatMultilineInputDisplay } from './input-view.js';
 import { PersonaOverlay } from './persona-wizard.js';
 import { thinkingPanelLines, snapshotThinking, type DetailsDisplayMode } from './thinking-panel.js';
 import { toolTrailLines, toolTrailHeader, toolTrailWidth, updateToolTrailOnEvent, type ToolTrailDisplayMode, type ToolTrailItem } from './tool-trail.js';
@@ -1366,18 +1366,11 @@ function InputView({
     );
   }
 
-  // multiline (กด Alt+Enter / ลงท้าย \) — สูงหลายบรรทัดตั้งใจอยู่แล้ว: render grapheme-cursor แบบ wrap ปกติ
+  // multiline (กด Alt+Enter / ลงท้าย \) — สูงหลายบรรทัดตั้งใจอยู่แล้ว
   if (value.includes('\n')) {
-    const insertAt = cursorInsertGraphemeIndex(value, cursor);
-    const graphemes = graphemesOf(value);
-    const before = graphemes.slice(0, insertAt).join('');
-    const after = graphemes.slice(insertAt).join('');
     return (
-      <Text>
-        {before}
-        <Text inverse>{' '}</Text>
-        {after}
-        {busy ? <Text dimColor>{'  '}(⏎ ต่อคิว)</Text> : null}
+      <Text wrap="truncate-end">
+        {formatMultilineInputDisplay(value, cursor, { queueHint: busy ? '  (⏎ ต่อคิว)' : undefined })}
       </Text>
     );
   }
@@ -1387,16 +1380,7 @@ function InputView({
   const queueHint = busy ? '  (⏎ ต่อคิว)' : '';
   const reserved = 8 + queueHint.length;
   const vp = inputViewport(value, cursor, Math.max(8, columns - reserved));
-  return (
-    <Text wrap="truncate-end">
-      {vp.lead ? <Text dimColor>{SCROLL_LEAD}</Text> : null}
-      {vp.before}
-      <Text inverse>{vp.at}</Text>
-      {vp.after}
-      {vp.tail ? <Text dimColor>{SCROLL_TAIL}</Text> : null}
-      {queueHint ? <Text dimColor>{queueHint}</Text> : null}
-    </Text>
-  );
+  return <Text wrap="truncate-end">{formatInputLineDisplay(vp, { queueHint: queueHint || undefined })}</Text>;
 }
 
 function statusColor(status: ToolTrailItem['status']): string {

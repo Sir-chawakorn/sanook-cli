@@ -55,14 +55,17 @@ describe('REPL layout regression guards (source)', () => {
 describe('REPL input regression guards (source)', () => {
   it('uses a fixed-width horizontal viewport for single-line input', () => {
     expect(INPUT_VIEW_SOURCE).toContain('inputViewport');
-    expect(INPUT_VIEW_SOURCE).toContain('gap cursor');
-    expect(INPUT_VIEW_IN_APP).toContain('inputViewport(value, cursor');
+    expect(INPUT_VIEW_SOURCE).toContain('formatInputLineDisplay');
+    expect(INPUT_VIEW_SOURCE).toContain('inputCursorCell');
+    expect(INPUT_VIEW_IN_APP).toContain('formatInputLineDisplay(vp');
     expect(INPUT_VIEW_IN_APP).toContain('wrap="truncate-end"');
   });
 
-  it('does not invert Thai graphemes under the block cursor', () => {
-    expect(INPUT_VIEW_IN_APP).toContain('<Text inverse>{vp.at}</Text>');
+  it('does not paint inverse video over Thai graphemes in split Text nodes', () => {
+    expect(INPUT_VIEW_IN_APP).toContain('formatInputLineDisplay');
+    expect(INPUT_VIEW_IN_APP).not.toContain('<Text inverse>{vp.at}</Text>');
     expect(INPUT_VIEW_IN_APP).not.toMatch(/<Text inverse>\{graphemes\[.*\]\}<\/Text>/);
+    expect(INPUT_VIEW_SOURCE).toContain('chalk.bgCyan.black');
   });
 });
 

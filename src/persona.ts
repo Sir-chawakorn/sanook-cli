@@ -203,6 +203,13 @@ export function personaFacts(answers: PersonaAnswers): string[] {
   return out;
 }
 
+/** Compact owner block for system/delegate prompts — facts only, no markdown table noise. */
+export function renderOwnerPersonaPromptBlock(answers: PersonaAnswers): string {
+  const facts = personaFacts(answers);
+  if (!facts.length) return '';
+  return `<owner_persona note="โปรไฟล์เจ้าของจาก sanook persona — ground truth สำหรับชื่อ/บทบาท/ความชอบ; เมื่อ user ถามว่าจำได้ไหม/ชื่ออะไร ให้ตอบจาก block นี้และ auto_memory">\n${facts.map((f) => `- ${f}`).join('\n')}\n</owner_persona>`;
+}
+
 /** human-friendly label for a stored select value (falls back to the raw value / free text). */
 function answerLabel(q: PersonaQuestion, value: string): string {
   if (q.type === 'select' && q.options) {
