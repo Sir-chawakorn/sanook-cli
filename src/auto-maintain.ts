@@ -6,13 +6,16 @@
 // ทั้งหมด best-effort (ไม่ทำให้ flow ล้ม) และ "ไม่ลบของ" — ใช้ archive (กู้คืนได้) ไม่ใช่ delete.
 // ปิดได้: config `autoMaintain=false` หรือ env SANOOK_DISABLE_AUTO_MAINTAIN=1.
 // ============================================================================
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { appHomePath, envFlag, persistenceEnabled } from './brand.js';
 import { loadConfig } from './config.js';
 import type { NoteType } from './memory-store.js';
 import type { DistillKind } from './session-distill.js';
 
 const STATE_FILE = 'auto-maintain.json';
+const STATE_DIR_MODE = 0o700;
+const STATE_FILE_MODE = 0o600;
 /** วิ่ง vault/memory consolidation อย่างมากสัปดาห์ละครั้ง — กัน startup ทำงานหนักทุกครั้ง */
 const CONSOLIDATE_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 /** distill เก็บได้สูงสุดกี่ fact ต่อ session — กัน memory ท่วมจาก session เดียว */
@@ -90,7 +93,10 @@ export async function autoMaintainEnabled(): Promise<boolean> {
 
 async function readState(): Promise<AutoMaintainState> {
   try {
-    const raw = await readFile(appHomePath(STATE_FILE), 'utf8');
+    await chmod(appHomePath(), STATE_DIR_MODE).catch(() => {});
+    const statePath = appHomePath(STATE_FILE);
+    const raw = await readFile(statePath, 'utf8');
+    await chmod(statePath, STATE_FILE_MODE).catch(() => {});
     const v = JSON.parse(raw) as Partial<AutoMaintainState>;
     return { lastConsolidate: typeof v.lastConsolidate === 'number' ? v.lastConsolidate : 0 };
   } catch {
@@ -99,10 +105,18 @@ async function readState(): Promise<AutoMaintainState> {
 }
 
 async function writeState(state: AutoMaintainState): Promise<void> {
+  const statePath = appHomePath(STATE_FILE);
+  const tmpPath = appHomePath(`${STATE_FILE}.${randomUUID()}.tmp`);
   try {
-    await mkdir(appHomePath(), { recursive: true });
-    await writeFile(appHomePath(STATE_FILE), `${JSON.stringify(state, null, 2)}\n`);
+    const stateDir = appHomePath();
+    await mkdir(stateDir, { recursive: true, mode: STATE_DIR_MODE });
+    await chmod(stateDir, STATE_DIR_MODE).catch(() => {});
+    await writeFile(tmpPath, `${JSON.stringify(state, null, 2)}\n`, { mode: STATE_FILE_MODE });
+    await chmod(tmpPath, STATE_FILE_MODE).catch(() => {});
+    await rename(tmpPath, statePath);
+    await chmod(statePath, STATE_FILE_MODE).catch(() => {});
   } catch {
+    await rm(tmpPath, { force: true }).catch(() => {});
     /* best-effort — ไม่ critical ถ้าเขียน state ไม่ได้ */
   }
 }

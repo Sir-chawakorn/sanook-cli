@@ -1,11 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, readdir, stat, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appHomePath } from './brand.js';
 import { autoMaintainEnabled, isConsolidationDue, maybeStartupMaintain, autoDistillToMemory } from './auto-maintain.js';
 
 const DAY = 24 * 60 * 60 * 1000;
+
+async function stateTempFiles(dir: string): Promise<string[]> {
+  return (await readdir(dir)).filter((name) => name.startsWith('auto-maintain.json.') && name.endsWith('.tmp'));
+}
 
 describe('auto-maintain', () => {
   let home: string;
@@ -57,6 +61,16 @@ describe('auto-maintain', () => {
       await writeFile(appHomePath('auto-maintain.json'), JSON.stringify({ lastConsolidate: now - 8 * DAY }));
       expect(await isConsolidationDue(now)).toBe(true);
     });
+    it('keeps the state file private when checking a recent existing state', async () => {
+      const now = Date.now();
+      const statePath = appHomePath('auto-maintain.json');
+      await chmod(stateDir, 0o755);
+      await writeFile(statePath, JSON.stringify({ lastConsolidate: now - DAY }), { mode: 0o644 });
+      await chmod(statePath, 0o644);
+      expect(await isConsolidationDue(now)).toBe(false);
+      expect((await stat(stateDir)).mode & 0o777).toBe(0o700);
+      expect((await stat(statePath)).mode & 0o777).toBe(0o600);
+    });
     it('treats malformed, corrupt, or future state timestamps as due', async () => {
       const now = Date.now();
       await writeFile(appHomePath('auto-maintain.json'), '{not-json');
@@ -89,6 +103,9 @@ describe('auto-maintain', () => {
         await expect(maybeStartupMaintain(now)).resolves.toBe(null);
         const state = JSON.parse(await readFile(appHomePath('auto-maintain.json'), 'utf8')) as { lastConsolidate?: unknown };
         expect(state.lastConsolidate).toBe(now);
+        expect((await stat(stateDir)).mode & 0o777).toBe(0o700);
+        expect((await stat(appHomePath('auto-maintain.json'))).mode & 0o777).toBe(0o600);
+        expect(await stateTempFiles(stateDir)).toEqual([]);
       } finally {
         vi.doUnmock('./brain-consolidate.js');
       }
@@ -114,6 +131,43 @@ describe('auto-maintain', () => {
         );
         const state = JSON.parse(await readFile(appHomePath('auto-maintain.json'), 'utf8')) as { lastConsolidate?: unknown };
         expect(state.lastConsolidate).toBe(now);
+      } finally {
+        vi.doUnmock('./brain-consolidate.js');
+      }
+    });
+
+    it('keeps the state file private when claiming an existing broad-permission file', async () => {
+      const now = Date.now();
+      const statePath = appHomePath('auto-maintain.json');
+      await chmod(stateDir, 0o755);
+      await writeFile(statePath, JSON.stringify({ lastConsolidate: now + 30 * DAY }), { mode: 0o644 });
+      await chmod(statePath, 0o644);
+      const runBrainConsolidate = vi.fn().mockResolvedValue({
+        ok: true,
+        steps: [],
+      });
+      vi.doMock('./brain-consolidate.js', () => ({ runBrainConsolidate }));
+      try {
+        await expect(maybeStartupMaintain(now)).resolves.toBe(null);
+        expect((await stat(stateDir)).mode & 0o777).toBe(0o700);
+        expect((await stat(statePath)).mode & 0o777).toBe(0o600);
+      } finally {
+        vi.doUnmock('./brain-consolidate.js');
+      }
+    });
+
+    it('cleans up the temp state file when the atomic claim cannot replace the final path', async () => {
+      const now = Date.now();
+      await mkdir(appHomePath('auto-maintain.json'));
+      const runBrainConsolidate = vi.fn().mockResolvedValue({
+        ok: true,
+        steps: [],
+      });
+      vi.doMock('./brain-consolidate.js', () => ({ runBrainConsolidate }));
+      try {
+        await expect(maybeStartupMaintain(now)).resolves.toBe(null);
+        expect(runBrainConsolidate).toHaveBeenCalledTimes(1);
+        expect(await stateTempFiles(stateDir)).toEqual([]);
       } finally {
         vi.doUnmock('./brain-consolidate.js');
       }
