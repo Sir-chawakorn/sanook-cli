@@ -1996,7 +1996,7 @@ async function runWebhookGatewaySetup(args: string[]): Promise<void> {
       secret = generateWebhookSecret();
     }
   }
-  const rateLimitPerMinute = rateLimitRaw ? parsePort(rateLimitRaw, 30, 'webhook rate limit') : undefined;
+  const rateLimitPerMinute = rateLimitRaw ? parseGatewayInteger(rateLimitRaw, 30, 'webhook rate limit') : undefined;
   const { patchGatewayConfig, gatewayConfigPath } = await import('./gateway/config.js');
   await patchGatewayConfig({
     webhooks: {
@@ -2010,14 +2010,26 @@ async function runWebhookGatewaySetup(args: string[]): Promise<void> {
   console.log(`เพิ่ม route ได้ด้วย: ${BRAND.cliName} webhook subscribe github-issues --events issues --prompt "New issue: {issue.title}" --to telegram`);
 }
 
-function parsePort(raw: string | undefined, fallback: number, label: string): number {
+function parseBoundedInteger(raw: string | undefined, fallback: number, label: string, valueLabel: string): number {
   if (!raw) return fallback;
+  if (!/^\d+$/.test(raw)) {
+    console.error(`${label} ต้องเป็น ${valueLabel}`);
+    process.exit(1);
+  }
   const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1 || n > 65535) {
-    console.error(`${label} ต้องเป็น port 1-65535`);
+  if (!Number.isSafeInteger(n) || n < 1 || n > 65535) {
+    console.error(`${label} ต้องเป็น ${valueLabel}`);
     process.exit(1);
   }
   return n;
+}
+
+function parsePort(raw: string | undefined, fallback: number, label: string): number {
+  return parseBoundedInteger(raw, fallback, label, 'port 1-65535');
+}
+
+function parseGatewayInteger(raw: string | undefined, fallback: number, label: string): number {
+  return parseBoundedInteger(raw, fallback, label, 'integer 1-65535');
 }
 
 async function runEmailGatewaySetup(args: string[]): Promise<void> {
@@ -2029,7 +2041,7 @@ async function runEmailGatewaySetup(args: string[]): Promise<void> {
   let allowedRaw = argValue(args, '--allowed-users', '--allowed-senders');
   const imapPort = parsePort(argValue(args, '--imap-port'), 993, 'imap port');
   const smtpPort = parsePort(argValue(args, '--smtp-port'), 587, 'smtp port');
-  const pollIntervalSeconds = parsePort(argValue(args, '--poll-interval'), 15, 'poll interval');
+  const pollIntervalSeconds = parseGatewayInteger(argValue(args, '--poll-interval'), 15, 'poll interval');
   const allowAllUsers = args.includes('--allow-all-users');
 
   if (!address) {
@@ -3049,7 +3061,7 @@ signature headers:
     const routeSecret = insecureNoAuth ? 'INSECURE_NO_AUTH' : (argValue(rest, '--secret')?.trim() || generateWebhookSecret());
     const publicUrl = argValue(rest, '--public-url');
     const rateLimitRaw = argValue(rest, '--rate-limit', '--rate-limit-per-minute');
-    const rateLimitPerMinute = rateLimitRaw ? parsePort(rateLimitRaw, 30, 'webhook route rate limit') : undefined;
+    const rateLimitPerMinute = rateLimitRaw ? parseGatewayInteger(rateLimitRaw, 30, 'webhook route rate limit') : undefined;
     if (deliverOnly && deliver === 'log') {
       console.error('--deliver-only ต้องมี --to หรือ --deliver เป็น messaging target จริง');
       process.exit(2);
@@ -3701,7 +3713,8 @@ async function runConfig(args: string[]): Promise<void> {
       process.exit(1);
     }
     const raw = rest.join(' ');
-    let value: unknown = raw;
+    const clean = raw.trim();
+    let value: unknown = clean;
     if (key === 'budgetUsd') {
       const n = parseBudgetUsd(raw);
       if (n === undefined) {
@@ -3710,30 +3723,30 @@ async function runConfig(args: string[]): Promise<void> {
       }
       value = n;
     } else if (key === 'maxSteps') {
-      const n = Number(raw);
-      if (!Number.isInteger(n) || n <= 0) {
+      const n = Number(clean);
+      if (!/^\d+$/.test(clean) || !Number.isSafeInteger(n) || n <= 0) {
         console.error('maxSteps ต้องเป็น integer บวก เช่น 20');
         process.exit(1);
       }
       value = n;
-    } else if (key === 'permissionMode' && raw !== 'auto' && raw !== 'ask') {
+    } else if (key === 'permissionMode' && clean !== 'auto' && clean !== 'ask') {
       console.error('permissionMode ต้องเป็น auto หรือ ask');
       process.exit(1);
-    } else if (key === 'cacheTtl' && raw !== '5m' && raw !== '1h') {
+    } else if (key === 'cacheTtl' && clean !== '5m' && clean !== '1h') {
       console.error('cacheTtl ต้องเป็น 5m หรือ 1h');
       process.exit(1);
-    } else if (key === 'compaction' && raw !== 'truncate' && raw !== 'summarize') {
+    } else if (key === 'compaction' && clean !== 'truncate' && clean !== 'summarize') {
       console.error('compaction ต้องเป็น truncate หรือ summarize');
       process.exit(1);
-    } else if (key === 'contextCompression' && raw !== 'off' && raw !== 'selective' && raw !== 'headroom') {
+    } else if (key === 'contextCompression' && clean !== 'off' && clean !== 'selective' && clean !== 'headroom') {
       console.error('contextCompression ต้องเป็น off, selective หรือ headroom');
       process.exit(1);
     } else if (key === 'brainPath') {
       // store absolute — getBrainPath() is read from arbitrary cwd, so a relative path drifts
       const { expandHome } = await import('./brain.js');
-      value = resolve(expandHome(raw.trim()));
+      value = resolve(expandHome(clean));
     } else if (key === 'brainTranscript' || key === 'autoMaintain') {
-      const v = raw.trim().toLowerCase();
+      const v = clean.toLowerCase();
       if (['on', 'true', '1', 'yes'].includes(v)) value = true;
       else if (['off', 'false', '0', 'no'].includes(v)) value = false;
       else {
@@ -3742,14 +3755,14 @@ async function runConfig(args: string[]): Promise<void> {
       }
     } else if (key === 'thinking') {
       // เก็บเป็น number (budget) หรือ boolean ให้ตรง ConfigSchema (ไม่เก็บ string)
-      value = parseThinkingConfigValue(raw);
+      value = parseThinkingConfigValue(clean);
       if (value === undefined) {
         console.error('thinking ต้องเป็น on/off, true/false, yes/no หรือ budget tokens (integer บวก เช่น 4000)');
         process.exit(1);
       }
     } else if (key === 'personality') {
       const { normalizePersonalityName, personalityListText } = await import('./personality.js');
-      const name = normalizePersonalityName(raw);
+      const name = normalizePersonalityName(clean);
       if (!name) {
         console.error(`personality ไม่รู้จัก: ${raw}\n${personalityListText()}`);
         process.exit(1);

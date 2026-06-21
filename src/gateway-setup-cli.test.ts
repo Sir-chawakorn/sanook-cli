@@ -89,4 +89,60 @@ describe('gateway setup CLI', () => {
       allowAllUsers: true,
     });
   });
+
+  it('rejects non-decimal port values for email setup', async () => {
+    const home = tempHome();
+    const result = await runCli(
+      [
+        'gateway',
+        'setup',
+        'email',
+        '--address',
+        'bot@example.com',
+        '--password',
+        'app-password',
+        '--imap-host',
+        'imap.example.com',
+        '--smtp-host',
+        'smtp.example.com',
+        '--home-address',
+        'owner@example.com',
+        '--imap-port',
+        '1e3',
+      ],
+      home,
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('imap port ต้องเป็น port 1-65535');
+    expect(existsSync(join(home, '.sanook', 'gateway', 'config.json'))).toBe(false);
+  });
+
+  it('reports non-port email numeric settings as integers', async () => {
+    const home = tempHome();
+    const result = await runCli(
+      [
+        'gateway',
+        'setup',
+        'email',
+        '--address',
+        'bot@example.com',
+        '--password',
+        'app-password',
+        '--imap-host',
+        'imap.example.com',
+        '--smtp-host',
+        'smtp.example.com',
+        '--home-address',
+        'owner@example.com',
+        '--poll-interval',
+        '1e3',
+      ],
+      home,
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('poll interval ต้องเป็น integer 1-65535');
+    expect(existsSync(join(home, '.sanook', 'gateway', 'config.json'))).toBe(false);
+  });
 });

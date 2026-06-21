@@ -245,10 +245,11 @@ export async function summarizeCompact(
   }
   if (!summary) return autoCompact(messages, tokenLimit, keepRecent);
 
+  const compactSummary = truncateText(summary);
   const summaryMsg: ModelMessage = {
     role: 'user',
-    content: `[สรุปบทสนทนาก่อนหน้า (ย่อเพื่อประหยัด context)]\n${summary}`,
+    content: `[สรุปบทสนทนาก่อนหน้า (ย่อเพื่อประหยัด context)]\n${compactSummary}`,
   };
-  const tail = firstUser ? [firstUser, summaryMsg, ...recent] : [summaryMsg, ...recent];
+  const tail = firstUser && !recent.includes(firstUser) ? [firstUser, summaryMsg, ...recent] : [summaryMsg, ...recent];
   return withLead(tail);
 }

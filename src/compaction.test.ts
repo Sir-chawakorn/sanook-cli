@@ -163,6 +163,30 @@ describe('summarizeCompact', () => {
     expect(JSON.stringify(out)).toContain('ถูกตัดออก'); // autoCompact marker
   });
 
+  it('bounds an overly verbose model summary before reinserting it', async () => {
+    const out = await summarizeCompact(longConvo(), 100, async () => 'S'.repeat(5_000), 3);
+    const summary = out.find((m) => typeof m.content === 'string' && m.content.startsWith('[สรุปบทสนทนาก่อนหน้า'));
+    expect(summary).toBeDefined();
+    expect(String(summary?.content)).toContain('pruned');
+    expect(String(summary?.content).length).toBeLessThan(2_000);
+  });
+
+  it('does not duplicate the first user message when it is already in the recent tail', async () => {
+    const msgs: ModelMessage[] = [
+      { role: 'assistant', content: `preface ${'a'.repeat(800)}` },
+      { role: 'assistant', content: `context ${'b'.repeat(800)}` },
+      { role: 'user', content: 'INTENT inside recent tail' },
+      { role: 'assistant', content: 'recent one' },
+      { role: 'user', content: 'recent two' },
+      { role: 'assistant', content: 'recent three' },
+      { role: 'user', content: 'recent four' },
+      { role: 'assistant', content: 'recent five' },
+    ];
+    const out = await summarizeCompact(msgs, 100, async () => 'SUMMARY', 6);
+    const count = JSON.stringify(out).split('INTENT inside recent tail').length - 1;
+    expect(count).toBe(1);
+  });
+
   it('under the limit → returns the messages unchanged', async () => {
     const small: ModelMessage[] = [{ role: 'user', content: 'hi' }];
     const out = await summarizeCompact(small, 100_000, async () => 'unused', 3);
