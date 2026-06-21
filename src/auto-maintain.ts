@@ -69,6 +69,7 @@ async function writeState(state: AutoMaintainState): Promise<void> {
 export async function isConsolidationDue(now: number = Date.now()): Promise<boolean> {
   if (!(await autoMaintainEnabled())) return false;
   const { lastConsolidate } = await readState();
+  if (!Number.isFinite(lastConsolidate) || lastConsolidate <= 0 || lastConsolidate > now) return true;
   return now - lastConsolidate >= CONSOLIDATE_INTERVAL_MS;
 }
 

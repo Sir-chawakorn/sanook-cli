@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appHomePath } from './brand.js';
-import { autoMaintainEnabled, isConsolidationDue, autoDistillToMemory } from './auto-maintain.js';
+import { autoMaintainEnabled, isConsolidationDue, maybeStartupMaintain, autoDistillToMemory } from './auto-maintain.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -57,9 +57,49 @@ describe('auto-maintain', () => {
       await writeFile(appHomePath('auto-maintain.json'), JSON.stringify({ lastConsolidate: now - 8 * DAY }));
       expect(await isConsolidationDue(now)).toBe(true);
     });
+    it('treats malformed, corrupt, or future state timestamps as due', async () => {
+      const now = Date.now();
+      await writeFile(appHomePath('auto-maintain.json'), '{not-json');
+      expect(await isConsolidationDue(now)).toBe(true);
+      await writeFile(appHomePath('auto-maintain.json'), JSON.stringify({ lastConsolidate: 'yesterday' }));
+      expect(await isConsolidationDue(now)).toBe(true);
+      await writeFile(appHomePath('auto-maintain.json'), '{"lastConsolidate":1e999}');
+      expect(await isConsolidationDue(now)).toBe(true);
+      await writeFile(appHomePath('auto-maintain.json'), JSON.stringify({ lastConsolidate: -DAY }));
+      expect(await isConsolidationDue(now)).toBe(true);
+      await writeFile(appHomePath('auto-maintain.json'), JSON.stringify({ lastConsolidate: now + 30 * DAY }));
+      expect(await isConsolidationDue(now)).toBe(true);
+    });
     it('not due when disabled, even if stale', async () => {
       vi.stubEnv('SANOOK_DISABLE_AUTO_MAINTAIN', '1');
       expect(await isConsolidationDue(Date.now())).toBe(false);
+    });
+  });
+
+  describe('maybeStartupMaintain', () => {
+    it('repairs invalid state when claiming a startup consolidate run', async () => {
+      const now = Date.now();
+      await writeFile(appHomePath('auto-maintain.json'), JSON.stringify({ lastConsolidate: now + 30 * DAY }));
+      const runBrainConsolidate = vi.fn().mockResolvedValue({
+        ok: true,
+        steps: [{ applied: ['dedup'] }],
+      });
+      vi.doMock('./brain-consolidate.js', () => ({ runBrainConsolidate }));
+      try {
+        await expect(maybeStartupMaintain(now)).resolves.toBe('auto-maintain: จัดระเบียบ memory + vault (1 รายการ)');
+        expect(runBrainConsolidate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            apply: true,
+            archive: true,
+            memory: true,
+            runRetrieval: false,
+          }),
+        );
+        const state = JSON.parse(await readFile(appHomePath('auto-maintain.json'), 'utf8')) as { lastConsolidate?: unknown };
+        expect(state.lastConsolidate).toBe(now);
+      } finally {
+        vi.doUnmock('./brain-consolidate.js');
+      }
     });
   });
 
