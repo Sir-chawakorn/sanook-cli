@@ -21,7 +21,142 @@
   <a href="https://github.com/Sir-chawakorn/sanook-cli/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Sir-chawakorn/sanook-cli/ci.yml?style=flat-square&labelColor=1f2937" alt="CI" /></a>
 </p>
 
+---
+
+<h2 align="center" id="install">Install Sanook CLI</h2>
+
 <p align="center">
+  <strong>Pick one command below — all roads lead to <code>sanook</code>.</strong><br/>
+  <sub>Requires <strong>Node.js ≥ 22</strong> &nbsp;·&nbsp; <code>node -v</code> to check &nbsp;·&nbsp; <code>npx sanook doctor</code> auto-fixes PATH / Node issues</sub>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/npm-✅_Ready-22c55e?style=for-the-badge&labelColor=14532d" alt="npm ready" />
+  &nbsp;
+  <img src="https://img.shields.io/badge/curl_|_bash-✅_Ready-22c55e?style=for-the-badge&labelColor=14532d" alt="curl ready" />
+  &nbsp;
+  <img src="https://img.shields.io/badge/Homebrew-✅_Ready-22c55e?style=for-the-badge&labelColor=14532d" alt="homebrew ready" />
+  &nbsp;
+  <img src="https://img.shields.io/badge/GitHub_Pages-✅_Ready-22c55e?style=for-the-badge&labelColor=14532d" alt="pages ready" />
+  &nbsp;
+  <img src="https://img.shields.io/badge/WinGet-⏳_PR_pending-f59e0b?style=for-the-badge&labelColor=78350f" alt="winget pending" />
+  &nbsp;
+  <img src="https://img.shields.io/badge/sanook.ai-⏳_DNS_pending-94a3b8?style=for-the-badge&labelColor=334155" alt="sanook.ai pending" />
+</p>
+
+<br />
+
+<table width="100%">
+<tr>
+<td width="50%" valign="top">
+
+### 🍎 macOS · 🐧 Linux · WSL
+
+**Recommended — npm**
+
+```bash
+npm install -g sanook-cli
+# or run once without installing:
+npx sanook-cli
+```
+
+**One-liner install script** *(checks Node, then installs via npm)*
+
+```bash
+# GitHub raw (default)
+curl -fsSL https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/install.sh | bash
+
+# GitHub Pages mirror
+curl -fsSL https://sir-chawakorn.github.io/sanook-cli/install.sh | bash
+
+# jsDelivr CDN
+curl -fsSL https://cdn.jsdelivr.net/gh/Sir-chawakorn/sanook-cli@main/scripts/install.sh | bash
+```
+
+**Homebrew**
+
+```bash
+brew trust Sir-chawakorn/tap    # once on newer Homebrew
+brew tap Sir-chawakorn/tap
+brew install sanook-cli
+```
+
+</td>
+<td width="50%" valign="top">
+
+### 🪟 Windows
+
+**Recommended — npm** *(PowerShell or cmd)*
+
+```powershell
+npm install -g sanook-cli
+# or:
+npx sanook-cli
+```
+
+**One-liner install script**
+
+```powershell
+# GitHub raw (default)
+irm https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/install.ps1 | iex
+
+# GitHub Pages mirror
+irm https://sir-chawakorn.github.io/sanook-cli/install.ps1 | iex
+```
+
+**WinGet** *(after [PR #391114](https://github.com/microsoft/winget-pkgs/pull/391114) merges)*
+
+```powershell
+winget install Sanook.SanookCLI
+```
+
+Portable zip (no WinGet yet): [sanook-cli-win-x64.zip](https://github.com/Sir-chawakorn/sanook-cli/releases/download/v0.5.7/sanook-cli-win-x64.zip)
+
+</td>
+</tr>
+</table>
+
+<br />
+
+<details open>
+<summary><strong>📋 All install methods — status &amp; links</strong></summary>
+
+| Method | Command | Status |
+|--------|---------|--------|
+| **npm / npx** | `npm install -g sanook-cli` | ✅ [npm](https://www.npmjs.com/package/sanook-cli) · latest **0.5.7** |
+| **curl \| bash** | `curl -fsSL …/install.sh \| bash` | ✅ [raw](https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/install.sh) · [Pages](https://sir-chawakorn.github.io/sanook-cli/install.sh) · [jsDelivr](https://cdn.jsdelivr.net/gh/Sir-chawakorn/sanook-cli@main/scripts/install.sh) |
+| **irm \| iex** | `irm …/install.ps1 \| iex` | ✅ [raw](https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/install.ps1) · [Pages](https://sir-chawakorn.github.io/sanook-cli/install.ps1) |
+| **Homebrew** | `brew tap Sir-chawakorn/tap && brew install sanook-cli` | ✅ [homebrew-tap](https://github.com/Sir-chawakorn/homebrew-tap) |
+| **GitHub Pages** | `curl -fsSL https://sir-chawakorn.github.io/sanook-cli/install.sh \| bash` | ✅ Live |
+| **WinGet** | `winget install Sanook.SanookCLI` | ⏳ [PR #391114](https://github.com/microsoft/winget-pkgs/pull/391114) · CLA signed · [release zip](https://github.com/Sir-chawakorn/sanook-cli/releases/tag/v0.5.7) ready |
+| **sanook.ai** *(optional short URL)* | `curl -fsSL https://sanook.ai/install.sh \| bash` | ⏳ DNS at GoDaddy → run `bash scripts/configure-sanook-ai-dns.sh` |
+
+Full maintainer guide: **[docs/INSTALL_INFRA.md](docs/INSTALL_INFRA.md)**
+
+</details>
+
+<br />
+
+> **Troubleshooting**
+>
+> | Symptom | Fix |
+> |---------|-----|
+> | `'sanook' is not recognized` | You ran `npm i sanook-cli` without `-g` — reinstall with `npm install -g sanook-cli`, or use `npx sanook` |
+> | Node too old | Install [Node ≥ 22](https://nodejs.org) · scripts refuse older versions |
+> | Homebrew refuses tap | Run `brew trust Sir-chawakorn/tap` once, then retry |
+> | Not sure what's wrong | `npx sanook doctor` — prints OS-specific fixes (incl. Windows PATH one-liner) |
+
+<br />
+
+<p align="center">
+  <a href="#quickstart"><strong>First run → setup wizard &amp; API key</strong></a>
+</p>
+
+---
+
+<p align="center">
+  <a href="#install"><strong>Install</strong></a>
+  &nbsp;·&nbsp;
   <a href="#quickstart"><strong>Quickstart</strong></a>
   &nbsp;·&nbsp;
   <a href="#memory--second-brain"><strong>Memory</strong></a>
@@ -221,59 +356,7 @@ Disable persistence: `SANOOK_DISABLE_PERSISTENCE=1` · worklog only: `SANOOK_DIS
 
 ## Quickstart
 
-Install with whichever method fits your platform (needs **Node ≥ 22**; check with `node -v`):
-
-<table>
-<tr><th>Method</th><th>Command</th><th>Status</th></tr>
-<tr><td><b>npm / npx</b> (recommended)</td><td>
-
-```bash
-npm install -g sanook-cli   # or: npx sanook-cli
-```
-
-</td><td>✅ Ready</td></tr>
-<tr><td><b>Install script</b> · macOS / Linux / WSL</td><td>
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/install.sh | bash
-```
-
-</td><td>✅ Ready</td></tr>
-<tr><td><b>Install script</b> · Windows PowerShell</td><td>
-
-```powershell
-irm https://raw.githubusercontent.com/Sir-chawakorn/sanook-cli/main/scripts/install.ps1 | iex
-```
-
-</td><td>✅ Ready</td></tr>
-<tr><td><b>Homebrew</b> · macOS / Linux</td><td>
-
-```bash
-```bash
-brew trust Sir-chawakorn/tap && brew tap Sir-chawakorn/tap && brew install sanook-cli
-```
-
-</td><td>✅ Ready</td></tr>
-<tr><td><b>GitHub Pages</b> · install script</td><td>
-
-```bash
-curl -fsSL https://sir-chawakorn.github.io/sanook-cli/install.sh | bash
-```
-
-</td><td>✅ Ready</td></tr>
-<tr><td><b>WinGet</b> · Windows</td><td>
-
-```powershell
-winget install Sanook.SanookCLI
-```
-
-</td><td>⏳ PR pending</td></tr>
-</table>
-
-**npm/npx**, **curl|bash / irm|iex** (GitHub raw), **GitHub Pages**, and **Homebrew** work today — see [docs/INSTALL_INFRA.md](docs/INSTALL_INFRA.md). Optional [sanook.ai](https://sanook.ai) short URLs need GoDaddy DNS (`scripts/configure-sanook-ai-dns.sh`). WinGet CLA signed — waiting on [microsoft/winget-pkgs#391114](https://github.com/microsoft/winget-pkgs/pull/391114).
-
-> ⚠️ **`'sanook' is not recognized` / command not found?** You installed it locally — `npm i sanook-cli` (without `-g`) drops it into the current folder, **not on your PATH**, so the `sanook` command isn't found. Fix: reinstall with `npm install -g sanook-cli`, or just run it via **`npx sanook`** (uses the local copy you already installed).
-> Run **`npx sanook doctor`** to auto-diagnose Node version / PATH / install state and print the exact fix for your OS (incl. a safe Windows PATH one-liner).
+Already installed? Jump straight to setup — see **[Install](#install)** if you haven't yet.
 
 Run the setup wizard or set an API key manually:
 
