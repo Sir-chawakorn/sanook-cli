@@ -48,4 +48,32 @@ describe('mcp risk labels', () => {
       inferConfiguredServerRisk('docs', { command: 'npx', args: ['-y', 'context7-mcp'] }, [{ name: 'resolve_library', description: 'Lookup docs' }]),
     ).toBe('read-only');
   });
+
+  it('does not let read-like words mask write-capable tools', () => {
+    expect(
+      inferConfiguredServerRisk('custom', { command: 'node', args: ['server.js'] }, [
+        { name: 'create_issue_from_search', description: 'Search GitHub before opening an issue' },
+      ]),
+    ).toBe('network-write');
+
+    expect(
+      inferConfiguredServerRisk('custom', { command: 'node', args: ['server.js'] }, [
+        { name: 'delete_query_results', description: 'Rows returned by a SQL query' },
+      ]),
+    ).toBe('database-write');
+  });
+
+  it('detects write intent in camelCase tool names', () => {
+    expect(
+      inferConfiguredServerRisk('custom', { command: 'node', args: ['server.js'] }, [
+        { name: 'createIssueFromSearch', description: 'Search GitHub before opening an issue' },
+      ]),
+    ).toBe('network-write');
+
+    expect(
+      inferConfiguredServerRisk('custom', { command: 'node', args: ['server.js'] }, [
+        { name: 'deleteSQLQueryResults', description: 'Rows returned by a query' },
+      ]),
+    ).toBe('database-write');
+  });
 });

@@ -11,19 +11,25 @@ const RISK_PRIORITY: Record<McpRiskLabel, number> = {
   'infra/admin': 4,
 };
 
-const WRITE_TOOL = /\b(write|create|update|delete|insert|drop|push|post|send|execute|deploy|apply|modify|edit|remove|destroy|mutate|run_|upload|patch|merge|commit|publish|trigger|invoke|call|set_)\b/i;
+const WRITE_TOOL = /(^|[^a-z0-9])(write|create|update|delete|insert|drop|push|post|send|execute|deploy|apply|modify|edit|remove|destroy|mutate|run|upload|patch|merge|commit|publish|trigger|invoke|call|set)(?=$|[^a-z0-9])/i;
 const READ_ONLY_TEXT = /\b(read[-_ ]?only|readonly|list|get|search|fetch|query|inspect|view|describe|lookup|recall)\b/i;
 const FILE_WRITE_TEXT = /\b(file|filesystem|fs[-_ ]?server|write_file|edit_file|directory)\b/i;
 const DB_WRITE_TEXT = /\b(postgres|postgresql|mysql|sqlite|mongodb|redis|database|sql|db[-_ ]?write)\b/i;
 const NETWORK_WRITE_TEXT = /\b(github|gitlab|slack|discord|linear|jira|notion|fetch|search|browser|playwright|http|web|api|issue|pull|release|message|chat|email|gmail|drive|obsidian|tavily|brave)\b/i;
 const INFRA_TEXT = /\b(docker|kubernetes|k8s|helm|terraform|aws|gcp|azure|infra|container|cluster|pod|deployment|kubectl)\b/i;
 
+function normalizeRiskText(text: string): string {
+  return text
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+}
+
 function maxRisk(...labels: McpRiskLabel[]): McpRiskLabel {
   return labels.reduce((best, label) => (RISK_PRIORITY[label] > RISK_PRIORITY[best] ? label : best), 'read-only');
 }
 
 function riskFromText(text: string): McpRiskLabel | undefined {
-  const haystack = text.toLowerCase();
+  const haystack = normalizeRiskText(text).toLowerCase();
   if (INFRA_TEXT.test(haystack)) return 'infra/admin';
   if (DB_WRITE_TEXT.test(haystack)) return READ_ONLY_TEXT.test(haystack) ? 'read-only' : 'database-write';
   if (FILE_WRITE_TEXT.test(haystack)) return 'file-write';
@@ -35,13 +41,13 @@ function riskFromText(text: string): McpRiskLabel | undefined {
 function riskFromTools(tools: readonly McpToolDef[]): McpRiskLabel | undefined {
   const labels: McpRiskLabel[] = [];
   for (const tool of tools) {
-    const text = `${tool.name} ${tool.description ?? ''}`;
+    const text = normalizeRiskText(`${tool.name} ${tool.description ?? ''}`);
     const base = riskFromText(text);
     if (base) labels.push(base);
-    if (WRITE_TOOL.test(text) && base !== 'read-only') {
-      if (DB_WRITE_TEXT.test(text)) labels.push('database-write');
+    if (WRITE_TOOL.test(text)) {
+      if (INFRA_TEXT.test(text)) labels.push('infra/admin');
+      else if (DB_WRITE_TEXT.test(text)) labels.push('database-write');
       else if (FILE_WRITE_TEXT.test(text)) labels.push('file-write');
-      else if (INFRA_TEXT.test(text)) labels.push('infra/admin');
       else labels.push('network-write');
     }
   }
