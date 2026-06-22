@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -16,6 +16,29 @@ import {
 } from './mcp.js';
 
 const toolExecOptions = {} as never;
+
+async function readFileEventually(path: string, timeoutMs = 1_000): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    try {
+      return await readFile(path, 'utf8');
+    } catch (e) {
+      lastError = e;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`Timed out reading ${path}`);
+}
+
+async function waitForEventually(cond: () => boolean, timeoutMs = 1_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (cond()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error('Timed out waiting for condition');
+}
 
 describe('MCP config loading', () => {
   let home: string;
@@ -333,6 +356,314 @@ describe('MCP config loading', () => {
 
     const tools = await getMcpTools();
     await expect(tools.local__empty_error.execute?.({}, toolExecOptions)).resolves.toBe('MCP error: (no output)');
+  });
+
+  it('shares runtime MCP load logs with concurrent callers without spawning twice', async () => {
+    const startedPath = join(home, 'shared-runtime-started.txt');
+    const server = `
+      const fs = require('node:fs');
+      const readline = require('node:readline');
+      const startedPath = process.argv[1];
+      fs.appendFileSync(startedPath, 'x');
+      const rl = readline.createInterface({ input: process.stdin });
+      rl.on('line', (line) => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        if (msg.method === 'initialize') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'shared-log-test', version: '1.0.0' } },
+          }) + '\\n');
+        }
+        if (msg.method === 'tools/list') {
+          setTimeout(() => {
+            process.stdout.write(JSON.stringify({
+              jsonrpc: '2.0',
+              id: msg.id,
+              result: { tools: [{ name: 'shared', inputSchema: { type: 'object' } }] },
+            }) + '\\n');
+          }, 50);
+        }
+      });
+    `;
+    const firstLogs: string[] = [];
+    const secondLogs: string[] = [];
+    await writeFile(
+      join(home, '.sanook', 'mcp.json'),
+      JSON.stringify({ mcpServers: { local: { command: process.execPath, args: ['-e', server, startedPath] } } }),
+    );
+
+    const first = getMcpTools((m) => firstLogs.push(m));
+    const second = getMcpTools((m) => secondLogs.push(m));
+
+    expect(first).toBe(second);
+    await expect(first).resolves.toHaveProperty('local__shared');
+    expect(firstLogs).toEqual(expect.arrayContaining([expect.stringContaining('MCP "local"')]));
+    expect(secondLogs).toEqual(expect.arrayContaining([expect.stringContaining('MCP "local"')]));
+    await expect(readFile(startedPath, 'utf8')).resolves.toBe('x');
+  });
+
+  it('replays earlier runtime MCP load logs to later concurrent callers', async () => {
+    const server = `
+      const readline = require('node:readline');
+      const rl = readline.createInterface({ input: process.stdin });
+      rl.on('line', (line) => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        if (msg.method === 'initialize') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'late-log-test', version: '1.0.0' } },
+          }) + '\\n');
+        }
+        if (msg.method === 'tools/list') {
+          setTimeout(() => {
+            process.stdout.write(JSON.stringify({
+              jsonrpc: '2.0',
+              id: msg.id,
+              result: { tools: [{ name: 'slow', inputSchema: { type: 'object' } }] },
+            }) + '\\n');
+          }, 250);
+        }
+      });
+    `;
+    const firstLogs: string[] = [];
+    const secondLogs: string[] = [];
+    await writeFile(
+      join(home, '.sanook', 'mcp.json'),
+      JSON.stringify({
+        mcpServers: {
+          paused: { command: process.execPath, args: ['-e', ''], enabled: false },
+          local: { command: process.execPath, args: ['-e', server] },
+        },
+      }),
+    );
+
+    const first = getMcpTools((m) => firstLogs.push(m));
+    await waitForEventually(() => firstLogs.some((m) => m.includes('MCP "paused" disabled')));
+
+    const second = getMcpTools((m) => secondLogs.push(m));
+
+    expect(second).toBe(first);
+    expect(secondLogs).toEqual(expect.arrayContaining([expect.stringContaining('MCP "paused" disabled')]));
+    await expect(first).resolves.toHaveProperty('local__slow');
+  });
+
+  it('closes runtime MCP clients that fail while loading tools', async () => {
+    const closedPath = join(home, 'failed-runtime-closed.txt');
+    const server = `
+      const fs = require('node:fs');
+      const readline = require('node:readline');
+      const closedPath = process.argv[1];
+      const rl = readline.createInterface({ input: process.stdin });
+      let closed = false;
+      const close = () => {
+        if (!closed) {
+          closed = true;
+          fs.writeFileSync(closedPath, 'closed');
+        }
+        process.exit(0);
+      };
+      process.on('SIGTERM', close);
+      process.on('SIGINT', close);
+      rl.on('line', (line) => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        if (msg.method === 'initialize') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'runtime-fail-test', version: '1.0.0' } },
+          }) + '\\n');
+        }
+        if (msg.method === 'tools/list') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            error: { code: -32000, message: 'list failed' },
+          }) + '\\n');
+          setInterval(() => {}, 1000);
+        }
+      });
+    `;
+    const logs: string[] = [];
+    await writeFile(
+      join(home, '.sanook', 'mcp.json'),
+      JSON.stringify({ mcpServers: { local: { command: process.execPath, args: ['-e', server, closedPath] } } }),
+    );
+
+    await expect(getMcpTools((m) => logs.push(m))).resolves.toEqual({});
+    expect(logs).toEqual(expect.arrayContaining([expect.stringContaining('list failed')]));
+    await expect(readFileEventually(closedPath)).resolves.toBe('closed');
+  });
+
+  it('closes runtime MCP clients while tools are still loading', async () => {
+    const startedPath = join(home, 'loading-runtime-started.txt');
+    const closedPath = join(home, 'loading-runtime-closed.txt');
+    const server = `
+      const fs = require('node:fs');
+      const readline = require('node:readline');
+      const startedPath = process.argv[1];
+      const closedPath = process.argv[2];
+      const rl = readline.createInterface({ input: process.stdin });
+      let closed = false;
+      const close = () => {
+        if (!closed) {
+          closed = true;
+          fs.writeFileSync(closedPath, 'closed');
+        }
+        process.exit(0);
+      };
+      process.on('SIGTERM', close);
+      process.on('SIGINT', close);
+      fs.writeFileSync(startedPath, 'started');
+      rl.on('line', (line) => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        if (msg.method === 'initialize') setInterval(() => {}, 1000);
+      });
+    `;
+    const logs: string[] = [];
+    await writeFile(
+      join(home, '.sanook', 'mcp.json'),
+      JSON.stringify({ mcpServers: { local: { command: process.execPath, args: ['-e', server, startedPath, closedPath] } } }),
+    );
+
+    const loading = getMcpTools((m) => logs.push(m));
+    await expect(readFileEventually(startedPath)).resolves.toBe('started');
+
+    closeMcp();
+
+    await expect(readFileEventually(closedPath)).resolves.toBe('closed');
+    await expect(loading).resolves.toEqual({});
+    expect(logs).toEqual(expect.arrayContaining([expect.stringContaining('mcp: closed')]));
+  });
+
+  it('does not keep spawning runtime MCP clients after close during loading', async () => {
+    const firstStartedPath = join(home, 'first-runtime-started.txt');
+    const firstClosedPath = join(home, 'first-runtime-closed.txt');
+    const secondStartedPath = join(home, 'second-runtime-started.txt');
+    const blockingServer = `
+      const fs = require('node:fs');
+      const readline = require('node:readline');
+      const startedPath = process.argv[1];
+      const closedPath = process.argv[2];
+      const rl = readline.createInterface({ input: process.stdin });
+      let closed = false;
+      const close = () => {
+        if (!closed) {
+          closed = true;
+          fs.writeFileSync(closedPath, 'closed');
+        }
+        process.exit(0);
+      };
+      process.on('SIGTERM', close);
+      process.on('SIGINT', close);
+      fs.writeFileSync(startedPath, 'started');
+      rl.on('line', (line) => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        if (msg.method === 'initialize') setInterval(() => {}, 1000);
+      });
+    `;
+    const shouldNotStartServer = `
+      const fs = require('node:fs');
+      const readline = require('node:readline');
+      const startedPath = process.argv[1];
+      fs.writeFileSync(startedPath, 'started');
+      const rl = readline.createInterface({ input: process.stdin });
+      rl.on('line', (line) => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        if (msg.method === 'initialize') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'should-not-start', version: '1.0.0' } },
+          }) + '\\n');
+        }
+        if (msg.method === 'tools/list') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { tools: [{ name: 'late_tool', inputSchema: { type: 'object' } }] },
+          }) + '\\n');
+        }
+      });
+    `;
+    await writeFile(
+      join(home, '.sanook', 'mcp.json'),
+      JSON.stringify({
+        mcpServers: {
+          first: { command: process.execPath, args: ['-e', blockingServer, firstStartedPath, firstClosedPath] },
+          second: { command: process.execPath, args: ['-e', shouldNotStartServer, secondStartedPath] },
+        },
+      }),
+    );
+
+    const loading = getMcpTools();
+    await expect(readFileEventually(firstStartedPath)).resolves.toBe('started');
+
+    closeMcp();
+
+    await expect(readFileEventually(firstClosedPath)).resolves.toBe('closed');
+    await expect(loading).resolves.toEqual({});
+    await expect(readFile(secondStartedPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('does not return tools if runtime MCP closes after tools load', async () => {
+    const closedPath = join(home, 'loaded-runtime-closed.txt');
+    const server = `
+      const fs = require('node:fs');
+      const readline = require('node:readline');
+      const closedPath = process.argv[1];
+      const rl = readline.createInterface({ input: process.stdin });
+      let closed = false;
+      const close = () => {
+        if (!closed) {
+          closed = true;
+          fs.writeFileSync(closedPath, 'closed');
+        }
+        process.exit(0);
+      };
+      process.on('SIGTERM', close);
+      process.on('SIGINT', close);
+      rl.on('line', (line) => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        if (msg.method === 'initialize') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'loaded-close-test', version: '1.0.0' } },
+          }) + '\\n');
+        }
+        if (msg.method === 'tools/list') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { tools: [{ name: 'ready', inputSchema: { type: 'object' } }] },
+          }) + '\\n');
+          setInterval(() => {}, 1000);
+        }
+      });
+    `;
+    const logs: string[] = [];
+    await writeFile(
+      join(home, '.sanook', 'mcp.json'),
+      JSON.stringify({ mcpServers: { local: { command: process.execPath, args: ['-e', server, closedPath] } } }),
+    );
+
+    const tools = await getMcpTools((m) => {
+      logs.push(m);
+      if (m.includes('MCP "local"') && m.includes(': 1 tools')) closeMcp();
+    });
+
+    expect(logs).toEqual(expect.arrayContaining([expect.stringContaining('MCP "local"')]));
+    expect(tools).toEqual({});
+    await expect(readFileEventually(closedPath)).resolves.toBe('closed');
   });
 
   it('passes shared safe env keys to stdio MCP servers', async () => {

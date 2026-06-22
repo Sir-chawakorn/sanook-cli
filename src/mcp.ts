@@ -181,6 +181,7 @@ class StdioTransport implements Transport {
   }
 
   close(): void {
+    this.fail('closed');
     const pid = this.proc.pid;
     try {
       // POSIX: negative pid = the whole process group (kills npx/uvx/docker + the real server child).
@@ -440,22 +441,51 @@ export async function findMcpServerConfigPath(name: string, cwd: string = proces
   return undefined;
 }
 
-let cachePromise: Promise<ToolSet> | null = null;
+type McpLoadState = {
+  promise: Promise<ToolSet>;
+  loggers: Array<(m: string) => void>;
+  logs: string[];
+  done: boolean;
+};
+
+let cacheState: McpLoadState | null = null;
 let activeClients: McpClient[] = []; // sync ref สำหรับ closeMcp ใน exit handler
+let closeEpoch = 0;
 
 /** โหลด tools จาก MCP servers — in-flight promise singleton (concurrent call ไม่ spawn ซ้ำ/leak child) */
 export function getMcpTools(onLog?: (m: string) => void): Promise<ToolSet> {
-  cachePromise ??= buildMcpTools(onLog);
-  return cachePromise;
+  if (cacheState) {
+    if (onLog && !cacheState.done) {
+      for (const m of cacheState.logs) onLog(m);
+      cacheState.loggers.push(onLog);
+    }
+    return cacheState.promise;
+  }
+  const state: McpLoadState = { promise: Promise.resolve({}), loggers: [], logs: [], done: false };
+  const emit = (m: string): void => {
+    state.logs.push(m);
+    for (const logger of state.loggers) logger(m);
+  };
+  if (onLog) state.loggers.push(onLog);
+  state.promise = buildMcpTools(emit).finally(() => {
+    state.done = true;
+    state.loggers = [];
+    state.logs = [];
+  });
+  cacheState = state;
+  return state.promise;
 }
 
 async function buildMcpTools(onLog?: (m: string) => void): Promise<ToolSet> {
+  const buildCloseEpoch = closeEpoch;
   const config = await loadMcpConfig(onLog);
+  if (buildCloseEpoch !== closeEpoch) return {};
   if (!Object.keys(config).length) return {};
   const tools: Record<string, ReturnType<typeof dynamicTool>> = {};
   const clients: McpClient[] = [];
   activeClients = clients; // ref เดียวกัน → closeMcp kill client ที่ spawn ระหว่าง build ได้ด้วย
   for (const [serverName, cfg] of Object.entries(config)) {
+    if (buildCloseEpoch !== closeEpoch) break;
     if (!isMcpServerEnabled(cfg)) {
       onLog?.(`MCP "${serverName}" disabled — ข้าม`);
       continue;
@@ -464,11 +494,15 @@ async function buildMcpTools(onLog?: (m: string) => void): Promise<ToolSet> {
       onLog?.(`MCP "${serverName}" ข้าม: ต้องมี "command" (stdio) หรือ "url" (remote)`);
       continue;
     }
+    let client: McpClient | undefined;
     try {
-      const client = new McpClient(cfg);
+      client = new McpClient(cfg);
       clients.push(client); // push ทันที (อาจ spawn แล้ว) ก่อน await → ไม่ leak ถ้า build ค้าง
       await client.initialize();
+      if (buildCloseEpoch !== closeEpoch) throw new Error('mcp: closed');
       const defs = await client.listTools();
+      if (buildCloseEpoch !== closeEpoch) throw new Error('mcp: closed');
+      const toolClient = client;
       for (const def of defs) {
         const toolName = `${serverName}__${def.name}`.replace(/[^a-zA-Z0-9_]/g, '_');
         if (toolName in tools) {
@@ -480,19 +514,26 @@ async function buildMcpTools(onLog?: (m: string) => void): Promise<ToolSet> {
           inputSchema: jsonSchema(
             (def.inputSchema as Parameters<typeof jsonSchema>[0]) ?? { type: 'object', properties: {} },
           ),
-          execute: async (args) => client.callTool(def.name, args),
+          execute: async (args) => toolClient.callTool(def.name, args),
         });
       }
       onLog?.(`MCP "${serverName}" (${cfg.url ? 'http' : 'stdio'}): ${defs.length} tools`);
     } catch (e) {
+      if (client) {
+        client.close();
+        const idx = clients.indexOf(client);
+        if (idx !== -1) clients.splice(idx, 1);
+      }
       onLog?.(`MCP "${serverName}" ต่อไม่ได้: ${(e as Error).message}`);
     }
   }
+  if (buildCloseEpoch !== closeEpoch) return {};
   return tools;
 }
 
 export function closeMcp(): void {
+  closeEpoch++;
   for (const c of activeClients) c.close();
   activeClients = [];
-  cachePromise = null;
+  cacheState = null;
 }
