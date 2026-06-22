@@ -1,4 +1,4 @@
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, realpath, stat } from 'node:fs/promises';
 import { join, resolve, relative, isAbsolute } from 'node:path';
 import { homedir } from 'node:os';
 import { appHomePath, BRAND } from '../brand.js';
@@ -82,6 +82,25 @@ function isWithin(target: string, root: string): boolean {
   return !rel.startsWith('..') && !isAbsolute(rel);
 }
 
+async function realAllowedRoots(roots: string[]): Promise<string[]> {
+  return Promise.all(
+    roots.map(async (root) => {
+      try {
+        return await realpath(root);
+      } catch {
+        return safeRoot(root);
+      }
+    }),
+  );
+}
+
+async function assertAllowedExistingTarget(target: string, roots: string[]): Promise<string> {
+  const realTarget = await realpath(target);
+  const realRoots = await realAllowedRoots(roots);
+  if (!realRoots.some((root) => isWithin(realTarget, root))) throw new Error('path not allowed');
+  return realTarget;
+}
+
 function resolveDashboardListTarget(subpath: string, root: string, allowedRoots: string[]): string {
   if (!subpath || subpath === '/') return root;
   if (isAbsolute(subpath)) {
@@ -100,7 +119,8 @@ export async function dashboardListFiles(subpath = ''): Promise<{ root: string; 
   if (!roots.some((r) => isWithin(target, r))) {
     throw new Error('path not allowed');
   }
-  const entries = await readdir(target, { withFileTypes: true });
+  const realTarget = await assertAllowedExistingTarget(target, roots);
+  const entries = await readdir(realTarget, { withFileTypes: true });
   return {
     root,
     entries: entries
@@ -113,12 +133,13 @@ export async function dashboardListFiles(subpath = ''): Promise<{ root: string; 
 export async function dashboardReadFile(subpath: string): Promise<{ path: string; content: string }> {
   const config = await loadConfig({});
   const allowedRoots = [appHomePath(), config.brainPath ? resolve(config.brainPath) : null].filter(Boolean) as string[];
-  const target = safeRoot(subpath.startsWith('/') ? subpath : join(appHomePath(), subpath));
+  const target = safeRoot(isAbsolute(subpath) ? subpath : join(appHomePath(), subpath));
   if (!allowedRoots.some((root) => isWithin(target, root))) throw new Error('path not allowed');
-  const info = await stat(target);
+  const realTarget = await assertAllowedExistingTarget(target, allowedRoots);
+  const info = await stat(realTarget);
   if (!info.isFile()) throw new Error('not a file');
   if (info.size > 512_000) throw new Error('file too large');
-  const content = await readFile(target, 'utf8');
+  const content = await readFile(realTarget, 'utf8');
   return { path: relative(homedir(), target) || target, content };
 }
 

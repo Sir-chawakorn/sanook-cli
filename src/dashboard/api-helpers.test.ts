@@ -1,11 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appHomePath } from '../brand.js';
 import { dashboardInstall, dashboardListFiles, dashboardReadFile } from './api-helpers.js';
 import { shellStatus } from './terminal.js';
-import { installPkgVersion, installScriptUrl } from '../install-info.js';
+import { installScriptUrl } from '../install-info.js';
+
+function packageVersion(): string {
+  return (
+    JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }
+  ).version;
+}
 
 describe('dashboardInstall', () => {
   it('returns the package name and npm as the ready/recommended method', () => {
@@ -32,10 +39,13 @@ describe('dashboardInstall', () => {
     expect(winget?.ready).toBe(false);
   });
 
-  it('keeps the winget release note aligned with package.json', () => {
-    const winget = dashboardInstall().methods.find((m) => m.id === 'winget');
+  it('keeps the install payload and winget release note aligned with package.json', () => {
+    const payload = dashboardInstall();
+    const winget = payload.methods.find((m) => m.id === 'winget');
+    const version = packageVersion();
 
-    expect(winget?.note).toContain(`v${installPkgVersion()}`);
+    expect(payload.version).toBe(version);
+    expect(winget?.note).toContain(`v${version}`);
     expect(winget?.note).not.toContain('v0.5.7');
   });
 });
@@ -95,8 +105,55 @@ describe('dashboard file API', () => {
     await expect(dashboardReadFile(siblingFile)).rejects.toThrow('path not allowed');
   });
 
+  it('rejects relative read paths that traverse outside the app-home root', async () => {
+    await expect(dashboardReadFile('../.sanook-secrets/secret.md')).rejects.toThrow('path not allowed');
+  });
+
+  it('rejects symlink reads that resolve outside the allowed roots', async () => {
+    await symlink(join(home, '.sanook-secrets', 'secret.md'), appHomePath('secret-link.md'), 'file');
+
+    await expect(dashboardReadFile('secret-link.md')).rejects.toThrow('path not allowed');
+  });
+
+  it('allows symlink reads that resolve inside the allowed roots', async () => {
+    await symlink(appHomePath('note.md'), appHomePath('note-link.md'), 'file');
+
+    await expect(dashboardReadFile('note-link.md')).resolves.toMatchObject({
+      content: '# allowed\n',
+    });
+  });
+
+  it('rejects symlink directory listings that resolve outside the allowed roots', async () => {
+    await symlink(join(home, '.sanook-secrets'), appHomePath('secret-dir-link'), 'dir');
+
+    await expect(dashboardListFiles('secret-dir-link')).rejects.toThrow('path not allowed');
+  });
+
+  it('allows symlink directory listings that resolve inside the allowed roots', async () => {
+    await writeFile(appHomePath('etc', 'inside.md'), '# inside\n', 'utf8');
+    await symlink(appHomePath('etc'), appHomePath('etc-link'), 'dir');
+
+    await expect(dashboardListFiles('etc-link')).resolves.toMatchObject({
+      entries: expect.arrayContaining([{ name: 'inside.md', dir: false }]),
+    });
+  });
+
+  it('rejects directory reads', async () => {
+    await expect(dashboardReadFile('etc')).rejects.toThrow('not a file');
+  });
+
+  it('rejects file previews over the size limit', async () => {
+    await writeFile(appHomePath('large.md'), 'x'.repeat(512_001), 'utf8');
+
+    await expect(dashboardReadFile('large.md')).rejects.toThrow('file too large');
+  });
+
   it('rejects absolute list paths outside the allowed roots', async () => {
     await expect(dashboardListFiles('/etc')).rejects.toThrow('path not allowed');
+  });
+
+  it('rejects absolute read paths outside the allowed roots', async () => {
+    await expect(dashboardReadFile('/etc/passwd')).rejects.toThrow('path not allowed');
   });
 });
 
