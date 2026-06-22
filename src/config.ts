@@ -14,7 +14,15 @@ function authPath(): string {
   return join(configHomeDir(), 'auth.json');
 }
 const AUTH_ENV_VAR_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const RESERVED_AUTH_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const RESERVED_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function copySafeRecord(input: Record<string, unknown>): Record<string, unknown> {
+  const record: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (!RESERVED_OBJECT_KEYS.has(key)) record[key] = value;
+  }
+  return record;
+}
 
 const PricingKeySchema = z.string().regex(/^[^:\s]+:\S+$/, 'key ต้องเป็น provider:model');
 
@@ -164,7 +172,8 @@ function parseConfigGraceful(merged: Record<string, unknown>): Config {
 async function readJson(path: string): Promise<Record<string, unknown>> {
   try {
     const parsed: unknown = JSON.parse(await readFile(path, 'utf8'));
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return copySafeRecord(parsed as Record<string, unknown>);
   } catch {
     return {}; // ไม่มีไฟล์ / parse ไม่ได้ = ใช้ default
   }
@@ -274,7 +283,7 @@ export async function saveGlobalConfig(
 ): Promise<void> {
   await mkdir(configHomeDir(), { recursive: true });
   const existing = await readJson(globalConfigPath());
-  await writeFile(globalConfigPath(), `${JSON.stringify({ ...existing, ...cfg }, null, 2)}\n`, { mode: 0o600 });
+  await writeFile(globalConfigPath(), `${JSON.stringify({ ...existing, ...copySafeRecord(cfg) }, null, 2)}\n`, { mode: 0o600 });
   await chmod(globalConfigPath(), 0o600).catch(() => {});
 }
 
@@ -297,7 +306,7 @@ export function authConfigPath(): string {
 }
 
 function isSafeAuthEnvVarName(name: string): boolean {
-  return AUTH_ENV_VAR_RE.test(name) && !RESERVED_AUTH_KEYS.has(name);
+  return AUTH_ENV_VAR_RE.test(name) && !RESERVED_OBJECT_KEYS.has(name);
 }
 
 /** อ่าน auth.json ดิบแบบกรองเฉพาะ string values — caller ต้อง redact ก่อนโชว์ */
@@ -314,7 +323,7 @@ export async function readStoredAuthRaw(): Promise<Record<string, string>> {
 export async function patchGlobalConfig(patch: Record<string, unknown>): Promise<void> {
   await mkdir(configHomeDir(), { recursive: true });
   const existing = await readJson(globalConfigPath());
-  await writeFile(globalConfigPath(), `${JSON.stringify({ ...existing, ...patch }, null, 2)}\n`, { mode: 0o600 });
+  await writeFile(globalConfigPath(), `${JSON.stringify({ ...existing, ...copySafeRecord(patch) }, null, 2)}\n`, { mode: 0o600 });
   await chmod(globalConfigPath(), 0o600).catch(() => {});
 }
 

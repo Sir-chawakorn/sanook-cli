@@ -12,6 +12,7 @@ export function expandHome(p: string): string {
 // bundled rich templates (Home/USER/constitution/core memory/Templates) — sibling ของ skills/ ใน package
 // (ship ผ่าน package.json "files", ไม่ผ่าน tsc — เหมือน BUNDLED_SKILLS ใน skills.ts)
 const TEMPLATE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'second-brain');
+const RESERVED_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 export type Autonomy = 'ask-first' | 'ask-on-risk' | 'act-first';
 
@@ -138,6 +139,15 @@ export function substitute(text: string, cfg: BrainConfig): string {
   return text.replace(/\{\{(\w+)\}\}/g, (whole, key: string) => (key in map ? map[key] : whole));
 }
 
+function copySafeMcpServers(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const servers: Record<string, unknown> = {};
+  for (const [name, server] of Object.entries(value as Record<string, unknown>)) {
+    if (!RESERVED_OBJECT_KEYS.has(name)) servers[name] = server;
+  }
+  return servers;
+}
+
 /** generate _Index.md ของโฟลเดอร์ — frontmatter + role + ใส่อะไร/ไม่ใส่อะไร + up:: (ตาม §18 / §B.3 rule 2-3) */
 function renderIndex(f: Folder, cfg: BrainConfig): string {
   const name = f.dir.split('/').pop() ?? f.dir;
@@ -258,12 +268,24 @@ export async function wireBrainMcp(vaultPath: string): Promise<'added' | 'exists
   const mcpPath = appHomePath('mcp.json');
   let cfg: { mcpServers?: Record<string, unknown> } = {};
   try {
-    cfg = JSON.parse(await readFile(mcpPath, 'utf8')) as typeof cfg;
+    const parsed = JSON.parse(await readFile(mcpPath, 'utf8')) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) cfg = parsed as typeof cfg;
   } catch {
     /* ยังไม่มีไฟล์ */
   }
-  cfg.mcpServers ??= {};
-  if (cfg.mcpServers['second-brain']) return 'exists';
+  cfg.mcpServers = copySafeMcpServers(cfg.mcpServers);
+  const existing = cfg.mcpServers['second-brain'];
+  const existingCommand = existing && typeof existing === 'object' && !Array.isArray(existing) ? (existing as { command?: unknown }).command : undefined;
+  const existingArgs = existing && typeof existing === 'object' && !Array.isArray(existing) ? (existing as { args?: unknown }).args : undefined;
+  if (
+    typeof existingCommand === 'string' &&
+    existingCommand.trim() &&
+    Array.isArray(existingArgs) &&
+    existingArgs.length > 0 &&
+    existingArgs.every((arg) => typeof arg === 'string')
+  ) {
+    return 'exists';
+  }
   cfg.mcpServers['second-brain'] = {
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-filesystem', vaultPath],

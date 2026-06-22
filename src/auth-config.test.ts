@@ -80,6 +80,23 @@ describe('auth config store', () => {
     expect(process.env.NESTED).toBeUndefined();
   });
 
+  it('rejects reserved object keys in auth env var names', async () => {
+    await mkdir(join(home, '.sanook'), { recursive: true });
+    await writeFile(
+      join(home, '.sanook', 'auth.json'),
+      '{"OPENAI_API_KEY":"stored-key","__proto__":"reserved","constructor":"reserved","prototype":"reserved"}\n',
+    );
+
+    const { readStoredAuthRaw, removeStoredKey, saveKey } = await import('./config.js');
+
+    expect(await readStoredAuthRaw()).toEqual({ OPENAI_API_KEY: 'stored-key' });
+    await expect(saveKey('__proto__', 'x')).rejects.toThrow(/env var/);
+    await expect(saveKey('constructor', 'x')).rejects.toThrow(/env var/);
+    await expect(saveKey('prototype', 'x')).rejects.toThrow(/env var/);
+    await expect(removeStoredKey('constructor')).resolves.toBe(false);
+    await expect(removeStoredKey('prototype')).resolves.toBe(false);
+  });
+
   it('treats corrupted auth stores as empty and can save over them', async () => {
     await mkdir(join(home, '.sanook'), { recursive: true });
     await writeFile(join(home, '.sanook', 'auth.json'), JSON.stringify([{ OPENAI_API_KEY: 'array-entry' }]));

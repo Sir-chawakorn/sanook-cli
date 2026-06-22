@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadConfig, parsePricingOverride } from './config.js';
+import { loadConfig, parsePricingOverride, patchGlobalConfig, readGlobalConfigRaw, saveGlobalConfig } from './config.js';
 import { hasPricingForKey, PRICING } from './cost.js';
 
 // ใช้ cwd = temp dir (ไม่แตะ process.env) — test project/CLI layering แบบ relative
@@ -55,6 +55,40 @@ describe('loadConfig layering', () => {
     await writeFile(join(dir, '.sanook', 'config.json'), 'not valid json {');
     const c = await loadConfig({}, dir);
     expect(c.model).toBeDefined();
+  });
+
+  it('drops prototype-pollution keys from raw config records', async () => {
+    await writeFile(
+      join(home, '.sanook', 'config.json'),
+      '{"model":"safe","__proto__":{"polluted":true},"constructor":{"polluted":true},"prototype":{"polluted":true}}',
+    );
+
+    const raw = await readGlobalConfigRaw();
+
+    expect(raw).toEqual({ model: 'safe' });
+    expect(Object.prototype.hasOwnProperty.call(raw, '__proto__')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(raw, 'constructor')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(raw, 'prototype')).toBe(false);
+  });
+
+  it('does not persist reserved object keys from config writes', async () => {
+    await saveGlobalConfig({
+      model: 'safe',
+      ['__proto__']: 'reserved',
+      constructor: 'reserved',
+    });
+    await patchGlobalConfig({
+      maxSteps: 12,
+      ['__proto__']: 'reserved',
+      prototype: 'reserved',
+    });
+
+    const raw = JSON.parse(await readFile(join(home, '.sanook', 'config.json'), 'utf8')) as Record<string, unknown>;
+
+    expect(raw).toEqual({ model: 'safe', maxSteps: 12 });
+    expect(Object.prototype.hasOwnProperty.call(raw, '__proto__')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(raw, 'constructor')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(raw, 'prototype')).toBe(false);
   });
 
   it('malformed config FIELDS degrade to defaults instead of throwing on boot', async () => {

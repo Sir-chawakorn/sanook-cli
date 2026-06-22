@@ -334,4 +334,102 @@ describe('scaffoldBrain', () => {
     expect((await stat(mcpPath)).mode & 0o777).toBe(0o600);
     expect(await readFile(mcpPath, 'utf8')).toContain('@modelcontextprotocol/server-filesystem');
   });
+
+  it('wireBrainMcp repairs malformed mcpServers before wiring the vault', async () => {
+    vi.stubEnv('HOME', dir);
+    const mcpDir = join(dir, '.sanook');
+    const mcpPath = join(mcpDir, 'mcp.json');
+    await mkdir(mcpDir, { recursive: true });
+    await writeFile(mcpPath, JSON.stringify({ mcpServers: [] }));
+
+    expect(await wireBrainMcp('/tmp/sanook-vault')).toBe('added');
+    const parsed = JSON.parse(await readFile(mcpPath, 'utf8')) as {
+      mcpServers?: Record<string, { command?: string; args?: string[] }>;
+    };
+
+    expect(Array.isArray(parsed.mcpServers)).toBe(false);
+    expect(parsed.mcpServers?.['second-brain']).toEqual({
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp/sanook-vault'],
+    });
+  });
+
+  it('wireBrainMcp drops reserved mcp server keys without dropping other servers', async () => {
+    vi.stubEnv('HOME', dir);
+    const mcpDir = join(dir, '.sanook');
+    const mcpPath = join(mcpDir, 'mcp.json');
+    await mkdir(mcpDir, { recursive: true });
+    await writeFile(
+      mcpPath,
+      '{"mcpServers":{"__proto__":{"command":"bad"},"constructor":{"command":"bad"},"prototype":{"command":"bad"},"local":{"command":"node","args":["server.js"]}}}',
+    );
+
+    expect(await wireBrainMcp('/tmp/sanook-vault')).toBe('added');
+    const parsed = JSON.parse(await readFile(mcpPath, 'utf8')) as {
+      mcpServers?: Record<string, { command?: string; args?: string[] }>;
+    };
+
+    expect(Object.prototype.hasOwnProperty.call(parsed.mcpServers, '__proto__')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(parsed.mcpServers, 'constructor')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(parsed.mcpServers, 'prototype')).toBe(false);
+    expect(parsed.mcpServers?.local).toEqual({ command: 'node', args: ['server.js'] });
+    expect(parsed.mcpServers?.['second-brain']).toEqual({
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp/sanook-vault'],
+    });
+  });
+
+  it('wireBrainMcp repairs malformed second-brain server entries without dropping other servers', async () => {
+    vi.stubEnv('HOME', dir);
+    const mcpDir = join(dir, '.sanook');
+    const mcpPath = join(mcpDir, 'mcp.json');
+    await mkdir(mcpDir, { recursive: true });
+    await writeFile(
+      mcpPath,
+      JSON.stringify({
+        mcpServers: {
+          'second-brain': null,
+          local: { command: 'node', args: ['server.js'] },
+        },
+      }),
+    );
+
+    expect(await wireBrainMcp('/tmp/sanook-vault')).toBe('added');
+    const parsed = JSON.parse(await readFile(mcpPath, 'utf8')) as {
+      mcpServers?: Record<string, { command?: string; args?: string[] }>;
+    };
+
+    expect(parsed.mcpServers?.local).toEqual({ command: 'node', args: ['server.js'] });
+    expect(parsed.mcpServers?.['second-brain']).toEqual({
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp/sanook-vault'],
+    });
+  });
+
+  it('wireBrainMcp repairs incomplete second-brain server entries', async () => {
+    vi.stubEnv('HOME', dir);
+    const mcpDir = join(dir, '.sanook');
+    const mcpPath = join(mcpDir, 'mcp.json');
+    await mkdir(mcpDir, { recursive: true });
+    await writeFile(
+      mcpPath,
+      JSON.stringify({
+        mcpServers: {
+          'second-brain': { command: '   ', args: ['-y'] },
+          local: { command: 'node', args: ['server.js'] },
+        },
+      }),
+    );
+
+    expect(await wireBrainMcp('/tmp/sanook-vault')).toBe('added');
+    const parsed = JSON.parse(await readFile(mcpPath, 'utf8')) as {
+      mcpServers?: Record<string, { command?: string; args?: string[] }>;
+    };
+
+    expect(parsed.mcpServers?.local).toEqual({ command: 'node', args: ['server.js'] });
+    expect(parsed.mcpServers?.['second-brain']).toEqual({
+      command: 'npx',
+      args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp/sanook-vault'],
+    });
+  });
 });
