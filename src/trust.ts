@@ -1,9 +1,11 @@
 import { chmod, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { appHomePath, appProjectPath, BRAND_ENV, envFlag } from './brand.js';
 
 const TRUST_FILE = appHomePath('trusted-projects.json');
 const BOUNDARY_MARKERS = ['.git', 'package.json'];
+const TRUST_DIR_MODE = 0o700;
+const TRUST_FILE_MODE = 0o600;
 
 interface TrustStore {
   trustedProjectRoots?: string[];
@@ -27,7 +29,7 @@ async function canonical(p: string): Promise<string> {
 }
 
 function isUsableStoredRoot(root: unknown): root is string {
-  return typeof root === 'string' && root.trim().length > 0 && !root.includes('\0');
+  return typeof root === 'string' && root.trim().length > 0 && !root.includes('\0') && isAbsolute(root);
 }
 
 export async function projectRoot(cwd: string = process.cwd()): Promise<string> {
@@ -56,9 +58,12 @@ async function readStore(): Promise<TrustStore> {
 }
 
 async function writeStore(store: TrustStore): Promise<void> {
-  await mkdir(dirname(TRUST_FILE), { recursive: true });
-  await writeFile(TRUST_FILE, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
-  await chmod(TRUST_FILE, 0o600).catch(() => {});
+  const trustDir = dirname(TRUST_FILE);
+  await mkdir(trustDir, { recursive: true, mode: TRUST_DIR_MODE });
+  await chmod(trustDir, TRUST_DIR_MODE).catch(() => {});
+  await chmod(TRUST_FILE, TRUST_FILE_MODE).catch(() => {});
+  await writeFile(TRUST_FILE, `${JSON.stringify(store, null, 2)}\n`, { mode: TRUST_FILE_MODE });
+  await chmod(TRUST_FILE, TRUST_FILE_MODE).catch(() => {});
 }
 
 export interface ProjectTrustStatus {

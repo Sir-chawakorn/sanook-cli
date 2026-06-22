@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -67,6 +67,22 @@ describe('project trust store', () => {
     }
   });
 
+  it('ignores relative trusted-project roots instead of resolving them against cwd', async () => {
+    await writeFile(
+      join(home, '.sanook', 'trusted-projects.json'),
+      JSON.stringify({ trustedProjectRoots: ['.', 'relative-project'] }),
+    );
+
+    const originalCwd = process.cwd();
+    process.chdir(project);
+    try {
+      const { projectTrustStatus } = await importTrustWithHome(home);
+      await expect(projectTrustStatus(project)).resolves.toMatchObject({ trusted: false, reason: 'missing' });
+    } finally {
+      process.chdir(originalCwd);
+    }
+  });
+
   it('ignores trusted-project roots with NUL bytes instead of throwing', async () => {
     await writeFile(
       join(home, '.sanook', 'trusted-projects.json'),
@@ -81,15 +97,53 @@ describe('project trust store', () => {
     const trustFile = join(home, '.sanook', 'trusted-projects.json');
     await writeFile(
       trustFile,
-      JSON.stringify({ trustedProjectRoots: [project, `${project}\0`, '', null, 42] }),
+      JSON.stringify({ trustedProjectRoots: [project, `${project}\0`, '', 'relative-project', null, 42] }),
     );
 
     const { trustProject } = await importTrustWithHome(home);
     const root = await trustProject(project);
 
-    await expect(readFile(trustFile, 'utf8').then((raw) => JSON.parse(raw))).resolves.toMatchObject({
+    await expect(readFile(trustFile, 'utf8').then((raw) => JSON.parse(raw))).resolves.toEqual({
       trustedProjectRoots: [root],
     });
+  });
+
+  it('keeps the trust store directory and file private when writing', async () => {
+    const trustDir = join(home, '.sanook');
+    const trustFile = join(trustDir, 'trusted-projects.json');
+    await chmod(trustDir, 0o755);
+    await writeFile(trustFile, JSON.stringify({ trustedProjectRoots: [] }), { mode: 0o644 });
+    await chmod(trustFile, 0o644);
+
+    const { trustProject } = await importTrustWithHome(home);
+    await trustProject(project);
+
+    expect((await stat(trustDir)).mode & 0o777).toBe(0o700);
+    expect((await stat(trustFile)).mode & 0o777).toBe(0o600);
+  });
+
+  it('reports project config as untrusted without exposing the path', async () => {
+    const configPath = join(project, '.sanook', 'mcp.json');
+    await mkdir(join(project, '.sanook'), { recursive: true });
+    await writeFile(configPath, '{}');
+
+    const { hasUntrustedProjectConfig, projectConfigPathIfTrusted } = await importTrustWithHome(home);
+
+    await expect(projectConfigPathIfTrusted('mcp.json', project)).resolves.toBeNull();
+    await expect(hasUntrustedProjectConfig('mcp.json', project)).resolves.toBe(true);
+  });
+
+  it('exposes project config paths after trusting the project', async () => {
+    const configPath = join(project, '.sanook', 'mcp.json');
+    await mkdir(join(project, '.sanook'), { recursive: true });
+    await writeFile(configPath, '{}');
+
+    const { projectConfigPathIfTrusted, trustProject } = await importTrustWithHome(home);
+    await trustProject(project);
+
+    await expect(projectConfigPathIfTrusted('mcp.json', project)).resolves.toBe(
+      join(await realpath(project), '.sanook', 'mcp.json'),
+    );
   });
 
   it('rewrites malformed trusted-project roots out when untrusting a project', async () => {
@@ -100,13 +154,13 @@ describe('project trust store', () => {
     const trustFile = join(home, '.sanook', 'trusted-projects.json');
     await writeFile(
       trustFile,
-      JSON.stringify({ trustedProjectRoots: [project, otherProject, `${project}\0`, '', null, 42] }),
+      JSON.stringify({ trustedProjectRoots: [project, otherProject, `${project}\0`, '', 'relative-project', null, 42] }),
     );
 
     const { untrustProject } = await importTrustWithHome(home);
     await untrustProject(project);
 
-    await expect(readFile(trustFile, 'utf8').then((raw) => JSON.parse(raw))).resolves.toMatchObject({
+    await expect(readFile(trustFile, 'utf8').then((raw) => JSON.parse(raw))).resolves.toEqual({
       trustedProjectRoots: [await realpath(otherProject)],
     });
   });
