@@ -61,6 +61,137 @@ describe('project-registry', () => {
     expect(project?.repoPath).toBe(repoB);
   });
 
+  it('rejects slug overrides that escape the Projects directory', async () => {
+    await mkdir(join(brainPath, 'Shared'), { recursive: true });
+    await writeFile(join(brainPath, 'Shared', 'repo.md'), `repo_path: ${repoA}\n`, 'utf8');
+
+    await expect(resolveVaultProject({ brainPath, slug: '../Shared' })).resolves.toBeNull();
+    await expect(resolveVaultProject({ brainPath, slug: 'beta/repo' })).resolves.toBeNull();
+    await expect(resolveVaultProject({ brainPath, slug: '.hidden' })).resolves.toBeNull();
+  });
+
+  it('normalizes quoted project metadata values', async () => {
+    const repoWithSpaces = join(root, 'repo with spaces');
+    await mkdir(repoWithSpaces, { recursive: true });
+    await writeFile(
+      join(brainPath, 'Projects', 'beta', 'repo.md'),
+      [
+        '---',
+        `repo_path: "${repoWithSpaces}" # hand-edited YAML frontmatter`,
+        String.raw`verify: "node scripts\verify.mjs && npm test"`,
+        "default_branch: 'release/candidate'",
+        '---',
+        '',
+        '# Beta',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const beta = (await listVaultProjects(brainPath)).find((project) => project.slug === 'beta');
+    expect(beta).toMatchObject({
+      repoPath: repoWithSpaces,
+      verify: String.raw`node scripts\verify.mjs && npm test`,
+      defaultBranch: 'release/candidate',
+    });
+    await expect(resolveVaultProject({ brainPath, cwd: repoWithSpaces })).resolves.toMatchObject({ slug: 'beta' });
+  });
+
+  it('ignores YAML-style inline comments for unquoted metadata values', async () => {
+    const repoWithSpaces = join(root, 'repo with inline comment');
+    await mkdir(repoWithSpaces, { recursive: true });
+    await writeFile(
+      join(brainPath, 'Projects', 'beta', 'repo.md'),
+      [
+        `repo_path: ${repoWithSpaces} # local checkout with spaces`,
+        'verify: npm test # smoke command',
+        'default_branch: main # release branch',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const beta = (await listVaultProjects(brainPath)).find((project) => project.slug === 'beta');
+    expect(beta).toMatchObject({
+      repoPath: repoWithSpaces,
+      verify: 'npm test',
+      defaultBranch: 'main',
+    });
+    await expect(resolveVaultProject({ brainPath, cwd: repoWithSpaces })).resolves.toMatchObject({ slug: 'beta' });
+  });
+
+  it('preserves hash characters that are part of unquoted metadata values', async () => {
+    const repoWithHash = join(root, 'repo#hash');
+    await mkdir(repoWithHash, { recursive: true });
+    await writeFile(
+      join(brainPath, 'Projects', 'beta', 'repo.md'),
+      [
+        `repo_path: ${repoWithHash} # local checkout`,
+        'verify: npm run test#unit # smoke command',
+        'default_branch: feature/#42 # release branch',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const beta = (await listVaultProjects(brainPath)).find((project) => project.slug === 'beta');
+    expect(beta).toMatchObject({
+      repoPath: repoWithHash,
+      verify: 'npm run test#unit',
+      defaultBranch: 'feature/#42',
+    });
+    await expect(resolveVaultProject({ brainPath, cwd: repoWithHash })).resolves.toMatchObject({ slug: 'beta' });
+  });
+
+  it('accepts YAML-style spacing before metadata colons', async () => {
+    const repoWithSpacedKeys = join(root, 'repo with spaced keys');
+    await mkdir(repoWithSpacedKeys, { recursive: true });
+    await writeFile(
+      join(brainPath, 'Projects', 'beta', 'repo.md'),
+      [
+        `repo_path : ${repoWithSpacedKeys}`,
+        'verify : npm run typecheck',
+        'default_branch : main',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const beta = (await listVaultProjects(brainPath)).find((project) => project.slug === 'beta');
+    expect(beta).toMatchObject({
+      repoPath: repoWithSpacedKeys,
+      verify: 'npm run typecheck',
+      defaultBranch: 'main',
+    });
+    await expect(resolveVaultProject({ brainPath, cwd: repoWithSpacedKeys })).resolves.toMatchObject({ slug: 'beta' });
+  });
+
+  it('falls back to overview metadata when repo note has no metadata', async () => {
+    const repoFromOverview = join(root, 'repo-from-overview');
+    await mkdir(repoFromOverview, { recursive: true });
+    await writeFile(join(brainPath, 'Projects', 'beta', 'repo.md'), '# Beta repo\n\nHandwritten notes only.\n', 'utf8');
+    await writeFile(
+      join(brainPath, 'Projects', 'beta', 'overview.md'),
+      [
+        '# Beta',
+        '',
+        `repo_path: ${repoFromOverview}`,
+        'verify: npm run typecheck',
+        'default_branch: main',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const beta = (await listVaultProjects(brainPath)).find((project) => project.slug === 'beta');
+    expect(beta).toMatchObject({
+      repoPath: repoFromOverview,
+      verify: 'npm run typecheck',
+      defaultBranch: 'main',
+    });
+    await expect(resolveVaultProject({ brainPath, cwd: repoFromOverview })).resolves.toMatchObject({ slug: 'beta' });
+  });
+
   it('builds project context block from hot files', async () => {
     const project = await resolveVaultProject({ brainPath, slug: 'alpha' });
     expect(project).toBeTruthy();
