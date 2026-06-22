@@ -10,10 +10,12 @@ import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { appHomePath, envFlag, persistenceEnabled } from './brand.js';
 import { loadConfig } from './config.js';
+import { acquireSingleton } from './gateway/lock.js';
 import type { NoteType } from './memory-store.js';
 import type { DistillKind } from './session-distill.js';
 
 const STATE_FILE = 'auto-maintain.json';
+const STARTUP_LOCK_FILE = 'auto-maintain.lock';
 const STATE_DIR_MODE = 0o700;
 const STATE_FILE_MODE = 0o600;
 /** วิ่ง vault/memory consolidation อย่างมากสัปดาห์ละครั้ง — กัน startup ทำงานหนักทุกครั้ง */
@@ -108,20 +110,40 @@ async function readState(): Promise<AutoMaintainState> {
   }
 }
 
-async function writeState(state: AutoMaintainState): Promise<void> {
-  const statePath = appHomePath(STATE_FILE);
-  const tmpPath = appHomePath(`${STATE_FILE}.${randomUUID()}.tmp`);
+async function ensureStateDir(): Promise<boolean> {
   try {
     const stateDir = appHomePath();
     await mkdir(stateDir, { recursive: true, mode: STATE_DIR_MODE });
     await chmod(stateDir, STATE_DIR_MODE).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function writeState(state: AutoMaintainState): Promise<boolean> {
+  const statePath = appHomePath(STATE_FILE);
+  const tmpPath = appHomePath(`${STATE_FILE}.${randomUUID()}.tmp`);
+  try {
+    if (!(await ensureStateDir())) return false;
     await writeFile(tmpPath, `${JSON.stringify(state, null, 2)}\n`, { mode: STATE_FILE_MODE });
     await chmod(tmpPath, STATE_FILE_MODE).catch(() => {});
     await rename(tmpPath, statePath);
     await chmod(statePath, STATE_FILE_MODE).catch(() => {});
+    return true;
   } catch {
     await rm(tmpPath, { force: true }).catch(() => {});
     /* best-effort — ไม่ critical ถ้าเขียน state ไม่ได้ */
+    return false;
+  }
+}
+
+async function acquireStartupLock(): Promise<(() => void) | null> {
+  if (!(await ensureStateDir())) return null;
+  try {
+    return await acquireSingleton(appHomePath(STARTUP_LOCK_FILE));
+  } catch {
+    return null;
   }
 }
 
@@ -140,9 +162,12 @@ export async function isConsolidationDue(now: number = Date.now()): Promise<bool
  */
 export async function maybeStartupMaintain(now: number = Date.now()): Promise<string | null> {
   if (!(await isConsolidationDue(now))) return null;
-  // จดเวลา "ก่อน" รัน — กัน REPL หลายตัว/รันซ้อนยิง consolidate พร้อมกัน (จดทันทีถือว่า claim รอบนี้)
-  await writeState({ lastConsolidate: now });
+  const releaseLock = await acquireStartupLock();
+  if (!releaseLock) return null;
   try {
+    if (!(await isConsolidationDue(now))) return null;
+    // จดเวลา "ก่อน" รัน — กัน REPL หลายตัว/รันซ้อนยิง consolidate พร้อมกัน (จดทันทีถือว่า claim รอบนี้)
+    if (!(await writeState({ lastConsolidate: now }))) return null;
     const cfg = await loadConfig({});
     const { runBrainConsolidate } = await import('./brain-consolidate.js');
     const report = await runBrainConsolidate({
@@ -157,6 +182,8 @@ export async function maybeStartupMaintain(now: number = Date.now()): Promise<st
     return changes > 0 ? `auto-maintain: จัดระเบียบ memory + vault (${changes} รายการ)` : null;
   } catch {
     return null;
+  } finally {
+    releaseLock();
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { chmod, mkdtemp, mkdir, readFile, readdir, stat, writeFile, rm } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, readdir, stat, writeFile, rm, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appHomePath } from './brand.js';
@@ -109,6 +109,87 @@ describe('auto-maintain', () => {
       }
     });
 
+    it('honors disabled persistence before claiming state or importing consolidation', async () => {
+      vi.stubEnv('SANOOK_DISABLE_PERSISTENCE', '1');
+      const runBrainConsolidate = vi.fn().mockResolvedValue({
+        ok: true,
+        steps: [{ applied: ['dedup'] }],
+      });
+      const brainConsolidateFactory = vi.fn(() => ({ runBrainConsolidate }));
+      vi.doMock('./brain-consolidate.js', brainConsolidateFactory);
+      try {
+        await expect(maybeStartupMaintain(Date.now())).resolves.toBe(null);
+        expect(brainConsolidateFactory).not.toHaveBeenCalled();
+        expect(runBrainConsolidate).not.toHaveBeenCalled();
+        await expect(readFile(appHomePath('auto-maintain.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+      } finally {
+        vi.doUnmock('./brain-consolidate.js');
+      }
+    });
+
+    it('honors config autoMaintain=false before claiming state or importing consolidation', async () => {
+      await writeFile(appHomePath('config.json'), JSON.stringify({ autoMaintain: false }));
+      const runBrainConsolidate = vi.fn().mockResolvedValue({
+        ok: true,
+        steps: [{ applied: ['dedup'] }],
+      });
+      const brainConsolidateFactory = vi.fn(() => ({ runBrainConsolidate }));
+      vi.doMock('./brain-consolidate.js', brainConsolidateFactory);
+      try {
+        await expect(maybeStartupMaintain(Date.now())).resolves.toBe(null);
+        expect(brainConsolidateFactory).not.toHaveBeenCalled();
+        expect(runBrainConsolidate).not.toHaveBeenCalled();
+        await expect(readFile(appHomePath('auto-maintain.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+      } finally {
+        vi.doUnmock('./brain-consolidate.js');
+      }
+    });
+
+    it('skips startup consolidation without claiming state when another process holds the startup lock', async () => {
+      await writeFile(appHomePath('auto-maintain.lock'), String(process.pid));
+      const runBrainConsolidate = vi.fn().mockResolvedValue({
+        ok: true,
+        steps: [{ applied: ['dedup'] }],
+      });
+      const brainConsolidateFactory = vi.fn(() => ({ runBrainConsolidate }));
+      vi.doMock('./brain-consolidate.js', brainConsolidateFactory);
+      try {
+        await expect(maybeStartupMaintain(Date.now())).resolves.toBe(null);
+        expect(brainConsolidateFactory).not.toHaveBeenCalled();
+        expect(runBrainConsolidate).not.toHaveBeenCalled();
+        await expect(readFile(appHomePath('auto-maintain.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+        await expect(readFile(appHomePath('auto-maintain.lock'), 'utf8')).resolves.toBe(String(process.pid));
+      } finally {
+        await rm(appHomePath('auto-maintain.lock'), { force: true });
+        vi.doUnmock('./brain-consolidate.js');
+      }
+    });
+
+    it('evicts a stale startup lock before claiming a startup consolidate run', async () => {
+      const now = Date.now();
+      const lockPath = appHomePath('auto-maintain.lock');
+      await writeFile(lockPath, 'not-a-pid');
+      const old = new Date(now - 5_000);
+      await utimes(lockPath, old, old);
+      const runBrainConsolidate = vi.fn().mockResolvedValue({
+        ok: true,
+        steps: [{ applied: ['dedup'] }],
+      });
+      vi.doMock('./brain-consolidate.js', () => ({ runBrainConsolidate }));
+      try {
+        await expect(maybeStartupMaintain(now)).resolves.toBe('auto-maintain: จัดระเบียบ memory + vault (1 รายการ)');
+        expect(runBrainConsolidate).toHaveBeenCalledTimes(1);
+        const state = JSON.parse(await readFile(appHomePath('auto-maintain.json'), 'utf8')) as {
+          lastConsolidate?: unknown;
+        };
+        expect(state.lastConsolidate).toBe(now);
+        await expect(readFile(lockPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+      } finally {
+        await rm(lockPath, { force: true });
+        vi.doUnmock('./brain-consolidate.js');
+      }
+    });
+
     it('creates the state directory before claiming a startup consolidate run', async () => {
       const now = Date.now();
       await rm(stateDir, { recursive: true, force: true });
@@ -165,6 +246,7 @@ describe('auto-maintain', () => {
           lastConsolidate?: unknown;
         };
         expect(state.lastConsolidate).toBe(now);
+        await expect(readFile(appHomePath('auto-maintain.lock'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
 
         await expect(maybeStartupMaintain(now + DAY)).resolves.toBe(null);
         expect(runBrainConsolidate).toHaveBeenCalledTimes(1);
@@ -193,17 +275,19 @@ describe('auto-maintain', () => {
       }
     });
 
-    it('cleans up the temp state file when the atomic claim cannot replace the final path', async () => {
+    it('skips consolidation and cleans up temp state when the atomic claim cannot be written', async () => {
       const now = Date.now();
       await mkdir(appHomePath('auto-maintain.json'));
       const runBrainConsolidate = vi.fn().mockResolvedValue({
         ok: true,
         steps: [],
       });
-      vi.doMock('./brain-consolidate.js', () => ({ runBrainConsolidate }));
+      const brainConsolidateFactory = vi.fn(() => ({ runBrainConsolidate }));
+      vi.doMock('./brain-consolidate.js', brainConsolidateFactory);
       try {
         await expect(maybeStartupMaintain(now)).resolves.toBe(null);
-        expect(runBrainConsolidate).toHaveBeenCalledTimes(1);
+        expect(brainConsolidateFactory).not.toHaveBeenCalled();
+        expect(runBrainConsolidate).not.toHaveBeenCalled();
         expect(await stateTempFiles(stateDir)).toEqual([]);
       } finally {
         vi.doUnmock('./brain-consolidate.js');
@@ -238,8 +322,10 @@ describe('auto-maintain', () => {
     it('SANOOK_AUTO_DISTILL does not override disabled persistence', async () => {
       vi.stubEnv('SANOOK_DISABLE_PERSISTENCE', '1');
       vi.stubEnv('SANOOK_AUTO_DISTILL', '1');
-      const appendMemory = vi.fn().mockResolvedValue(undefined);
-      vi.doMock('./memory.js', () => ({ appendMemory }));
+      const memoryFactory = vi.fn(() => ({ appendMemory: vi.fn() }));
+      const distillerFactory = vi.fn(() => ({ distilledCandidatesFromMessages: vi.fn() }));
+      vi.doMock('./memory.js', memoryFactory);
+      vi.doMock('./session-distill.js', distillerFactory);
       try {
         await expect(
           autoDistillToMemory([
@@ -249,9 +335,11 @@ describe('auto-maintain', () => {
             },
           ]),
         ).resolves.toBe(0);
-        expect(appendMemory).not.toHaveBeenCalled();
+        expect(distillerFactory).not.toHaveBeenCalled();
+        expect(memoryFactory).not.toHaveBeenCalled();
       } finally {
         vi.doUnmock('./memory.js');
+        vi.doUnmock('./session-distill.js');
       }
     });
     it('SANOOK_AUTO_DISTILL forces distill even when autoMaintain config is off', async () => {
@@ -271,6 +359,28 @@ describe('auto-maintain', () => {
         expect(appendMemory).toHaveBeenCalledWith('We decided to keep local-first memory.', 'decision');
       } finally {
         vi.doUnmock('./memory.js');
+      }
+    });
+    it('honors config autoMaintain=false before importing distiller or memory writer', async () => {
+      await writeFile(appHomePath('config.json'), JSON.stringify({ autoMaintain: false }));
+      const memoryFactory = vi.fn(() => ({ appendMemory: vi.fn() }));
+      const distillerFactory = vi.fn(() => ({ distilledCandidatesFromMessages: vi.fn() }));
+      vi.doMock('./memory.js', memoryFactory);
+      vi.doMock('./session-distill.js', distillerFactory);
+      try {
+        await expect(
+          autoDistillToMemory([
+            {
+              role: 'user',
+              content: 'We decided auto-maintain opt-out must skip memory writes.',
+            },
+          ]),
+        ).resolves.toBe(0);
+        expect(distillerFactory).not.toHaveBeenCalled();
+        expect(memoryFactory).not.toHaveBeenCalled();
+      } finally {
+        vi.doUnmock('./memory.js');
+        vi.doUnmock('./session-distill.js');
       }
     });
     it('returns 0 for empty / non-array input', async () => {
