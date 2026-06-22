@@ -74,6 +74,10 @@ function distilledMemoryEntry(value: unknown): { text: string; noteType: NoteTyp
   return noteType ? { text, noteType } : null;
 }
 
+function distilledFactDedupeKey(fact: { text: string; noteType: NoteType }): string {
+  return `${fact.noteType}\0${fact.text.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim()}`;
+}
+
 /**
  * auto-maintenance เปิดโดย default. ปิดเมื่อ:
  *  - persistence ปิด (ไม่มีที่เก็บ memory อยู่แล้ว)
@@ -172,10 +176,15 @@ export async function autoDistillToMemory(messages: unknown): Promise<number> {
     const candidates = distilledCandidatesFromMessages(distillableMessages);
     if (!Array.isArray(candidates)) return 0;
     const facts: { text: string; noteType: NoteType }[] = [];
+    const seenFacts = new Set<string>();
     for (const candidate of candidates) {
       if (facts.length >= MAX_DISTILL_FACTS) break;
       const fact = distilledMemoryEntry(candidate);
-      if (fact) facts.push(fact);
+      if (!fact) continue;
+      const key = distilledFactDedupeKey(fact);
+      if (seenFacts.has(key)) continue;
+      seenFacts.add(key);
+      facts.push(fact);
     }
     if (!facts.length) return 0;
     const { appendMemory } = await import('./memory.js');

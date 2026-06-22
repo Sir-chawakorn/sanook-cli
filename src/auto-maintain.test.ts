@@ -91,6 +91,24 @@ describe('auto-maintain', () => {
   });
 
   describe('maybeStartupMaintain', () => {
+    it('honors the disable flag before claiming state or importing consolidation', async () => {
+      vi.stubEnv('SANOOK_DISABLE_AUTO_MAINTAIN', '1');
+      const runBrainConsolidate = vi.fn().mockResolvedValue({
+        ok: true,
+        steps: [{ applied: ['dedup'] }],
+      });
+      const brainConsolidateFactory = vi.fn(() => ({ runBrainConsolidate }));
+      vi.doMock('./brain-consolidate.js', brainConsolidateFactory);
+      try {
+        await expect(maybeStartupMaintain(Date.now())).resolves.toBe(null);
+        expect(brainConsolidateFactory).not.toHaveBeenCalled();
+        expect(runBrainConsolidate).not.toHaveBeenCalled();
+        await expect(readFile(appHomePath('auto-maintain.json'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+      } finally {
+        vi.doUnmock('./brain-consolidate.js');
+      }
+    });
+
     it('creates the state directory before claiming a startup consolidate run', async () => {
       const now = Date.now();
       await rm(stateDir, { recursive: true, force: true });
@@ -131,6 +149,25 @@ describe('auto-maintain', () => {
         );
         const state = JSON.parse(await readFile(appHomePath('auto-maintain.json'), 'utf8')) as { lastConsolidate?: unknown };
         expect(state.lastConsolidate).toBe(now);
+      } finally {
+        vi.doUnmock('./brain-consolidate.js');
+      }
+    });
+
+    it('keeps startup maintenance best-effort when consolidation throws after claim', async () => {
+      const now = Date.now();
+      const runBrainConsolidate = vi.fn().mockRejectedValue(new Error('consolidate failed'));
+      vi.doMock('./brain-consolidate.js', () => ({ runBrainConsolidate }));
+      try {
+        await expect(maybeStartupMaintain(now)).resolves.toBe(null);
+        expect(runBrainConsolidate).toHaveBeenCalledTimes(1);
+        const state = JSON.parse(await readFile(appHomePath('auto-maintain.json'), 'utf8')) as {
+          lastConsolidate?: unknown;
+        };
+        expect(state.lastConsolidate).toBe(now);
+
+        await expect(maybeStartupMaintain(now + DAY)).resolves.toBe(null);
+        expect(runBrainConsolidate).toHaveBeenCalledTimes(1);
       } finally {
         vi.doUnmock('./brain-consolidate.js');
       }
@@ -387,6 +424,110 @@ describe('auto-maintain', () => {
         ).resolves.toBe(1);
         expect(appendMemory).toHaveBeenCalledTimes(1);
         expect(appendMemory).toHaveBeenCalledWith('Never write API keys to memory.', 'convention');
+      } finally {
+        vi.doUnmock('./memory.js');
+        vi.doUnmock('./session-distill.js');
+      }
+    });
+    it('deduplicates distilled facts within one session before appending memory', async () => {
+      const appendMemory = vi.fn().mockResolvedValue(undefined);
+      const distilledCandidatesFromMessages = vi.fn().mockReturnValue([
+        { text: 'We decided to keep duplicate distill facts out of memory.', kind: 'decision' },
+        { text: 'We decided to keep duplicate distill facts out of memory.', kind: 'decision' },
+        { text: 'We decided to keep duplicate distill facts out of memory.', kind: 'preference' },
+        { text: 'The convention is to dedupe auto-memory writes per session.', kind: 'constraint' },
+        { text: 'The convention is to dedupe auto-memory writes per session.', kind: 'constraint' },
+      ]);
+      vi.doMock('./memory.js', () => ({ appendMemory }));
+      vi.doMock('./session-distill.js', () => ({ distilledCandidatesFromMessages }));
+      try {
+        await expect(
+          autoDistillToMemory([
+            {
+              role: 'assistant',
+              content:
+                'We decided to keep duplicate distill facts out of memory. The convention is to dedupe auto-memory writes per session.',
+            },
+          ]),
+        ).resolves.toBe(3);
+        expect(appendMemory).toHaveBeenCalledTimes(3);
+        expect(appendMemory).toHaveBeenNthCalledWith(
+          1,
+          'We decided to keep duplicate distill facts out of memory.',
+          'decision',
+        );
+        expect(appendMemory).toHaveBeenNthCalledWith(
+          2,
+          'We decided to keep duplicate distill facts out of memory.',
+          'preference',
+        );
+        expect(appendMemory).toHaveBeenNthCalledWith(
+          3,
+          'The convention is to dedupe auto-memory writes per session.',
+          'convention',
+        );
+      } finally {
+        vi.doUnmock('./memory.js');
+        vi.doUnmock('./session-distill.js');
+      }
+    });
+    it('deduplicates auto-distill facts with equivalent casing, whitespace, and Unicode forms', async () => {
+      const appendMemory = vi.fn().mockResolvedValue(undefined);
+      const distilledCandidatesFromMessages = vi.fn().mockReturnValue([
+        { text: 'Piqué prefers concise Thai replies.', kind: 'preference' },
+        { text: 'PIQUE\u0301  PREFERS\nCONCISE THAI REPLIES.', kind: 'preference' },
+        { text: 'Pique\u0301  prefers\nconcise Thai replies.', kind: 'decision' },
+      ]);
+      vi.doMock('./memory.js', () => ({ appendMemory }));
+      vi.doMock('./session-distill.js', () => ({ distilledCandidatesFromMessages }));
+      try {
+        await expect(
+          autoDistillToMemory([
+            {
+              role: 'assistant',
+              content: 'Piqué prefers concise Thai replies.',
+            },
+          ]),
+        ).resolves.toBe(2);
+        expect(appendMemory).toHaveBeenCalledTimes(2);
+        expect(appendMemory).toHaveBeenNthCalledWith(1, 'Piqué prefers concise Thai replies.', 'preference');
+        expect(appendMemory).toHaveBeenNthCalledWith(2, 'Pique\u0301  prefers\nconcise Thai replies.', 'decision');
+      } finally {
+        vi.doUnmock('./memory.js');
+        vi.doUnmock('./session-distill.js');
+      }
+    });
+    it('does not count duplicate distilled facts toward the per-session write cap', async () => {
+      const appendMemory = vi.fn().mockResolvedValue(undefined);
+      const distilledCandidatesFromMessages = vi.fn().mockReturnValue([
+        ...Array.from({ length: 12 }, () => ({
+          text: 'We decided to keep repeated distill facts out of memory.',
+          kind: 'decision',
+        })),
+        ...Array.from({ length: 8 }, (_, i) => ({
+          text: `We decided to keep later unique fact ${i} in memory.`,
+          kind: 'decision',
+        })),
+      ]);
+      vi.doMock('./memory.js', () => ({ appendMemory }));
+      vi.doMock('./session-distill.js', () => ({ distilledCandidatesFromMessages }));
+      try {
+        await expect(
+          autoDistillToMemory([
+            {
+              role: 'assistant',
+              content:
+                'We decided to keep repeated distill facts out of memory. We decided to keep later unique facts in memory.',
+            },
+          ]),
+        ).resolves.toBe(8);
+        expect(appendMemory).toHaveBeenCalledTimes(8);
+        expect(appendMemory).toHaveBeenNthCalledWith(
+          1,
+          'We decided to keep repeated distill facts out of memory.',
+          'decision',
+        );
+        expect(appendMemory).toHaveBeenLastCalledWith('We decided to keep later unique fact 6 in memory.', 'decision');
       } finally {
         vi.doUnmock('./memory.js');
         vi.doUnmock('./session-distill.js');
