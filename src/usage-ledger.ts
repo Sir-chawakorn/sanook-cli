@@ -74,8 +74,8 @@ export async function appendUsageEvent(event: UsageEvent): Promise<void> {
   await appendFile(usageEventsPath(), `${JSON.stringify(event)}\n`, { mode: 0o600 });
 }
 
-export function recordAgentUsage(options: RecordAgentUsageOptions): void {
-  if (!usageLedgerEnabled()) return;
+export function recordAgentUsage(options: RecordAgentUsageOptions): Promise<void> {
+  if (!usageLedgerEnabled()) return Promise.resolve();
   const snap = options.cost.snapshot();
   const ts = new Date().toISOString();
   const event: UsageEvent = {
@@ -94,7 +94,7 @@ export function recordAgentUsage(options: RecordAgentUsageOptions): void {
     costUsd: snap.hasPricing ? snap.costUsd : null,
     priced: snap.hasPricing,
   };
-  void appendUsageEvent(event).catch(() => {});
+  return appendUsageEvent(event).catch(() => {});
 }
 
 export async function loadUsageEvents(options: { since?: string; until?: string } = {}): Promise<UsageEvent[]> {

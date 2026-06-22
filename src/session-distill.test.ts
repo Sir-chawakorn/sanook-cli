@@ -84,6 +84,74 @@ describe('distillSession', () => {
     ]);
   });
 
+  it('strips Markdown task-list markers before persisting durable facts', () => {
+    const out = distillSession([
+      {
+        role: 'assistant',
+        text: '- [x] We decided to use task lists for release gates.\n1. [ ] Secrets must never be written into release notes.',
+      },
+    ]);
+
+    expect(out).toEqual([
+      { text: 'We decided to use task lists for release gates.', kind: 'decision' },
+      { text: 'Secrets must never be written into release notes.', kind: 'constraint' },
+    ]);
+  });
+
+  it('strips indented Markdown list markers before classifying durable facts', () => {
+    const out = distillSession([
+      {
+        role: 'assistant',
+        text: '  - [ ] The convention is to write release notes locally.\n\t2) Secrets must never be logged.',
+      },
+    ]);
+
+    expect(out).toEqual([
+      { text: 'The convention is to write release notes locally.', kind: 'preference' },
+      { text: 'Secrets must never be logged.', kind: 'constraint' },
+    ]);
+  });
+
+  it('strips plus-sign Markdown task-list markers before persisting durable facts', () => {
+    const out = distillSession([
+      { role: 'assistant', text: '+ [ ] We decided to include local-only maintenance notes.' },
+    ]);
+
+    expect(out).toEqual([
+      { text: 'We decided to include local-only maintenance notes.', kind: 'decision' },
+    ]);
+  });
+
+  it('does not treat leading digits in prose as ordered-list markers', () => {
+    const out = distillSession([
+      { role: 'assistant', text: '2FA must be enabled for production deploy access.' },
+    ]);
+
+    expect(out).toEqual([
+      { text: '2FA must be enabled for production deploy access.', kind: 'constraint' },
+    ]);
+  });
+
+  it('extracts Thai durable facts without spaces or ASCII dedupe keys', () => {
+    const out = distillSession([
+      { role: 'assistant', text: 'ปิ๊กชอบใช้โหมดมืดเสมอ.\nปิ๊กชอบใช้โหมดมืดเสมอ.' },
+    ]);
+
+    expect(out).toEqual([
+      { text: 'ปิ๊กชอบใช้โหมดมืดเสมอ.', kind: 'preference' },
+    ]);
+  });
+
+  it('dedupes visually identical Unicode facts with different normalization forms', () => {
+    const out = distillSession([
+      { role: 'assistant', text: 'Piqué prefers dark mode.\nPique\u0301 prefers dark mode.' },
+    ]);
+
+    expect(out).toEqual([
+      { text: 'Piqué prefers dark mode.', kind: 'preference' },
+    ]);
+  });
+
   it('dedupes repeated facts and ignores system messages', () => {
     const out = distillSession([
       { role: 'system', text: 'You are a coding agent. Always be helpful.' }, // system → ignored

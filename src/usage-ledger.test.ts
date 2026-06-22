@@ -24,8 +24,7 @@ describe('usage ledger', () => {
     vi.stubEnv('HOME', home);
     const meter = new CostMeter('anthropic:claude-sonnet-4-6');
     meter.add({ inputTokens: 120, outputTokens: 45, cachedInputTokens: 10 }, 5);
-    recordAgentUsage({ model: 'sonnet', cost: meter, source: 'repl', sessionId: 'sess-1', cwd: home });
-    await new Promise((r) => setTimeout(r, 20));
+    await recordAgentUsage({ model: 'sonnet', cost: meter, source: 'repl', sessionId: 'sess-1', cwd: home });
     const events = await loadUsageEvents();
     expect(events).toHaveLength(1);
     expect(events[0]?.sessionId).toBe('sess-1');

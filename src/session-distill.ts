@@ -17,14 +17,15 @@ export interface DistillMessage {
 
 // Signal patterns — a sentence is a candidate only if it matches one (keeps precision up).
 const SIGNALS: { kind: DistillKind; re: RegExp }[] = [
-  { kind: 'decision', re: /\b(decided|we['’]?ll use|we will use|we use|going with|chose|switch(?:ed|ing)? to|standardiz(?:e|ed|ing) on|settled on|agreed to)\b/i },
-  { kind: 'preference', re: /\b(prefer(?:s|red)?|convention(?: is|:)|by convention|coding style|likes? to|always (?:use|run|prefer|name)|we name)\b/i },
-  { kind: 'constraint', re: /\b(must not|must|never|do ?n['’]?t|don['’]t|required to|is required|only (?:use|run|allow)|forbidden|not allowed|has to)\b/i },
-  { kind: 'gotcha', re: /\b(gotcha|caveat|watch out|the (?:bug|issue|problem|error) (?:was|is)|turned out|root cause|fix(?:ed)? (?:was|by|it by)|fails? (?:if|when|because)|breaks? (?:if|when)|broke because|because the|note that|important:|heads up)\b/i },
+  { kind: 'decision', re: /\b(decided|we['’]?ll use|we will use|we use|going with|chose|switch(?:ed|ing)? to|standardiz(?:e|ed|ing) on|settled on|agreed to)\b|(?:ตัดสินใจ|เลือกใช้|ตกลง(?:จะ)?)/i },
+  { kind: 'preference', re: /\b(prefer(?:s|red)?|convention(?: is|:)|by convention|coding style|likes? to|always (?:use|run|prefer|name)|we name)\b|(?:ชอบใช้|ชอบ|ธรรมเนียมคือ|รูปแบบคือ)/i },
+  { kind: 'constraint', re: /\b(must not|must|never|do ?n['’]?t|don['’]t|required to|is required|only (?:use|run|allow)|forbidden|not allowed|has to)\b|(?:จำเป็นต้อง|ต้อง|ห้าม|อย่า)/i },
+  { kind: 'gotcha', re: /\b(gotcha|caveat|watch out|the (?:bug|issue|problem|error) (?:was|is)|turned out|root cause|fix(?:ed)? (?:was|by|it by)|fails? (?:if|when|because)|breaks? (?:if|when)|broke because|because the|note that|important:|heads up)\b|(?:ข้อควรระวัง|ระวัง|ปัญหาคือ|สาเหตุคือ)/i },
 ];
 const KIND_PRECEDENCE: DistillKind[] = ['preference', 'constraint', 'gotcha', 'decision'];
 // Strong "X not Y" / "X instead of Y" decision signal (e.g. "pnpm not npm", "tabs over spaces").
 const X_NOT_Y = /\b[\w.@/+-]{2,}\s*,?\s+(?:not|instead of|over|rather than)\s+[\w.@/+-]{2,}\b/i;
+const WORD_SEG = new Intl.Segmenter(undefined, { granularity: 'word' });
 
 const MAX_CANDIDATES = 12;
 const MIN_WORDS = 4;
@@ -34,7 +35,7 @@ function looksLikeCodeOrLog(s: string): boolean {
   if (/^\s*[$#>]/.test(s)) return true; // shell prompt / diff marker
   if (/[{};=]\s*$/.test(s) && /[(){}\[\]=;]/.test(s)) return true; // code-ish line
   if (/\b(at |Error:|Traceback|stack trace|node_modules\/)/.test(s) && /:\d+/.test(s)) return true; // stack trace
-  const symbolRatio = (s.replace(/[\w\s]/g, '').length || 0) / Math.max(1, s.length);
+  const symbolRatio = (s.replace(/[\p{L}\p{N}\p{M}\s]/gu, '').length || 0) / Math.max(1, s.length);
   return symbolRatio > 0.3; // mostly punctuation/symbols
 }
 
@@ -46,7 +47,20 @@ function splitSentences(text: string): string[] {
 }
 
 function normalize(s: string): string {
-  return s.replace(/\s+/g, ' ').replace(/^[-*•\d.)\s]+/, '').trim();
+  return s
+    .replace(/\s+/g, ' ')
+    .trimStart()
+    .replace(/^(?:[-*+•]|\d+[.)])\s+/, '')
+    .replace(/^\[(?: |x|X)\]\s*/, '')
+    .trim();
+}
+
+function countWords(s: string): number {
+  let count = 0;
+  for (const seg of WORD_SEG.segment(s)) {
+    if (seg.isWordLike) count++;
+  }
+  return count;
 }
 
 function classifyKind(s: string): DistillKind | undefined {
@@ -55,6 +69,15 @@ function classifyKind(s: string): DistillKind | undefined {
     if (matched.has(kind)) return kind;
   }
   return X_NOT_Y.test(s) ? 'decision' : undefined;
+}
+
+function dedupeKey(s: string): string {
+  return s
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M} ]+/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -68,13 +91,13 @@ export function distillSession(messages: DistillMessage[]): DistillCandidate[] {
     if (msg.role !== 'user' && msg.role !== 'assistant') continue;
     for (const raw of splitSentences(msg.text)) {
       const s = normalize(raw);
-      const words = s.split(/\s+/).filter(Boolean);
-      if (words.length < MIN_WORDS || words.length > MAX_WORDS) continue;
+      const words = countWords(s);
+      if (words < MIN_WORDS || words > MAX_WORDS) continue;
       if (s.endsWith('?')) continue; // questions aren't durable facts
       if (looksLikeCodeOrLog(s)) continue;
       const kind = classifyKind(s);
       if (!kind) continue;
-      const key = s.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+      const key = dedupeKey(s);
       if (!key || seen.has(key)) continue;
       seen.add(key);
       out.push({ text: s, kind });
