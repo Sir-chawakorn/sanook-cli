@@ -31,9 +31,6 @@ export interface McpServerConfig {
   /** false = เก็บ config ไว้แต่ไม่โหลด tools ตอน runtime (default: enabled) */
   enabled?: boolean;
 }
-interface McpConfig {
-  mcpServers?: Record<string, McpServerConfig>;
-}
 export interface McpToolDef {
   name: string;
   description?: string;
@@ -296,21 +293,24 @@ class McpClient {
   }
 
   async listTools(timeoutMs = REQUEST_TIMEOUT): Promise<McpToolDef[]> {
-    const r = (await this.transport.request('tools/list', undefined, timeoutMs)) as { tools?: McpToolDef[] };
-    return r?.tools ?? [];
+    const r = objectRecord(await this.transport.request('tools/list', undefined, timeoutMs));
+    return sanitizeMcpToolDefs(r?.tools);
   }
 
   async callTool(name: string, args: unknown): Promise<string> {
-    const r = (await this.transport.request('tools/call', { name, arguments: args ?? {} })) as {
-      content?: { type?: string; text?: string }[];
-      isError?: boolean;
-    };
-    const text = (r?.content ?? [])
-      .filter((c) => c.type === 'text')
-      .map((c) => c.text ?? '')
+    const r = objectRecord(await this.transport.request('tools/call', { name, arguments: args ?? {} }));
+    const content = Array.isArray(r?.content) ? r.content : [];
+    const text = content
+      .map((raw) => objectRecord(raw))
+      .filter(
+        (c): c is Record<string, unknown> & { text: string } =>
+          c?.type === 'text' && typeof c.text === 'string',
+      )
+      .map((c) => c.text)
       .join('\n');
     const capped = capMcpToolOutput(text);
-    return r?.isError ? `MCP error: ${capped}` : capped || '(no output)';
+    const output = capped || '(no output)';
+    return r?.isError === true ? `MCP error: ${output}` : output;
   }
 
   close(): void {
@@ -350,6 +350,25 @@ function stringRecord(value: unknown): Record<string, string> | undefined {
   return Object.keys(out).length ? out : undefined;
 }
 
+function objectRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
+function sanitizeMcpToolDefs(value: unknown): McpToolDef[] {
+  if (!Array.isArray(value)) return [];
+  const tools: McpToolDef[] = [];
+  for (const raw of value) {
+    const r = objectRecord(raw);
+    if (!r || typeof r.name !== 'string' || !r.name) continue;
+    const def: McpToolDef = { name: r.name };
+    if (typeof r.description === 'string') def.description = r.description;
+    const inputSchema = objectRecord(r.inputSchema);
+    if (inputSchema) def.inputSchema = inputSchema;
+    tools.push(def);
+  }
+  return tools;
+}
+
 function sanitizeMcpServerConfig(raw: unknown): McpServerConfig | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const r = raw as Record<string, unknown>;
@@ -367,9 +386,10 @@ function sanitizeMcpServerConfig(raw: unknown): McpServerConfig | null {
 }
 
 async function readMcpFile(path: string, merged: Record<string, McpServerConfig>): Promise<void> {
-  const cfg = JSON.parse(await readFile(path, 'utf8')) as McpConfig;
-  if (!cfg.mcpServers || typeof cfg.mcpServers !== 'object') return;
-  for (const [name, raw] of Object.entries(cfg.mcpServers)) {
+  const cfg = objectRecord(JSON.parse(await readFile(path, 'utf8')));
+  const servers = objectRecord(cfg?.mcpServers);
+  if (!servers) return;
+  for (const [name, raw] of Object.entries(servers)) {
     if (!isValidMcpServerName(name)) continue;
     const server = sanitizeMcpServerConfig(raw);
     if (server) merged[name] = server;
@@ -401,8 +421,9 @@ export async function loadMcpConfig(onLog?: (m: string) => void, cwd: string = p
 export async function findMcpServerConfigPath(name: string, cwd: string = process.cwd()): Promise<string | undefined> {
   const globalPath = appHomePath('mcp.json');
   try {
-    const cfg = JSON.parse(await readFile(globalPath, 'utf8')) as McpConfig;
-    if (cfg.mcpServers && isValidMcpServerName(name) && name in cfg.mcpServers) return globalPath;
+    const cfg = objectRecord(JSON.parse(await readFile(globalPath, 'utf8')));
+    const servers = objectRecord(cfg?.mcpServers);
+    if (servers && isValidMcpServerName(name) && Object.prototype.hasOwnProperty.call(servers, name)) return globalPath;
   } catch {
     /* no global config */
   }
@@ -410,8 +431,9 @@ export async function findMcpServerConfigPath(name: string, cwd: string = proces
   const projectPath = await projectConfigPathIfTrusted('mcp.json', root);
   if (!projectPath) return undefined;
   try {
-    const cfg = JSON.parse(await readFile(projectPath, 'utf8')) as McpConfig;
-    if (cfg.mcpServers && isValidMcpServerName(name) && name in cfg.mcpServers) return projectPath;
+    const cfg = objectRecord(JSON.parse(await readFile(projectPath, 'utf8')));
+    const servers = objectRecord(cfg?.mcpServers);
+    if (servers && isValidMcpServerName(name) && Object.prototype.hasOwnProperty.call(servers, name)) return projectPath;
   } catch {
     /* unreadable project config */
   }

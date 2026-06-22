@@ -2,7 +2,20 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { capMcpToolOutput, findMcpServerConfigPath, isMcpServerEnabled, isValidMcpServerName, loadMcpConfig, mcpAuthHints, MAX_MCP_TOOL_OUTPUT_CHARS, probeMcpServer } from './mcp.js';
+import {
+  capMcpToolOutput,
+  closeMcp,
+  findMcpServerConfigPath,
+  getMcpTools,
+  isMcpServerEnabled,
+  isValidMcpServerName,
+  loadMcpConfig,
+  mcpAuthHints,
+  MAX_MCP_TOOL_OUTPUT_CHARS,
+  probeMcpServer,
+} from './mcp.js';
+
+const toolExecOptions = {} as never;
 
 describe('MCP config loading', () => {
   let home: string;
@@ -14,6 +27,7 @@ describe('MCP config loading', () => {
   });
 
   afterEach(async () => {
+    closeMcp();
     vi.unstubAllEnvs();
     await rm(home, { recursive: true, force: true });
   });
@@ -37,6 +51,22 @@ describe('MCP config loading', () => {
     expect(cfg.ok_name).toEqual({ command: 'node', args: ['server.js'], env: { TOKEN: 'x' } });
     expect(cfg.remote).toEqual({ url: 'https://example.com/mcp', headers: { Authorization: 'Bearer x' } });
     expect((cfg as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it('ignores non-record mcpServers instead of treating array indexes as server names', async () => {
+    await writeFile(
+      join(home, '.sanook', 'mcp.json'),
+      JSON.stringify({ mcpServers: [{ command: 'node', args: ['array-entry.js'] }] }),
+    );
+
+    await expect(loadMcpConfig(undefined, process.cwd())).resolves.toEqual({});
+    await expect(findMcpServerConfigPath('0')).resolves.toBeUndefined();
+  });
+
+  it('only finds config paths for own MCP server keys', async () => {
+    await writeFile(join(home, '.sanook', 'mcp.json'), JSON.stringify({ mcpServers: {} }));
+
+    await expect(findMcpServerConfigPath('toString')).resolves.toBeUndefined();
   });
 
   it('preserves enabled flag and skips disabled servers at runtime', async () => {
@@ -145,6 +175,164 @@ describe('MCP config loading', () => {
       transport: 'stdio',
       tools: [{ name: 'ping', description: 'Returns pong', inputSchema: { type: 'object' } }],
     });
+  });
+
+  it('sanitizes malformed tool definitions returned by MCP servers', async () => {
+    const server = `
+      const readline = require('node:readline');
+      const rl = readline.createInterface({ input: process.stdin });
+      rl.on('line', (line) => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        if (msg.method === 'initialize') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'tool-shape-test', version: '1.0.0' } },
+          }) + '\\n');
+        }
+        if (msg.method === 'tools/list') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: {
+              tools: [
+                { name: 'ping', description: 'Returns pong', inputSchema: { type: 'object' } },
+                { name: 'partial', description: 123, inputSchema: [] },
+                { name: '' },
+                { description: 'missing name' },
+                'not-an-object',
+              ],
+            },
+          }) + '\\n');
+        }
+      });
+    `;
+
+    await expect(probeMcpServer({ command: process.execPath, args: ['-e', server] }, 500)).resolves.toEqual({
+      ok: true,
+      transport: 'stdio',
+      tools: [
+        { name: 'ping', description: 'Returns pong', inputSchema: { type: 'object' } },
+        { name: 'partial' },
+      ],
+    });
+  });
+
+  it('treats malformed tool list envelopes as an empty tool list', async () => {
+    const server = `
+      const readline = require('node:readline');
+      const rl = readline.createInterface({ input: process.stdin });
+      rl.on('line', (line) => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        if (msg.method === 'initialize') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'bad-envelope-test', version: '1.0.0' } },
+          }) + '\\n');
+        }
+        if (msg.method === 'tools/list') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: 'not-an-object',
+          }) + '\\n');
+        }
+      });
+    `;
+
+    await expect(probeMcpServer({ command: process.execPath, args: ['-e', server] }, 500)).resolves.toEqual({
+      ok: true,
+      transport: 'stdio',
+      tools: [],
+    });
+  });
+
+  it('sanitizes malformed tool call content before returning model output', async () => {
+    const server = `
+      const readline = require('node:readline');
+      const rl = readline.createInterface({ input: process.stdin });
+      rl.on('line', (line) => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        if (msg.method === 'initialize') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'call-shape-test', version: '1.0.0' } },
+          }) + '\\n');
+        }
+        if (msg.method === 'tools/list') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { tools: [{ name: 'messy', inputSchema: { type: 'object' } }] },
+          }) + '\\n');
+        }
+        if (msg.method === 'tools/call') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: {
+              content: [
+                { type: 'text', text: 'ok' },
+                { type: 'text', text: 123 },
+                { type: 'image', data: 'ignored' },
+                ['not-an-object'],
+              ],
+            },
+          }) + '\\n');
+        }
+      });
+    `;
+    await writeFile(
+      join(home, '.sanook', 'mcp.json'),
+      JSON.stringify({ mcpServers: { local: { command: process.execPath, args: ['-e', server] } } }),
+    );
+
+    const tools = await getMcpTools();
+    await expect(tools.local__messy.execute?.({}, toolExecOptions)).resolves.toBe('ok');
+  });
+
+  it('keeps MCP tool errors readable when the server returns no text content', async () => {
+    const server = `
+      const readline = require('node:readline');
+      const rl = readline.createInterface({ input: process.stdin });
+      rl.on('line', (line) => {
+        const msg = JSON.parse(line);
+        if (!msg.id) return;
+        if (msg.method === 'initialize') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'empty-error-test', version: '1.0.0' } },
+          }) + '\\n');
+        }
+        if (msg.method === 'tools/list') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { tools: [{ name: 'empty_error', inputSchema: { type: 'object' } }] },
+          }) + '\\n');
+        }
+        if (msg.method === 'tools/call') {
+          process.stdout.write(JSON.stringify({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: { isError: true, content: [] },
+          }) + '\\n');
+        }
+      });
+    `;
+    await writeFile(
+      join(home, '.sanook', 'mcp.json'),
+      JSON.stringify({ mcpServers: { local: { command: process.execPath, args: ['-e', server] } } }),
+    );
+
+    const tools = await getMcpTools();
+    await expect(tools.local__empty_error.execute?.({}, toolExecOptions)).resolves.toBe('MCP error: (no output)');
   });
 
   it('passes shared safe env keys to stdio MCP servers', async () => {
