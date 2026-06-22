@@ -197,7 +197,7 @@ usage:
   ${BRAND.cliName} --json "<task>"     headless, JSONL output (for CI/scripts)
   ${BRAND.cliName} sessions             list/resume-audit saved conversation sessions
   ${BRAND.cliName} insights             local usage/session insights
-  ${BRAND.cliName} usage [daily|...]    token/cost ledger (ccusage-style)
+  ${BRAND.cliName} usage [daily|weekly|monthly|session] [--days N] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--json]
   ${BRAND.cliName} dump [--show-keys]   support snapshot (secrets redacted)
   ${BRAND.cliName} prompt-size [--json]  inspect prompt/context budget without calling a model
   ${BRAND.cliName} runtimes [--json]     inspect optional Python/Rust runtime surface

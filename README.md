@@ -503,7 +503,7 @@ sanook sessions stats [--all]
 sanook sessions prune --keep N [--all] [--yes]
 sanook sessions rm <id>
 sanook dump [--show-keys] support dump (keys are still redacted)
-sanook usage [daily|weekly|monthly|session] [--days N] [--json]
+sanook usage [daily|weekly|monthly|session] [--days N] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--json]
 sanook prompt-size [--json] inspect system/brain/skill/tool context budget
 sanook runtimes [--json]   inspect optional Python/Rust runtime surface
 sanook web status [--json] inspect true web-search/fetch readiness

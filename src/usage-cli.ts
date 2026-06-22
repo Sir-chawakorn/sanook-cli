@@ -14,10 +14,26 @@ export interface ParsedUsageArgs {
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const POSITIVE_INTEGER_RE = /^[1-9]\d*$/;
 
-function shiftDays(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
+function isUsageDate(raw: string | undefined): raw is string {
+  if (!raw || !DATE_RE.test(raw)) return false;
+  const [year, month, day] = raw.split('-').map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  d.setUTCFullYear(year);
+  return d.toISOString().slice(0, 10) === raw;
+}
+
+function parsePositiveInteger(raw: string | undefined): number | undefined {
+  if (!raw || !POSITIVE_INTEGER_RE.test(raw)) return undefined;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) ? n : undefined;
+}
+
+function shiftDaysFrom(anchor: string, days: number): string {
+  const [year, month, day] = anchor.split('-').map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
 }
 
@@ -41,39 +57,39 @@ export function parseUsageArgs(args: string[]): ParsedUsageArgs | null {
     else if (arg === '--since') {
       if (sawSince) return null;
       const picked = takeValue(args, i);
-      if (!picked.value || !DATE_RE.test(picked.value)) return null;
+      if (!isUsageDate(picked.value)) return null;
       since = picked.value;
       sawSince = true;
       i = picked.nextIndex;
     } else if (arg.startsWith('--since=')) {
       if (sawSince) return null;
       since = arg.slice('--since='.length);
-      if (!DATE_RE.test(since)) return null;
+      if (!isUsageDate(since)) return null;
       sawSince = true;
     } else if (arg === '--until') {
       if (sawUntil) return null;
       const picked = takeValue(args, i);
-      if (!picked.value || !DATE_RE.test(picked.value)) return null;
+      if (!isUsageDate(picked.value)) return null;
       until = picked.value;
       sawUntil = true;
       i = picked.nextIndex;
     } else if (arg.startsWith('--until=')) {
       if (sawUntil) return null;
       until = arg.slice('--until='.length);
-      if (!DATE_RE.test(until)) return null;
+      if (!isUsageDate(until)) return null;
       sawUntil = true;
     } else if (arg === '--days') {
       if (sawDays) return null;
       const picked = takeValue(args, i);
-      const n = Number(picked.value);
-      if (!Number.isInteger(n) || n <= 0) return null;
+      const n = parsePositiveInteger(picked.value);
+      if (n === undefined) return null;
       days = n;
       sawDays = true;
       i = picked.nextIndex;
     } else if (arg.startsWith('--days=')) {
       if (sawDays) return null;
-      const n = Number(arg.slice('--days='.length));
-      if (!Number.isInteger(n) || n <= 0) return null;
+      const n = parsePositiveInteger(arg.slice('--days='.length));
+      if (n === undefined) return null;
       days = n;
       sawDays = true;
     } else if (!arg.startsWith('-')) positional.push(arg);
@@ -85,8 +101,9 @@ export function parseUsageArgs(args: string[]): ParsedUsageArgs | null {
     if (!['daily', 'weekly', 'monthly', 'session'].includes(positional[0])) return null;
     mode = positional[0] as UsageReportMode;
   }
-  if (!since) since = shiftDays(days - 1);
   if (!until) until = new Date().toISOString().slice(0, 10);
+  if (!since) since = shiftDaysFrom(until, days - 1);
+  if (since > until) return null;
   return { mode, since, until, days, json, noColor };
 }
 
