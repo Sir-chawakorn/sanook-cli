@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { envFlag, pathIsDir } from './brand.js';
+import { envFlag, pathIsDir, persistenceEnabled, selfImproveEnabled, usageLedgerEnabled } from './brand.js';
 
 describe('envFlag', () => {
   afterEach(() => {
@@ -47,5 +47,19 @@ describe('pathIsDir', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('persistence-scoped feature gates', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('disables persistence-backed ledgers when global persistence is disabled', () => {
+    vi.stubEnv('SANOOK_DISABLE_PERSISTENCE', '1');
+
+    expect(persistenceEnabled()).toBe(false);
+    expect(usageLedgerEnabled()).toBe(false);
+    expect(selfImproveEnabled()).toBe(false);
   });
 });

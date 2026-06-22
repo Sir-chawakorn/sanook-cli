@@ -154,6 +154,7 @@ function phantomFamily(terms: string[], sample: string, now: number): TaskFamily
 // ---- FS (gated by persistence) ---------------------------------------------
 
 export async function loadLedger(): Promise<Ledger> {
+  if (!persistenceEnabled()) return emptyLedger();
   try {
     const parsed = LedgerSchema.safeParse(JSON.parse(await readFile(LEDGER_PATH, 'utf8')));
     return parsed.success ? parsed.data : emptyLedger();
