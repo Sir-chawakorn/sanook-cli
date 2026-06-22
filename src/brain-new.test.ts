@@ -30,6 +30,49 @@ describe('parseBrainNewArgs', () => {
     expect(parseBrainNewArgs(['session', '--title', 'one', 'two']).ok).toBe(false);
     expect(parseBrainNewArgs(['session', '--json']).ok).toBe(false);
   });
+
+  it('rejects missing split option values without consuming the next flag', () => {
+    const title = parseBrainNewArgs(['session', '--title', '--force', 'ship release']);
+    const repo = parseBrainNewArgs(['project', '--repo', '--verify', 'npm test']);
+    const verify = parseBrainNewArgs(['session', '--verify', '--output', 'Sessions/out.md']);
+    const defaultBranch = parseBrainNewArgs(['project', '--default-branch', '--repo', '/tmp/repo']);
+    const output = parseBrainNewArgs(['session', '--output', '--force']);
+
+    expect(title.ok).toBe(false);
+    if (!title.ok) expect(title.message).toContain('--title');
+    expect(repo.ok).toBe(false);
+    if (!repo.ok) expect(repo.message).toContain('--repo');
+    expect(verify.ok).toBe(false);
+    if (!verify.ok) expect(verify.message).toContain('--verify');
+    expect(defaultBranch.ok).toBe(false);
+    if (!defaultBranch.ok) expect(defaultBranch.message).toContain('--default-branch');
+    expect(output.ok).toBe(false);
+    if (!output.ok) expect(output.message).toContain('--output');
+  });
+
+  it('rejects duplicate scalar options and preserves literal title text after --', () => {
+    const title = parseBrainNewArgs(['session', '--title', 'one', '--title=two']);
+    const repo = parseBrainNewArgs(['project', '--repo', '/tmp/one', '--repo=/tmp/two']);
+    const verify = parseBrainNewArgs(['session', '--verify', 'npm test', '--verify=npm run build']);
+    const defaultBranch = parseBrainNewArgs(['project', '--default-branch', 'main', '--default-branch=trunk']);
+    const output = parseBrainNewArgs(['session', '--output', 'Sessions/one.md', '--output=Sessions/two.md']);
+
+    expect(title.ok).toBe(false);
+    if (!title.ok) expect(title.message).toContain('title');
+    expect(repo.ok).toBe(false);
+    if (!repo.ok) expect(repo.message).toContain('repo');
+    expect(verify.ok).toBe(false);
+    if (!verify.ok) expect(verify.message).toContain('verify');
+    expect(defaultBranch.ok).toBe(false);
+    if (!defaultBranch.ok) expect(defaultBranch.message).toContain('default-branch');
+    expect(output.ok).toBe(false);
+    if (!output.ok) expect(output.message).toContain('output');
+
+    expect(parseBrainNewArgs(['session', '--force', '--', '--title', 'literal'])).toEqual({
+      ok: true,
+      value: { type: 'session', title: '--title literal', force: true },
+    });
+  });
 });
 
 describe('brain new helpers', () => {

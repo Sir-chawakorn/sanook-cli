@@ -29,6 +29,9 @@ export function parseUsageArgs(args: string[]): ParsedUsageArgs | null {
   let days = 30;
   let json = false;
   let noColor = false;
+  let sawSince = false;
+  let sawUntil = false;
+  let sawDays = false;
 
   const positional: string[] = [];
   for (let i = 0; i < args.length; i++) {
@@ -36,35 +39,48 @@ export function parseUsageArgs(args: string[]): ParsedUsageArgs | null {
     if (arg === '--json') json = true;
     else if (arg === '--no-color') noColor = true;
     else if (arg === '--since') {
+      if (sawSince) return null;
       const picked = takeValue(args, i);
       if (!picked.value || !DATE_RE.test(picked.value)) return null;
       since = picked.value;
+      sawSince = true;
       i = picked.nextIndex;
     } else if (arg.startsWith('--since=')) {
+      if (sawSince) return null;
       since = arg.slice('--since='.length);
       if (!DATE_RE.test(since)) return null;
+      sawSince = true;
     } else if (arg === '--until') {
+      if (sawUntil) return null;
       const picked = takeValue(args, i);
       if (!picked.value || !DATE_RE.test(picked.value)) return null;
       until = picked.value;
+      sawUntil = true;
       i = picked.nextIndex;
     } else if (arg.startsWith('--until=')) {
+      if (sawUntil) return null;
       until = arg.slice('--until='.length);
       if (!DATE_RE.test(until)) return null;
+      sawUntil = true;
     } else if (arg === '--days') {
+      if (sawDays) return null;
       const picked = takeValue(args, i);
       const n = Number(picked.value);
       if (!Number.isInteger(n) || n <= 0) return null;
       days = n;
+      sawDays = true;
       i = picked.nextIndex;
     } else if (arg.startsWith('--days=')) {
+      if (sawDays) return null;
       const n = Number(arg.slice('--days='.length));
       if (!Number.isInteger(n) || n <= 0) return null;
       days = n;
+      sawDays = true;
     } else if (!arg.startsWith('-')) positional.push(arg);
     else return null;
   }
 
+  if (positional.length > 1) return null;
   if (positional[0]) {
     if (!['daily', 'weekly', 'monthly', 'session'].includes(positional[0])) return null;
     mode = positional[0] as UsageReportMode;

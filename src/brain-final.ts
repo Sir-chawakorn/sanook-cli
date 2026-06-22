@@ -211,7 +211,9 @@ export function validateFinalGateContent(content: string): FinalGateValidation {
     if (!isTableHeader(lines, i)) continue;
     const headers = tableCells(lines[i]).map((cell) => normalizeHeader(cell));
     const statusIndex = headers.findIndex((header) => header === 'status' || header === 'verdict');
-    const evidenceIndex = headers.findIndex((header) => header === 'evidence' || header === 'important output' || header === 'scope proven');
+    const evidenceIndexes = headers
+      .map((header, index) => (isEvidenceHeader(header) ? index : -1))
+      .filter((index) => index >= 0);
     if (statusIndex < 0) continue;
     for (let j = i + 2; j < lines.length && lines[j].trim().startsWith('|'); j++) {
       const cells = tableCells(lines[j]);
@@ -220,8 +222,10 @@ export function validateFinalGateContent(content: string): FinalGateValidation {
       if (!status) continue;
       const rowName = cells[0]?.replace(/`/g, '').trim() || `row ${j + 1}`;
       if (status === 'TODO') warnings.push(`TODO status remains in final gate row: ${rowName}`);
-      if (status === PASS_STATUS && evidenceIndex >= 0 && isPlaceholderEvidence(cells[evidenceIndex] ?? '')) {
-        warnings.push(`PASS row has no evidence: ${rowName}`);
+      if (status === PASS_STATUS && evidenceIndexes.length) {
+        const missingEvidenceCount = evidenceIndexes.filter((index) => isPlaceholderEvidence(cells[index] ?? '')).length;
+        if (missingEvidenceCount === evidenceIndexes.length) warnings.push(`PASS row has no evidence: ${rowName}`);
+        else if (missingEvidenceCount > 0) warnings.push(`PASS row has incomplete evidence: ${rowName}`);
       }
     }
   }
@@ -365,6 +369,10 @@ function isSeparatorRow(cells: string[]): boolean {
 
 function normalizeHeader(value: string): string {
   return value.replace(/`/g, '').trim().toLowerCase();
+}
+
+function isEvidenceHeader(value: string): boolean {
+  return value === 'evidence' || value.startsWith('evidence ') || value === 'important output' || value === 'scope proven';
 }
 
 function normalizeStatus(value: string): string | undefined {

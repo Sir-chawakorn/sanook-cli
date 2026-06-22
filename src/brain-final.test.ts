@@ -141,6 +141,75 @@ describe('validateFinalGateContent', () => {
     expect(validation.warnings.join('\n')).toContain('Unfilled placeholder');
   });
 
+  it('warns when PASS command rows leave a required evidence column blank', () => {
+    const content = [
+      '## 1. Objective / DoD Lock',
+      '## 2. Evidence-Backed Checklist',
+      '## 3. Status Matrix',
+      '## 4. Evidence Matrix',
+      '## 5. Residual Risk',
+      '## 6. Change Summary Audit',
+      '## 7. Final Answer Draft',
+      '## 8. Second-Brain Routing / Memory Closeout',
+      'If a row has no evidence, it cannot be `PASS`.',
+      '## Final Verdict',
+      '| Command | Status | Important output | Scope proven |',
+      '|---|---|---|---|',
+      '| `npm test` | PASS | 1497 passed |  |',
+    ].join('\n');
+
+    const validation = validateFinalGateContent(content);
+
+    expect(validation.ok).toBe(false);
+    expect(validation.warnings.join('\n')).toContain('PASS row has incomplete evidence: npm test');
+  });
+
+  it('warns when PASS command rows have no evidence across multiple evidence columns', () => {
+    const content = [
+      '## 1. Objective / DoD Lock',
+      '## 2. Evidence-Backed Checklist',
+      '## 3. Status Matrix',
+      '## 4. Evidence Matrix',
+      '## 5. Residual Risk',
+      '## 6. Change Summary Audit',
+      '## 7. Final Answer Draft',
+      '## 8. Second-Brain Routing / Memory Closeout',
+      'If a row has no evidence, it cannot be `PASS`.',
+      '## Final Verdict',
+      '| Command | Status | Important output | Scope proven |',
+      '|---|---|---|---|',
+      '| `npm test` | PASS |  |  |',
+    ].join('\n');
+
+    const validation = validateFinalGateContent(content);
+
+    expect(validation.ok).toBe(false);
+    expect(validation.warnings.join('\n')).toContain('PASS row has no evidence: npm test');
+  });
+
+  it('recognizes evidence/reason columns as required PASS evidence', () => {
+    const content = [
+      '## 1. Objective / DoD Lock',
+      '## 2. Evidence-Backed Checklist',
+      '## 3. Status Matrix',
+      '## 4. Evidence Matrix',
+      '## 5. Residual Risk',
+      '## 6. Change Summary Audit',
+      '## 7. Final Answer Draft',
+      '## 8. Second-Brain Routing / Memory Closeout',
+      'If a row has no evidence, it cannot be `PASS`.',
+      '## Final Verdict',
+      '| Risk or skipped check | Status | Evidence / reason |',
+      '|---|---|---|',
+      '| No skipped checks | PASS |  |',
+    ].join('\n');
+
+    const validation = validateFinalGateContent(content);
+
+    expect(validation.ok).toBe(false);
+    expect(validation.warnings.join('\n')).toContain('PASS row has no evidence: No skipped checks');
+  });
+
   it('accepts markdown autolinks as final gate evidence', () => {
     const content = [
       '## 1. Objective / DoD Lock',

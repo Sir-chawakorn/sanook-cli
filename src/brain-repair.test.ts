@@ -34,6 +34,49 @@ describe('brain repair helpers', () => {
     expect(repaired.content).toContain('up:: [[Sessions/_Index]]');
   });
 
+  it('does not mistake later quoted content for the note purpose blockquote', () => {
+    const raw = [
+      '---',
+      'note_type: session-log',
+      'parent: "[[Sessions/_Index]]"',
+      '---',
+      '',
+      '# Quoted Evidence',
+      '',
+      '## Evidence',
+      '> user said this later',
+      '',
+      'up:: [[Sessions/_Index]]',
+    ].join('\n');
+
+    const repaired = applyMarkdownRepairs('Sessions/quoted-evidence.md', raw);
+
+    expect(repaired.applied).toEqual(['purpose-blockquote']);
+    expect(repaired.content).toContain('> _(purpose pending');
+    expect(repaired.content).toContain('> user said this later');
+  });
+
+  it('adds parent frontmatter inside existing CRLF frontmatter', () => {
+    const raw = [
+      '---',
+      'note_type: session-log',
+      '---',
+      '',
+      '> Session purpose.',
+      '',
+      '# CRLF Note',
+      '',
+      'up:: [[Sessions/_Index]]',
+      '',
+    ].join('\r\n');
+
+    const repaired = applyMarkdownRepairs('Sessions/crlf-note.md', raw);
+
+    expect(repaired.applied).toEqual(['parent-frontmatter']);
+    expect(repaired.content).toContain('---\r\nparent: "[[Sessions/_Index]]"\r\nnote_type: session-log\r\n---');
+    expect(repaired.content).not.toContain('---\nparent: "[[Sessions/_Index]]"\n---\n\n---');
+  });
+
   it('adds missing context pack links to the index', () => {
     const index = ['## Context Packs', '', '## Use Rule', 'rule', '', 'up:: [[Shared/_Index]]'].join('\n');
     const pack = ['> Pack for tests.', '', '## Load Order', '- a', '', '## Done Criteria', '- b'].join('\n');

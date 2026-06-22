@@ -35,6 +35,7 @@ const ROOT_FILES_WITHOUT_PARENT = new Set(['Home.md', 'README.md', 'CLAUDE.md', 
 const ROOT_FILES_WITHOUT_UP = ROOT_FILES_WITHOUT_PARENT;
 const SKIP_DIRS = new Set(['.git', '.obsidian', 'node_modules', 'Shared/Context7-Docs']);
 const PURPOSE_PLACEHOLDER = '> _(purpose pending — fill in)_\n\n';
+const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 
 export function parseBrainRepairArgs(args: string[]): BrainRepairArgsResult {
   for (const arg of args) {
@@ -45,7 +46,7 @@ export function parseBrainRepairArgs(args: string[]): BrainRepairArgsResult {
 }
 
 export function planPurposeFix(relPath: string, content: string): BrainRepairAction | undefined {
-  if (/^>\s+/m.test(content)) return undefined;
+  if (hasPurposeBlockquote(content)) return undefined;
   return {
     id: 'repair.purpose-blockquote',
     relPath,
@@ -79,8 +80,8 @@ export function planUpLinkFix(relPath: string, content: string): BrainRepairActi
 }
 
 export function applyPurposeFix(content: string): string {
-  if (/^>\s+/m.test(content)) return content;
-  const match = content.match(/^---[\s\S]*?---\n?/);
+  if (hasPurposeBlockquote(content)) return content;
+  const match = content.match(FRONTMATTER_RE);
   // replacer function so `$`-sequences in the matched frontmatter are written literally
   if (match) return content.replace(match[0], () => `${match[0]}${PURPOSE_PLACEHOLDER}`);
   return `${PURPOSE_PLACEHOLDER}${content}`;
@@ -90,10 +91,11 @@ export function applyParentFix(content: string, relPath: string): string {
   if (/^---[\s\S]*?^parent:/m.test(content)) return content;
   const parent = inferParentRelPath(relPath);
   const parentLine = `parent: "[[${parent}]]"`;
-  const match = content.match(/^---\n([\s\S]*?)---\n/);
+  const match = content.match(FRONTMATTER_RE);
   if (!match) return `---\n${parentLine}\n---\n\n${content}`;
+  const newline = match[0].startsWith('---\r\n') ? '\r\n' : '\n';
   // replacer function so `$`-sequences in the inferred parent path aren't interpreted as replace patterns
-  return content.replace(/^---\n/, () => `---\n${parentLine}\n`);
+  return content.replace(/^---\r?\n/, (opening) => `${opening}${parentLine}${newline}`);
 }
 
 export function applyUpLinkFix(content: string, relPath: string): string {
@@ -305,9 +307,24 @@ async function readText(path: string): Promise<string> {
 }
 
 function extractBlockquotePurpose(content: string): string {
-  const body = content.replace(/^---[\s\S]*?---\n?/, '');
+  const body = content.replace(FRONTMATTER_RE, '');
   const match = body.match(/^>\s*(.+)$/m);
   return match?.[1]?.trim() ?? '';
+}
+
+function hasPurposeBlockquote(content: string): boolean {
+  const lines = content.replace(FRONTMATTER_RE, '').split('\n');
+  let index = firstMeaningfulLineIndex(lines, 0);
+  if (index < 0) return false;
+  if (/^#{1,6}\s+/.test(lines[index].trim())) index = firstMeaningfulLineIndex(lines, index + 1);
+  return index >= 0 && /^>\s+/.test(lines[index]);
+}
+
+function firstMeaningfulLineIndex(lines: string[], start: number): number {
+  for (let index = start; index < lines.length; index++) {
+    if (lines[index].trim()) return index;
+  }
+  return -1;
 }
 
 function uniqueSorted(values: string[]): string[] {

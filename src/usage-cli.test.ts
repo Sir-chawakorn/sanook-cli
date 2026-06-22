@@ -14,4 +14,15 @@ describe('usage cli args', () => {
     expect(parseUsageArgs(['weekly', '--days', '7'])?.days).toBe(7);
     expect(parseUsageArgs(['monthly', '--since', '2026-06-01', '--until', '2026-06-30'])?.since).toBe('2026-06-01');
   });
+
+  it('rejects extra positional report modes or values', () => {
+    expect(parseUsageArgs(['daily', 'weekly'])).toBeNull();
+    expect(parseUsageArgs(['weekly', 'extra', '--days', '7'])).toBeNull();
+  });
+
+  it('rejects duplicate scalar range options', () => {
+    expect(parseUsageArgs(['--since', '2026-06-01', '--since=2026-06-02'])).toBeNull();
+    expect(parseUsageArgs(['--until', '2026-06-30', '--until=2026-07-01'])).toBeNull();
+    expect(parseUsageArgs(['--days', '7', '--days=14'])).toBeNull();
+  });
 });
